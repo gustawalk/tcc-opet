@@ -5,7 +5,9 @@ import {
   Wrench,
   Settings,
   Search,
-  LogOut
+  LogOut,
+  ClipboardList,
+  Plus
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -30,6 +32,7 @@ const menuItems = [
   { icon: Wrench, label: "Ordens de Serviço", path: "/os" },
   { icon: Users, label: "Clientes", path: "/customers" },
   { icon: Package, label: "Estoque", path: "/inventory" },
+  { icon: ClipboardList, label: "Templates", path: "/templates" },
   { icon: Search, label: "Consulta Pública", path: "/tracking" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
@@ -99,7 +102,9 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>Nova OS</Button>
+              <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>
+                <Plus />
+                Nova OS</Button>
             </div>
           </header>
           <main className="flex-1 p-6 lg:p-10 max-w-[1600px] mx-auto w-full">

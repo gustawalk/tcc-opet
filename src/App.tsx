@@ -9,6 +9,7 @@ import { Inventory } from "./views/Inventory";
 import { ServiceOrders } from "./views/ServiceOrders";
 import { Users } from "./views/Users";
 import { Settings } from "./views/Settings";
+import { Templates } from "./views/Templates";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -31,6 +32,7 @@ function App() {
             <Route path="/os/new" element={<ServiceOrderCreate />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/templates" element={<Templates />} />
             <Route path="/users" element={<Users />} />
             <Route path="/tracking" element={<div className="p-8">Consulta Pública (Em breve)</div>} />
             <Route path="/settings" element={<Settings />} />

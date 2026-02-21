@@ -52,6 +52,24 @@ export interface Settings {
   address: string;
 }
 
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  checked: boolean;
+}
+
+export interface ChecklistTemplate {
+  id: string;
+  title: string;
+  items: string[]; // Apenas os labels dos itens
+  created_at?: string;
+}
+
+export interface OSChecklist {
+  title: string;
+  items: ChecklistItem[];
+}
+
 export interface FinancialSummary {
   totalRevenue: number;
   netProfit: number;

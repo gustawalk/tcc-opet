@@ -14,7 +14,9 @@ import {
   Wrench,
   Save,
   Trash,
-  ChevronRight
+  ChevronRight,
+  ClipboardCheck,
+  CheckSquare
 } from "lucide-react";
 import { 
   Card, 
@@ -40,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ServiceOrder, OSStatus, InventoryItem } from "@/lib/types";
+import { ServiceOrder, OSStatus, InventoryItem, OSChecklist } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
 import { 
@@ -58,6 +60,11 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+// Estendendo o tipo ServiceOrder para incluir checklist opcional para os mocks
+interface ServiceOrderWithChecklist extends ServiceOrder {
+  checklist?: OSChecklist;
+}
 
 // Mock para simular busca de itens de uma OS
 const fetchOSItems = async (osId: string): Promise<any[]> => {
@@ -83,7 +90,7 @@ const fetchInventory = async (): Promise<InventoryItem[]> => {
 };
 
 // Mock para simular busca de ordens de serviço
-const fetchServiceOrders = async (): Promise<ServiceOrder[]> => {
+const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
   await new Promise(resolve => setTimeout(resolve, 800));
   return [
     { 
@@ -94,7 +101,16 @@ const fetchServiceOrders = async (): Promise<ServiceOrder[]> => {
       description: "Troca de tela e limpeza preventiva", 
       status: "Em Manutenção", 
       created_at: "2023-10-15",
-      total_price: 1000.00
+      total_price: 1000.00,
+      checklist: {
+        title: "Checklist Notebook",
+        items: [
+          { id: "1", label: "Teclado", checked: true },
+          { id: "2", label: "Tela", checked: false },
+          { id: "3", label: "Webcam", checked: true },
+          { id: "4", label: "Portas USB", checked: true },
+        ]
+      }
     },
     { 
       id: "OS-2023-002", 
@@ -145,7 +161,7 @@ export function ServiceOrders() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   
   // Estados para Controle de Sheet
-  const [selectedOS, setSelectedOS] = useState<ServiceOrder | null>(null);
+  const [selectedOS, setSelectedOS] = useState<ServiceOrderWithChecklist | null>(null);
   const [osItems, setOsItems] = useState<any[]>([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -203,7 +219,7 @@ export function ServiceOrders() {
     navigate("/os/new");
   };
 
-  const handleEditOS = async (order: ServiceOrder) => {
+  const handleEditOS = async (order: ServiceOrderWithChecklist) => {
     console.log("Abrindo Edição para OS:", order.id);
     setSelectedOS(order);
     setEditStatus(order.status);
@@ -213,7 +229,7 @@ export function ServiceOrders() {
     setIsEditOpen(true);
   };
 
-  const handleViewOS = async (order: ServiceOrder) => {
+  const handleViewOS = async (order: ServiceOrderWithChecklist) => {
     console.log("Abrindo Visualização para OS:", order.id);
     setSelectedOS(order);
     const items = await fetchOSItems(order.id);
@@ -439,6 +455,32 @@ export function ServiceOrders() {
 
             <Separator />
 
+            {/* Checklist View */}
+            {selectedOS?.checklist && (
+              <>
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground font-semibold uppercase flex items-center gap-2">
+                    <ClipboardCheck className="h-4 w-4" /> {selectedOS.checklist.title}
+                  </p>
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 border rounded-md p-3 bg-muted/20">
+                    {selectedOS.checklist.items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2">
+                        {item.checked ? (
+                          <CheckSquare className="h-4 w-4 text-primary" />
+                        ) : (
+                          <div className="h-4 w-4 border border-muted-foreground rounded-sm" />
+                        )}
+                        <span className={`text-xs ${item.checked ? "font-medium" : "text-muted-foreground"}`}>
+                          {item.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground font-semibold uppercase">Relato / Problema</p>
               <div className="p-3 bg-muted/50 rounded-md border text-sm">
@@ -474,7 +516,7 @@ export function ServiceOrders() {
           </div>
 
           <SheetFooter className="mt-8">
-            <Button variant="outline" className="w-full gap-2" onClick={() => console.log("Gerando PDF...")}>
+            <Button variant="outline" className="w-full gap-2" onClick={() => console.log("Gerando PDF com Checklist...")}>
               Gerar PDF da OS
             </Button>
           </SheetFooter>

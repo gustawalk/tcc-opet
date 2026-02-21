@@ -1,18 +1,20 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  ArrowLeft, 
-  Save, 
-  User, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Wrench, 
-  FileText, 
+import {
+  ArrowLeft,
+  Save,
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  Wrench,
+  FileText,
   Search,
   CheckCircle2,
   Plus,
-  ShieldCheck
+  ShieldCheck,
+  ClipboardCheck,
+  ChevronRight
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Customer, User as UserType } from "@/lib/types";
+import { Customer, User as UserType, ChecklistTemplate, ChecklistItem } from "@/lib/types";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useNavigate } from "react-router-dom";
 
 // Mock para simular busca de clientes do Tauri invoke("get_customers")
 const fetchCustomers = async (): Promise<Customer[]> => {
@@ -41,12 +45,22 @@ const fetchTechs = async (): Promise<UserType[]> => {
   ];
 };
 
+// Mock para buscar templates
+const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
+  return [
+    { id: "1", title: "Checklist Smartphone", items: ["Tela/Touch", "Câmeras", "Microfone/Áudio", "Carga", "Botões", "Wi-Fi"] },
+    { id: "2", title: "Checklist Notebook", items: ["Teclado", "Tela", "Webcam", "Portas USB", "Carregador", "Bateria"] },
+  ];
+};
+
 export function ServiceOrderCreate() {
+  const navigate = useNavigate()
+
   // Estados do formulário
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerList, setShowCustomerList] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     phone: "",
     email: "",
@@ -56,6 +70,11 @@ export function ServiceOrderCreate() {
     status: "Orçamento" as const,
     techId: "1" // Usuário logado fake
   });
+
+  // Estado da Checklist
+  const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [showTemplateList, setShowTemplateList] = useState(false);
 
   // Busca de clientes
   const { data: customers = [] } = useQuery({
@@ -69,10 +88,16 @@ export function ServiceOrderCreate() {
     queryFn: fetchTechs,
   });
 
+  // Busca de templates
+  const { data: templates = [] } = useQuery({
+    queryKey: ["checklist-templates"],
+    queryFn: fetchTemplates,
+  });
+
   // Filtragem de clientes para o search
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return [];
-    return customers.filter(c => 
+    return customers.filter(c =>
       c.name.toLowerCase().includes(customerSearch.toLowerCase())
     );
   }, [customerSearch, customers]);
@@ -89,6 +114,23 @@ export function ServiceOrderCreate() {
     setShowCustomerList(false);
   };
 
+  const handleSelectTemplate = (template: ChecklistTemplate) => {
+    setSelectedTemplate(template);
+    const initialItems = template.items.map((item, idx) => ({
+      id: `${idx}`,
+      label: item,
+      checked: false
+    }));
+    setChecklistItems(initialItems);
+    setShowTemplateList(false);
+  };
+
+  const toggleChecklistItem = (id: string) => {
+    setChecklistItems(prev =>
+      prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item)
+    );
+  };
+
   const handleNewCustomer = () => {
     setSelectedCustomer(null);
     setShowCustomerList(false);
@@ -100,9 +142,13 @@ export function ServiceOrderCreate() {
       ...formData,
       customerName: customerSearch,
       customerId: selectedCustomer?.id,
-      openedBy: selectedTech?.name
+      openedBy: selectedTech?.name,
+      checklist: selectedTemplate ? {
+        title: selectedTemplate.title,
+        items: checklistItems
+      } : null
     };
-    console.log("Salvando OS:", payload);
+    console.log("Salvando OS com Checklist:", payload);
     // Aqui viria o invoke("create_os", { payload })
     alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
   };
@@ -111,7 +157,7 @@ export function ServiceOrderCreate() {
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="rounded-full">
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -120,12 +166,6 @@ export function ServiceOrderCreate() {
               Preencha os dados do cliente e do equipamento para iniciar o serviço.
             </p>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline">Cancelar</Button>
-          <Button onClick={handleSave} className="gap-2">
-            <Save className="h-4 w-4" /> Salvar Ordem
-          </Button>
         </div>
       </div>
 
@@ -158,7 +198,7 @@ export function ServiceOrderCreate() {
                 />
               </div>
 
-              {/* Lista de busca de cliente (Select com search) */}
+              {/* Lista de busca de cliente */}
               {showCustomerList && (customerSearch.length > 0 || filteredCustomers.length > 0) && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
                   <ScrollArea className="max-h-[200px]">
@@ -178,7 +218,7 @@ export function ServiceOrderCreate() {
                           </div>
                         ))
                       ) : (
-                        <div 
+                        <div
                           className="flex items-center gap-2 p-2 hover:bg-accent rounded-sm cursor-pointer text-primary"
                           onClick={handleNewCustomer}
                         >
@@ -197,12 +237,12 @@ export function ServiceOrderCreate() {
                 <Label htmlFor="phone">Telefone</Label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="phone" 
-                    placeholder="(00) 00000-0000" 
+                  <Input
+                    id="phone"
+                    placeholder="(00) 00000-0000"
                     className="pl-9"
                     value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                 </div>
               </div>
@@ -210,13 +250,13 @@ export function ServiceOrderCreate() {
                 <Label htmlFor="email">E-mail</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="cliente@email.com" 
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="cliente@email.com"
                     className="pl-9"
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
                 </div>
               </div>
@@ -226,12 +266,12 @@ export function ServiceOrderCreate() {
               <Label htmlFor="address">Endereço Completo</Label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="address" 
-                  placeholder="Rua, Número, Bairro, Cidade" 
+                <Input
+                  id="address"
+                  placeholder="Rua, Número, Bairro, Cidade"
                   className="pl-9"
                   value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 />
               </div>
             </div>
@@ -280,10 +320,80 @@ export function ServiceOrderCreate() {
           </Card>
         </div>
 
-        {/* Coluna de Baixo (Full Width): Dados do Equipamento */}
-        <Card className="md:col-span-3">
+        {/* CHECKLIST SELECTION */}
+        <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist de Entrada
+            </CardTitle>
+            <CardDescription>
+              Selecione um template para realizar a conferência inicial.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <Label>Template</Label>
+              <Button
+                variant="outline"
+                className="w-full justify-between mt-1 text-left font-normal"
+                onClick={() => setShowTemplateList(!showTemplateList)}
+              >
+                {selectedTemplate ? selectedTemplate.title : "Selecione um modelo..."}
+                <Plus className="h-4 w-4 ml-2 opacity-50" />
+              </Button>
+
+              {showTemplateList && (
+                <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
+                  <ScrollArea className="max-h-48">
+                    <div className="p-1">
+                      {templates.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
+                          onClick={() => handleSelectTemplate(t)}
+                        >
+                          <span className="text-sm">{t.title}</span>
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </Card>
+              )}
+            </div>
+
+            {selectedTemplate && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase text-muted-foreground">Itens para Conferência</span>
+                  <Badge variant="outline" className="text-[10px]">{checklistItems.filter(i => i.checked).length}/{checklistItems.length}</Badge>
+                </div>
+                <div className="grid gap-2 border rounded-md p-3 bg-muted/20">
+                  {checklistItems.map((item) => (
+                    <div key={item.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`item-${item.id}`}
+                        checked={item.checked}
+                        onChange={() => toggleChecklistItem(item.id)}
+                      />
+                      <Label
+                        htmlFor={`item-${item.id}`}
+                        className="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {item.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Dados do Equipamento */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
               <Wrench className="h-5 w-5 text-primary" /> Dados do Equipamento & Problema
             </CardTitle>
           </CardHeader>
@@ -291,11 +401,11 @@ export function ServiceOrderCreate() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="equipment">Equipamento (Marca/Modelo)</Label>
-                <Input 
-                  id="equipment" 
-                  placeholder="Ex: Notebook Dell Inspiron 15" 
+                <Input
+                  id="equipment"
+                  placeholder="Ex: Notebook Dell Inspiron 15"
                   value={formData.equipment}
-                  onChange={(e) => setFormData({...formData, equipment: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -307,12 +417,12 @@ export function ServiceOrderCreate() {
               <Label htmlFor="description">Descrição Detalhada do Problema</Label>
               <div className="relative">
                 <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Textarea 
-                  id="description" 
-                  placeholder="Descreva o que o cliente relatou e o estado inicial do aparelho..." 
+                <Textarea
+                  id="description"
+                  placeholder="Descreva o que o cliente relatou e o estado inicial do aparelho..."
                   className="pl-9 min-h-[120px]"
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
             </div>

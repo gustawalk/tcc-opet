@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { 
   ArrowLeft, 
   Save, 
@@ -11,7 +11,8 @@ import {
   FileText, 
   Search,
   CheckCircle2,
-  Plus
+  Plus,
+  ShieldCheck
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,9 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Customer, ServiceOrder } from "@/lib/types";
+import { Customer, User as UserType } from "@/lib/types";
 
 // Mock para simular busca de clientes do Tauri invoke("get_customers")
 const fetchCustomers = async (): Promise<Customer[]> => {
@@ -30,6 +30,14 @@ const fetchCustomers = async (): Promise<Customer[]> => {
     { id: "1", name: "Maria Silva", phone: "(41) 99999-1111", email: "maria@email.com", address: "Rua das Flores, 123 - Curitiba" },
     { id: "2", name: "João Pereira", phone: "(41) 98888-2222", email: "joao@email.com", address: "Av. Principal, 500 - Araucária" },
     { id: "3", name: "Empresa ABC", phone: "(41) 3333-4444", email: "contato@abc.com", address: "Rua Industrial, 10 - Curitiba" },
+  ];
+};
+
+// Mock para usuários/técnicos
+const fetchTechs = async (): Promise<UserType[]> => {
+  return [
+    { id: "1", name: "Gustavo Admin", email: "admin@opet.com.br", role: 'admin' },
+    { id: "2", name: "João Técnico", email: "joao@opet.com.br", role: 'tech' },
   ];
 };
 
@@ -45,13 +53,20 @@ export function ServiceOrderCreate() {
     address: "",
     equipment: "",
     description: "",
-    status: "Orçamento" as const
+    status: "Orçamento" as const,
+    techId: "1" // Usuário logado fake
   });
 
   // Busca de clientes
   const { data: customers = [] } = useQuery({
     queryKey: ["customers-list"],
     queryFn: fetchCustomers,
+  });
+
+  // Busca de técnicos
+  const { data: techs = [] } = useQuery({
+    queryKey: ["techs-list"],
+    queryFn: fetchTechs,
   });
 
   // Filtragem de clientes para o search
@@ -80,14 +95,16 @@ export function ServiceOrderCreate() {
   };
 
   const handleSave = () => {
+    const selectedTech = techs.find(t => t.id === formData.techId);
     const payload = {
       ...formData,
       customerName: customerSearch,
-      customerId: selectedCustomer?.id
+      customerId: selectedCustomer?.id,
+      openedBy: selectedTech?.name
     };
     console.log("Salvando OS:", payload);
     // Aqui viria o invoke("create_os", { payload })
-    alert("Ordem de serviço criada com sucesso!");
+    alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
   };
 
   return (
@@ -247,6 +264,13 @@ export function ServiceOrderCreate() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tipo de Cliente:</span>
                 <span className="font-medium">{selectedCustomer ? "Existente" : "Novo Cadastro"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Técnico Resp.:</span>
+                <span className="font-medium flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3 text-primary" />
+                  {techs.find(t => t.id === formData.techId)?.name || "Nenhum"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Data de Abertura:</span>

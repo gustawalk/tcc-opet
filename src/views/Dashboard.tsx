@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { invoke } from '@tauri-apps/api/core';
 import { useNavigate } from "react-router-dom";
 import {
   TrendingUp,
@@ -69,11 +68,6 @@ export function Dashboard() {
     queryFn: fetchDashboardData,
   });
 
-  const test = async () => {
-    const res = await invoke<string>("greet", { name: "Gustavo" })
-    console.log(res)
-  }
-
   if (isLoading) {
     return (
       <div className="flex flex-col gap-8 animate-in fade-in duration-500">
@@ -117,7 +111,7 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">Exportar Relatório</Button>
+          <Button variant="outline" size="sm" onClick={() => console.log("Ação: Exportar Relatório Geral")}>Exportar Relatório</Button>
           <Button size="sm" className="gap-2" onClick={() => navigate("/os/new")} >
             <Plus className="h-4 w-4" /> Nova Ordem
           </Button>
@@ -160,7 +154,7 @@ export function Dashboard() {
               <CardTitle>Ordens Recentes</CardTitle>
               <CardDescription>As últimas atividades registradas no sistema.</CardDescription>
             </div>
-            <Button variant="ghost" size="sm" className="gap-2">
+            <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate("/os")}>
               Ver Todas <ArrowRight className="h-4 w-4" />
             </Button>
           </CardHeader>
@@ -177,7 +171,7 @@ export function Dashboard() {
               </TableHeader>
               <TableBody>
                 {recentOrders.map((os) => (
-                  <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
+                  <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate("/os")}>
                     <TableCell className="font-medium">{os.id}</TableCell>
                     <TableCell>{os.customerName}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{os.equipment}</TableCell>
@@ -225,7 +219,7 @@ export function Dashboard() {
               ))}
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full text-xs h-8">Ver Dashboard Financeiro Completo</Button>
+              <Button variant="outline" className="w-full text-xs h-8" onClick={() => console.log("Ação: Abrir Relatórios Financeiros Detalhados")}>Ver Dashboard Financeiro Completo</Button>
             </CardFooter>
           </Card>
 
@@ -254,7 +248,7 @@ export function Dashboard() {
               ))}
             </CardContent>
             <CardFooter>
-              <Button variant="destructive" size="sm" className="w-full h-8">Fazer Reposição</Button>
+              <Button variant="destructive" size="sm" className="w-full h-8" onClick={() => navigate("/inventory")}>Fazer Reposição</Button>
             </CardFooter>
           </Card>
         </div>

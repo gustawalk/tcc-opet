@@ -14,7 +14,9 @@ import {
   Plus,
   ShieldCheck,
   ClipboardCheck,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  DollarSign
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,9 +25,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Customer, User as UserType, ChecklistTemplate, ChecklistItem } from "@/lib/types";
+import { Customer, User as UserType, ChecklistTemplate, ChecklistItem, InventoryItem } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
+import { formatCurrency } from "@/lib/formatters";
 
 // Mock para simular busca de clientes do Tauri invoke("get_customers")
 const fetchCustomers = async (): Promise<Customer[]> => {
@@ -53,6 +56,15 @@ const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
   ];
 };
 
+// Mock para buscar serviços do estoque
+const fetchInventoryServices = async (): Promise<InventoryItem[]> => {
+  return [
+    { id: "6", name: "Mão de Obra iPhone", description: "Troca de componentes básicos", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 50.00, sale_price: 150.00 },
+    { id: "7", name: "Mão de Obra Drones", description: "Reparo estrutural ou eletrônico em drones", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 100.00 },
+    { id: "8", name: "Limpeza Preventiva", description: "Limpeza e troca de pasta térmica", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 10.00, sale_price: 80.00 },
+  ];
+};
+
 export function ServiceOrderCreate() {
   const navigate = useNavigate()
 
@@ -76,6 +88,11 @@ export function ServiceOrderCreate() {
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [showTemplateList, setShowTemplateList] = useState(false);
 
+  // Estado de Serviços selecionados
+  const [selectedServices, setSelectedServices] = useState<InventoryItem[]>([]);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [showServiceList, setShowServiceList] = useState(false);
+
   // Busca de clientes
   const { data: customers = [] } = useQuery({
     queryKey: ["customers-list"],
@@ -94,6 +111,12 @@ export function ServiceOrderCreate() {
     queryFn: fetchTemplates,
   });
 
+  // Busca de serviços
+  const { data: services = [] } = useQuery({
+    queryKey: ["inventory-services"],
+    queryFn: fetchInventoryServices,
+  });
+
   // Filtragem de clientes para o search
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return [];
@@ -101,6 +124,14 @@ export function ServiceOrderCreate() {
       c.name.toLowerCase().includes(customerSearch.toLowerCase())
     );
   }, [customerSearch, customers]);
+
+  // Filtragem de serviços para o search
+  const filteredServices = useMemo(() => {
+    if (!serviceSearch) return [];
+    return services.filter(s =>
+      s.name.toLowerCase().includes(serviceSearch.toLowerCase())
+    );
+  }, [serviceSearch, services]);
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -131,6 +162,18 @@ export function ServiceOrderCreate() {
     );
   };
 
+  const handleAddService = (service: InventoryItem) => {
+    if (!selectedServices.find(s => s.id === service.id)) {
+      setSelectedServices([...selectedServices, service]);
+    }
+    setServiceSearch("");
+    setShowServiceList(false);
+  };
+
+  const handleRemoveService = (id: string) => {
+    setSelectedServices(selectedServices.filter(s => s.id !== id));
+  };
+
   const handleNewCustomer = () => {
     setSelectedCustomer(null);
     setShowCustomerList(false);
@@ -143,15 +186,21 @@ export function ServiceOrderCreate() {
       customerName: customerSearch,
       customerId: selectedCustomer?.id,
       openedBy: selectedTech?.name,
+      services: selectedServices,
       checklist: selectedTemplate ? {
         title: selectedTemplate.title,
         items: checklistItems
       } : null
     };
-    console.log("Salvando OS com Checklist:", payload);
+    console.log("Salvando OS com Checklist e Serviços:", payload);
     // Aqui viria o invoke("create_os", { payload })
     alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
+    navigate("/os");
   };
+
+  const totalServices = useMemo(() => {
+    return selectedServices.reduce((acc, s) => acc + s.sale_price, 0);
+  }, [selectedServices]);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 max-w-5xl mx-auto">
@@ -313,6 +362,10 @@ export function ServiceOrderCreate() {
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted-foreground">Serviços:</span>
+                <span className="font-bold text-primary">{formatCurrency(totalServices)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Data de Abertura:</span>
                 <span className="font-medium">{new Date().toLocaleDateString('pt-BR')}</span>
               </div>
@@ -390,49 +443,125 @@ export function ServiceOrderCreate() {
           </CardContent>
         </Card>
 
-        {/* Dados do Equipamento */}
-        <Card className="md:col-span-2">
+        {/* Serviços e Mão de Obra */}
+        <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Wrench className="h-5 w-5 text-primary" /> Dados do Equipamento & Problema
+              <DollarSign className="h-5 w-5 text-primary" /> Serviços / Mão de Obra
             </CardTitle>
+            <CardDescription>
+              Adicione os serviços que serão realizados.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="equipment">Equipamento (Marca/Modelo)</Label>
+            <div className="relative">
+              <Label>Buscar Serviço</Label>
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="equipment"
-                  placeholder="Ex: Notebook Dell Inspiron 15"
-                  value={formData.equipment}
-                  onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
+                  placeholder="Ex: Mão de obra iPhone..."
+                  className="pl-9"
+                  value={serviceSearch}
+                  onChange={(e) => {
+                    setServiceSearch(e.target.value);
+                    setShowServiceList(true);
+                  }}
+                  onFocus={() => setShowServiceList(true)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="serial">Nº de Série / IMEI (Opcional)</Label>
-                <Input id="serial" placeholder="Ex: ABC-12345" />
-              </div>
+
+              {showServiceList && (serviceSearch.length > 0) && (
+                <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
+                  <ScrollArea className="max-h-48">
+                    <div className="p-1">
+                      {filteredServices.length > 0 ? (
+                        filteredServices.map((s) => (
+                          <div
+                            key={s.id}
+                            className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
+                            onClick={() => handleAddService(s)}
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{s.name}</span>
+                              <span className="text-xs text-muted-foreground">{formatCurrency(s.sale_price)}</span>
+                            </div>
+                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-xs text-muted-foreground italic">
+                          Nenhum serviço encontrado no estoque.
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </Card>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Descrição Detalhada do Problema</Label>
-              <div className="relative">
-                <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Textarea
-                  id="description"
-                  placeholder="Descreva o que o cliente relatou e o estado inicial do aparelho..."
-                  className="pl-9 min-h-[120px]"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
+
+            <div className="space-y-3">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">Serviços Selecionados</span>
+              <div className="border rounded-md overflow-hidden">
+                {selectedServices.length > 0 ? (
+                  <div className="divide-y">
+                    {selectedServices.map((service) => (
+                      <div key={service.id} className="flex items-center justify-between p-3 bg-muted/10">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{service.name}</span>
+                          <span className="text-xs text-primary font-bold">{formatCurrency(service.sale_price)}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleRemoveService(service.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-xs text-muted-foreground italic">
+                    Nenhum serviço adicionado.
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
-          <CardFooter className="bg-muted/30 border-t flex justify-between items-center py-4">
-            <p className="text-xs text-muted-foreground">
-              Certifique-se de que os dados estão corretos antes de salvar.
-            </p>
+        </Card>
+
+        {/* Dados do Equipamento */}
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Wrench className="h-5 w-5 text-primary" /> Dados do Aparelho
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="equipment">Equipamento (Marca/Modelo)</Label>
+              <Input
+                id="equipment"
+                placeholder="Ex: iPhone 13 Pro Max"
+                value={formData.equipment}
+                onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrição do Problema</Label>
+              <Textarea
+                id="description"
+                placeholder="Relato do cliente..."
+                className="min-h-[100px]"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="bg-muted/30 border-t flex justify-end items-center py-4">
             <Button onClick={handleSave} className="gap-2">
-              <Save className="h-4 w-4" /> Criar Ordem de Serviço
+              <Save className="h-4 w-4" /> Criar OS
             </Button>
           </CardFooter>
         </Card>

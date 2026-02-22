@@ -33,7 +33,6 @@ const menuItems = [
   { icon: Users, label: "Clientes", path: "/customers" },
   { icon: Package, label: "Estoque", path: "/inventory" },
   { icon: ClipboardList, label: "Templates", path: "/templates" },
-  { icon: Search, label: "Consulta Pública", path: "/tracking" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
 

@@ -34,7 +34,6 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/users" element={<Users />} />
-            <Route path="/tracking" element={<div className="p-8">Consulta Pública (Em breve)</div>} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </MainLayout>

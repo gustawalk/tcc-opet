@@ -23,6 +23,7 @@ export interface InventoryItem {
   id: string;
   name: string;
   description: string;
+  type: 'part' | 'service';
   min_quantity: number;
   current_quantity: number;
   cost_price: number;

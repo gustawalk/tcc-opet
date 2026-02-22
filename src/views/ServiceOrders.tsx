@@ -79,13 +79,14 @@ const fetchOSItems = async (osId: string): Promise<any[]> => {
 // Mock para simular busca de estoque (para seleção)
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return [
-    { id: "1", name: "Tela iPhone 13 Pro", description: "...", min_quantity: 3, current_quantity: 2, cost_price: 850, sale_price: 1450 },
-    { id: "2", name: "Bateria MacBook Air M1", description: "...", min_quantity: 2, current_quantity: 5, cost_price: 320, sale_price: 580 },
-    { id: "3", name: "SSD 1TB NVMe Kingston", description: "...", min_quantity: 5, current_quantity: 8, cost_price: 280, sale_price: 450 },
-    { id: "4", name: "Conector Carga USB-C G15", description: "...", min_quantity: 10, current_quantity: 12, cost_price: 15, sale_price: 85 },
-    { id: "5", name: "Pasta Térmica Arctic MX-4", description: "...", min_quantity: 5, current_quantity: 1, cost_price: 35, sale_price: 75 },
-    { id: "serv-1", name: "Mão de Obra Técnica", description: "Serviço", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 150 },
-    { id: "serv-2", name: "Limpeza Preventiva", description: "Serviço", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 100 },
+    { id: "1", name: "Tela iPhone 13 Pro", description: "...", type: "part", min_quantity: 3, current_quantity: 2, cost_price: 850, sale_price: 1450 },
+    { id: "2", name: "Bateria MacBook Air M1", description: "...", type: "part", min_quantity: 2, current_quantity: 5, cost_price: 320, sale_price: 580 },
+    { id: "3", name: "SSD 1TB NVMe Kingston", description: "...", type: "part", min_quantity: 5, current_quantity: 8, cost_price: 280, sale_price: 450 },
+    { id: "4", name: "Conector Carga USB-C G15", description: "...", type: "part", min_quantity: 10, current_quantity: 12, cost_price: 15, sale_price: 85 },
+    { id: "5", name: "Pasta Térmica Arctic MX-4", description: "...", type: "part", min_quantity: 5, current_quantity: 1, cost_price: 35, sale_price: 75 },
+    { id: "serv-1", name: "Mão de Obra Técnica", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 150 },
+    { id: "serv-2", name: "Limpeza Preventiva", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 100 },
+    { id: "serv-3", name: "Mão de Obra Drones", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 200 },
   ];
 };
 
@@ -106,9 +107,13 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
         title: "Checklist Notebook",
         items: [
           { id: "1", label: "Teclado", checked: true },
-          { id: "2", label: "Tela", checked: false },
-          { id: "3", label: "Webcam", checked: true },
-          { id: "4", label: "Portas USB", checked: true },
+          { id: "2", label: "Touchpad", checked: true },
+          { id: "3", label: "Tela", checked: false },
+          { id: "4", label: "Webcam", checked: true },
+          { id: "5", label: "Portas USB", checked: true },
+          { id: "6", label: "Carregador", checked: true },
+          { id: "7", label: "Bateria", checked: true },
+          { id: "8", label: "Som", checked: false },
         ]
       }
     },
@@ -120,7 +125,18 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
       description: "Troca de bateria", 
       status: "Aguardando Peça", 
       created_at: "2023-10-16",
-      total_price: 1200.00
+      total_price: 1200.00,
+      checklist: {
+        title: "Checklist Smartphone",
+        items: [
+          { id: "1", label: "Tela/Touch", checked: true },
+          { id: "2", label: "Câmeras", checked: true },
+          { id: "3", label: "Microfone/Áudio", checked: true },
+          { id: "4", label: "Carga", checked: false },
+          { id: "5", label: "Botões", checked: true },
+          { id: "6", label: "Wi-Fi", checked: true },
+        ]
+      }
     },
     { 
       id: "OS-2023-003", 
@@ -140,7 +156,18 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
       description: "Superaquecimento - Limpeza e troca de metal líquido", 
       status: "Orçamento", 
       created_at: "2023-10-18",
-      total_price: 0.00
+      total_price: 0.00,
+      checklist: {
+        title: "Checklist Console",
+        items: [
+          { id: "1", label: "Leitor de Disco", checked: true },
+          { id: "2", label: "Saída HDMI", checked: true },
+          { id: "3", label: "Conexão Wi-Fi", checked: true },
+          { id: "4", label: "Bluetooth", checked: true },
+          { id: "5", label: "Portas USB", checked: true },
+          { id: "6", label: "Ruído Ventoinha", checked: false },
+        ]
+      }
     },
     { 
       id: "OS-2023-005", 

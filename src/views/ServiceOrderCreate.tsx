@@ -2,13 +2,13 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  BrushCleaning,
   Save,
   User,
   Phone,
   Mail,
   MapPin,
   Wrench,
-  FileText,
   Search,
   CheckCircle2,
   Plus,
@@ -78,6 +78,7 @@ export function ServiceOrderCreate() {
     email: "",
     address: "",
     equipment: "",
+    imei: "",
     description: "",
     status: "Orçamento" as const,
     techId: "1" // Usuário logado fake
@@ -376,8 +377,12 @@ export function ServiceOrderCreate() {
         {/* CHECKLIST SELECTION */}
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist de Entrada
+            <CardTitle className="flex items-center justify-between gap-2 text-lg">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              Checklist de Entrada
+              <span title="Limpar checklist">
+                <BrushCleaning aria-label="teste" className="h-5 w-5 text-primary cursor-pointer hover:text-gray-400 transition-all" onClick={() => { setSelectedTemplate(null) }} />
+              </span>
             </CardTitle>
             <CardDescription>
               Selecione um template para realizar a conferência inicial.
@@ -546,6 +551,15 @@ export function ServiceOrderCreate() {
                 placeholder="Ex: iPhone 13 Pro Max"
                 value={formData.equipment}
                 onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="imei">IMEI / Serial (Opcional)</Label>
+              <Input
+                id="imei"
+                placeholder="Ex: 354678100000000"
+                value={formData.imei}
+                onChange={(e) => setFormData({ ...formData, imei: e.target.value })}
               />
             </div>
             <div className="space-y-2">

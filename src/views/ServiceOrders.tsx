@@ -466,6 +466,14 @@ export function ServiceOrders() {
                   <Smartphone className="h-4 w-4" /> {selectedOS?.equipment}
                 </p>
               </div>
+              {selectedOS?.imei && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-semibold uppercase">IMEI / Serial</p>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <Smartphone className="h-4 w-4 text-primary" /> {selectedOS.imei}
+                  </p>
+                </div>
+              )}
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">Abertura</p>
                 <p className="text-sm font-medium flex items-center gap-1.5">

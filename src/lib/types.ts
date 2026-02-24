@@ -37,6 +37,7 @@ export interface ServiceOrder {
   customer_id: string;
   customer_name?: string;
   equipment: string;
+  imei?: string;
   description: string;
   status: OSStatus;
   total_price?: number;

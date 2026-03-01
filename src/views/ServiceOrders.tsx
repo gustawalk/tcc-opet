@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { 
-  Plus, 
-  Search, 
-  MoreVertical, 
-  Eye, 
-  Edit, 
+import {
+  Plus,
+  Search,
+  MoreVertical,
+  Eye,
+  Edit,
   Trash2,
   Calendar,
   User,
@@ -18,21 +18,21 @@ import {
   ClipboardCheck,
   CheckSquare
 } from "lucide-react";
-import { 
-  Card, 
+import {
+  Card,
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -45,18 +45,18 @@ import {
 import { ServiceOrder, OSStatus, InventoryItem, OSChecklist } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
-import { 
-  Tabs, 
-  TabsList, 
-  TabsTrigger 
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger
 } from "@/components/ui/tabs";
-import { 
-  Sheet, 
-  SheetContent, 
-  SheetDescription, 
-  SheetHeader, 
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
   SheetTitle,
-  SheetFooter 
+  SheetFooter
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -94,13 +94,13 @@ const fetchInventory = async (): Promise<InventoryItem[]> => {
 const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
   await new Promise(resolve => setTimeout(resolve, 800));
   return [
-    { 
-      id: "OS-2023-001", 
-      customer_id: "1", 
-      customer_name: "Maria Silva", 
-      equipment: "Notebook Dell G15", 
-      description: "Troca de tela e limpeza preventiva", 
-      status: "Em Manutenção", 
+    {
+      id: "OS-2023-001",
+      customer_id: "1",
+      customer_name: "Maria Silva",
+      equipment: "Notebook Dell G15",
+      description: "Troca de tela e limpeza preventiva",
+      status: "Em Manutenção",
       created_at: "2023-10-15",
       total_price: 1000.00,
       checklist: {
@@ -117,13 +117,13 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
         ]
       }
     },
-    { 
-      id: "OS-2023-002", 
-      customer_id: "2", 
-      customer_name: "João Pereira", 
-      equipment: "iPhone 13 Pro", 
-      description: "Troca de bateria", 
-      status: "Aguardando Peça", 
+    {
+      id: "OS-2023-002",
+      customer_id: "2",
+      customer_name: "João Pereira",
+      equipment: "iPhone 13 Pro",
+      description: "Troca de bateria",
+      status: "Aguardando Peça",
       created_at: "2023-10-16",
       total_price: 1200.00,
       checklist: {
@@ -138,23 +138,23 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
         ]
       }
     },
-    { 
-      id: "OS-2023-003", 
-      customer_id: "3", 
-      customer_name: "Empresa ABC", 
-      equipment: "Impressora HP LaserJet", 
-      description: "Limpeza de roletes e troca de toner", 
-      status: "Finalizada", 
+    {
+      id: "OS-2023-003",
+      customer_id: "3",
+      customer_name: "Empresa ABC",
+      equipment: "Impressora HP LaserJet",
+      description: "Limpeza de roletes e troca de toner",
+      status: "Finalizada",
       created_at: "2023-10-17",
       total_price: 320.00
     },
-    { 
-      id: "OS-2023-004", 
-      customer_id: "4", 
-      customer_name: "Carlos Oliveira", 
-      equipment: "PlayStation 5", 
-      description: "Superaquecimento - Limpeza e troca de metal líquido", 
-      status: "Orçamento", 
+    {
+      id: "OS-2023-004",
+      customer_id: "4",
+      customer_name: "Carlos Oliveira",
+      equipment: "PlayStation 5",
+      description: "Superaquecimento - Limpeza e troca de metal líquido",
+      status: "Orçamento",
       created_at: "2023-10-18",
       total_price: 0.00,
       checklist: {
@@ -169,13 +169,13 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
         ]
       }
     },
-    { 
-      id: "OS-2023-005", 
-      customer_id: "5", 
-      customer_name: "Ana Santos", 
-      equipment: "Samsung Galaxy S22", 
-      description: "Reparo no conector de carga", 
-      status: "Cancelada", 
+    {
+      id: "OS-2023-005",
+      customer_id: "5",
+      customer_name: "Ana Santos",
+      equipment: "Samsung Galaxy S22",
+      description: "Reparo no conector de carga",
+      status: "Cancelada",
       created_at: "2023-10-19",
       total_price: 0.00
     },
@@ -186,13 +186,13 @@ export function ServiceOrders() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  
+
   // Estados para Controle de Sheet
   const [selectedOS, setSelectedOS] = useState<ServiceOrderWithChecklist | null>(null);
   const [osItems, setOsItems] = useState<any[]>([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  
+
   // Estados de Edição Temporários
   const [editStatus, setEditStatus] = useState<OSStatus>("Orçamento");
   const [editDescription, setEditDescription] = useState("");
@@ -213,20 +213,20 @@ export function ServiceOrders() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      const matchesSearch = 
+      const matchesSearch =
         order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.customer_name && order.customer_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         order.equipment.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-      
+
       return matchesSearch && matchesStatus;
     });
   }, [orders, searchTerm, statusFilter]);
 
   const filteredInventory = useMemo(() => {
     if (!inventorySearch) return [];
-    return inventory.filter(item => 
+    return inventory.filter(item =>
       item.name.toLowerCase().includes(inventorySearch.toLowerCase())
     );
   }, [inventory, inventorySearch]);
@@ -287,7 +287,7 @@ export function ServiceOrders() {
   const handleAddInventoryItem = (item: InventoryItem) => {
     console.log("Adicionando item do estoque à OS:", item.name);
     const newItem = {
-      id: Math.random().toString(), 
+      id: Math.random().toString(),
       product_id: item.id,
       name: item.name,
       quantity: 1,
@@ -411,7 +411,7 @@ export function ServiceOrders() {
                               <Edit className="mr-2 h-4 w-4" /> Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => handleDeleteOS(order.id)}
                             >
@@ -439,7 +439,7 @@ export function ServiceOrders() {
       <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <SheetContent className="sm:max-w-xl overflow-y-auto">
           <SheetHeader>
-            <div className="flex justify-between items-start">
+            <div className="flex justify-between items-start pt-4">
               <div className="space-y-1">
                 <SheetTitle className="text-2xl font-bold flex items-center gap-2">
                   <Wrench className="h-6 w-6 text-primary" /> {selectedOS?.id}
@@ -551,7 +551,7 @@ export function ServiceOrders() {
           </div>
 
           <SheetFooter className="mt-8">
-            <Button variant="outline" className="w-full gap-2" onClick={() => console.log("Gerando PDF com Checklist...")}>
+            <Button variant="default" className="w-full gap-2" onClick={() => console.log("Gerando PDF com Checklist...")}>
               Gerar PDF da OS
             </Button>
           </SheetFooter>
@@ -590,7 +590,7 @@ export function ServiceOrders() {
 
             <div className="space-y-2">
               <Label htmlFor="edit-desc" className="text-xs font-semibold uppercase">Relato / Notas Técnicas</Label>
-              <Textarea 
+              <Textarea
                 id="edit-desc"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
@@ -608,7 +608,7 @@ export function ServiceOrders() {
               <div className="relative">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
+                  <Input
                     placeholder="Buscar peça ou serviço no estoque..."
                     className="pl-9 pr-4 text-sm"
                     value={inventorySearch}
@@ -625,7 +625,7 @@ export function ServiceOrders() {
                     <ScrollArea className="max-h-48">
                       <div className="p-1">
                         {filteredInventory.map((item) => (
-                          <div 
+                          <div
                             key={item.id}
                             className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
                             onClick={() => handleAddInventoryItem(item)}
@@ -645,7 +645,7 @@ export function ServiceOrders() {
                   </Card>
                 )}
               </div>
-              
+
               <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader className="bg-muted/50">

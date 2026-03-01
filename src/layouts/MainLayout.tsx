@@ -7,7 +7,8 @@ import {
   Search,
   LogOut,
   ClipboardList,
-  Plus
+  Plus,
+  User
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -26,6 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { LogoIcon } from "@/components/LogoIcon";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -34,6 +36,7 @@ const menuItems = [
   { icon: Package, label: "Estoque", path: "/inventory" },
   { icon: ClipboardList, label: "Templates", path: "/templates" },
   { icon: Settings, label: "Configurações", path: "/settings" },
+  { icon: User, label: "Usuarios", path: "/users" }
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
@@ -46,8 +49,8 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         <Sidebar>
           <SidebarHeader className="h-16 flex items-center px-6 border-b">
             <div className="flex items-center gap-3">
-              <div className="bg-primary h-8 w-8 rounded-lg flex items-center justify-center">
-                <Wrench className="h-5 w-5 text-primary-foreground" />
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center">
+                <LogoIcon />
               </div>
               <span className="font-bold text-lg tracking-tight">OpetS Manager</span>
             </div>

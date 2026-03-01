@@ -263,10 +263,10 @@ Sem CRDT na primeira versão.
 
 ## Fase 1 – Core
 
-* Setup Vite + Tauri
-* Setup Tailwind
-* Setup React Router
-* Setup TanStack Query
+* [x] Setup Vite + Tauri
+* [x] Setup Tailwind
+* [x] Setup React Router
+* [x] Setup TanStack Query
 * Implementar migrations versionadas
 * Criar schema base
 
@@ -274,7 +274,7 @@ Sem CRDT na primeira versão.
 
 ## Fase 2 – CRUD Base
 
-* CRUD Clientes
+* [x] CRUD Clientes
 * CRUD Inventário (via movements)
 * Sistema de autenticação (Argon2)
 
@@ -318,8 +318,8 @@ Sem CRDT na primeira versão.
 
 # 8. Views do Sistema (SPA)
 
-* Dashboard
-* Clientes
+* [x] Dashboard
+* [x] Clientes
 * Estoque
 * Ordens de Serviço
 * Editor de OS

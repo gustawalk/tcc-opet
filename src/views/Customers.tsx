@@ -1,32 +1,42 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  UserPlus, 
-  Search, 
-  MoreVertical, 
-  Phone, 
-  Mail, 
-  MapPin, 
+import {
+  UserPlus,
+  Search,
+  MoreVertical,
+  Phone,
+  Mail,
+  MapPin,
   FileText,
   Edit,
-  Trash2
+  Trash2,
+  Save,
+  User as UserIcon,
+  Globe,
+  History,
+  Copy
 } from "lucide-react";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -36,7 +46,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Customer } from "@/lib/types";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { Customer, ServiceOrder } from "@/lib/types";
+import { formatCurrency } from "@/lib/formatters";
 
 // Mock para simular busca de clientes
 const fetchCustomers = async (): Promise<Customer[]> => {
@@ -50,16 +69,72 @@ const fetchCustomers = async (): Promise<Customer[]> => {
   ];
 };
 
+// Mock para simular busca de OS por cliente
+const fetchCustomerOrders = async (customerId: string): Promise<ServiceOrder[]> => {
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const mockOrders: Record<string, ServiceOrder[]> = {
+    "1": [
+      { id: "OS-1001", customer_id: "1", equipment: "iPhone 13", status: "Finalizada", created_at: "2023-11-01", total_price: 450.00, description: "Troca de tela" },
+      { id: "OS-1025", customer_id: "1", equipment: "MacBook Pro", status: "Em Manutenção", created_at: "2024-02-10", total_price: 1200.00, description: "Limpeza interna e pasta térmica" },
+      { id: "OS-1040", customer_id: "1", equipment: "iPad Air 4", status: "Orçamento", created_at: "2024-03-01", total_price: 350.00, description: "Bateria estufada" },
+      { id: "OS-1055", customer_id: "1", equipment: "Apple Watch S7", status: "Aguardando Peça", created_at: "2024-03-15", total_price: 600.00, description: "Vidro quebrado" },
+    ],
+    "2": [
+      { id: "OS-1005", customer_id: "2", equipment: "Samsung S22", status: "Aguardando Peça", created_at: "2023-12-15", total_price: 850.00, description: "Troca de conector" },
+    ]
+  };
+  return mockOrders[customerId] || [];
+};
+
+const initialFormData = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+};
+
+// Utilitário para formatar telefone BR
+const formatBRPhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+};
+
 export function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Estados para o Sheet de Cadastro/Edição
+  const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isInternational, setIsInternational] = useState<boolean>(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [formData, setFormData] = useState(initialFormData);
+
+  // Estados para o Sheet de Histórico de OS
+  const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["customers"],
     queryFn: fetchCustomers,
   });
 
+  const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
+    queryKey: ["customer-orders", viewingCustomer?.id],
+    queryFn: () => fetchCustomerOrders(viewingCustomer!.id),
+    enabled: !!viewingCustomer,
+  });
+
+  // Ordenação: Mais recentes primeiro
+  const sortedOrders = useMemo(() => {
+    return [...customerOrders].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [customerOrders]);
+
   const filteredCustomers = useMemo(() => {
-    return customers.filter(customer => 
+    return customers.filter(customer =>
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone.includes(searchTerm)
@@ -67,19 +142,80 @@ export function Customers() {
   }, [customers, searchTerm]);
 
   const handleAddCustomer = () => {
-    console.log("Ação: Abrir modal de novo cliente");
+    setIsEditing(false);
+    setSelectedCustomerId(null);
+    setFormData(initialFormData);
+    setIsInternational(false);
+    setIsSheetOpen(true);
   };
 
   const handleEditCustomer = (customer: Customer) => {
-    console.log("Ação: Editar cliente", customer);
+    setIsEditing(true);
+    setSelectedCustomerId(customer.id);
+
+    // Tenta detectar se é internacional (se não segue o padrão BR de dígitos)
+    const onlyDigits = customer.phone.replace(/\D/g, "");
+    const isIntl = onlyDigits.length > 11 || (onlyDigits.length > 0 && onlyDigits.length < 10);
+
+    setIsInternational(isIntl);
+    setFormData({
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+    });
+    setIsSheetOpen(true);
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (isInternational) {
+      setFormData({ ...formData, phone: value });
+    } else {
+      setFormData({ ...formData, phone: formatBRPhone(value) });
+    }
+  };
+
+  const handleSaveCustomer = () => {
+    // Payload contém apenas números no telefone
+    const phoneDigitsOnly = formData.phone.replace(/\D/g, "");
+
+    const payload = {
+      ...(isEditing ? { id: selectedCustomerId } : {}),
+      ...formData,
+      phone: phoneDigitsOnly,
+      is_international: isInternational, // Metadado útil
+      updated_at: new Date().toISOString(),
+      ...(isEditing ? {} : { created_at: new Date().toISOString() })
+    };
+
+    console.log(isEditing ? "Ação: Atualizar cliente" : "Ação: Criar novo cliente", payload);
+
+    setIsSheetOpen(false);
+    setFormData(initialFormData);
   };
 
   const handleDeleteCustomer = (id: string) => {
-    console.log("Ação: Deletar cliente", id);
+    const customer = customers.find(c => c.id === id);
+    if (confirm(`Deseja realmente excluir o cliente ${customer?.name}?`)) {
+      console.log("Ação: Deletar cliente (Soft Delete)", { id, deleted_at: new Date().toISOString() });
+    }
   };
 
   const handleViewOS = (customer: Customer) => {
-    console.log("Ação: Ver Ordens de Serviço de", customer.name);
+    setViewingCustomer(customer);
+    setIsHistorySheetOpen(true);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      "Finalizada": "secondary",
+      "Em Manutenção": "default",
+      "Aguardando Peça": "destructive",
+      "Orçamento": "outline",
+      "Cancelada": "outline"
+    };
+    return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
   };
 
   return (
@@ -183,7 +319,7 @@ export function Customers() {
                               <Edit className="mr-2 h-4 w-4" /> Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => handleDeleteCustomer(customer.id)}
                             >
@@ -206,6 +342,169 @@ export function Customers() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Sheet para Adicionar/Editar Cliente */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              {isEditing ? <Edit className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+              {isEditing ? "Editar Cliente" : "Novo Cliente"}
+            </SheetTitle>
+            <SheetDescription>
+              {isEditing
+                ? "Altere as informações do cliente selecionado."
+                : "Preencha os dados abaixo para cadastrar um novo cliente."}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="grid gap-4 py-6">
+            <div className="grid gap-2">
+              <Label htmlFor="name" className="flex items-center gap-2">
+                <UserIcon className="h-3.5 w-3.5" /> Nome Completo
+              </Label>
+              <Input
+                id="name"
+                placeholder="Ex: Maria Silva"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="phone" className="flex items-center gap-2">
+                  <Phone className="h-3.5 w-3.5" /> Telefone / WhatsApp
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={isInternational}
+                    onChange={(check) => { setIsInternational(check.target.checked) }}
+                  />
+                  <Label htmlFor="intl" className="text-xs font-normal cursor-pointer flex items-center gap-1">
+                    <Globe className="h-3 w-3" /> Internacional
+                  </Label>
+                </div>
+              </div>
+              <Input
+                id="phone"
+                placeholder={isInternational ? "Ex: +1 555-0123" : "(00) 00000-0000"}
+                value={formData.phone}
+                onChange={handlePhoneChange}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="email" className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5" /> E-mail
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="cliente@email.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="address" className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5" /> Endereço
+              </Label>
+              <Textarea
+                id="address"
+                placeholder="Rua, número, bairro, cidade..."
+                className="min-h-[100px]"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <SheetFooter className="mt-6 flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsSheetOpen(false)} className="w-full sm:w-auto">
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveCustomer} className="w-full sm:w-auto gap-2">
+              <Save className="h-4 w-4" />
+              {isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Sheet para Histórico de OS */}
+      <Sheet open={isHistorySheetOpen} onOpenChange={setIsHistorySheetOpen}>
+        <SheetContent className="sm:max-w-2xl overflow-hidden flex flex-col">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              Histórico de Ordens de Serviço
+            </SheetTitle>
+            <SheetDescription>
+              Mostrando serviços realizados para <strong>{viewingCustomer?.name}</strong>.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-hidden mt-6">
+            <ScrollArea className="h-full">
+              {isLoadingOrders ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-24 w-full bg-muted animate-pulse rounded-lg" />
+                  ))}
+                </div>
+              ) : sortedOrders.length > 0 ? (
+                <div className="space-y-4 pr-4">
+                  {sortedOrders.map((os) => (
+                    <Card key={os.id} className="overflow-hidden border-primary/10 hover:border-primary/30 transition-colors">
+                      <CardHeader className="p-4 pb-2 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-primary">{os.id}</span>
+                          {getStatusBadge(os.status)}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-4 pt-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Equipamento</p>
+                            <p className="text-sm font-medium">{os.equipment}</p>
+                          </div>
+                          <div className="space-y-1 text-right">
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Abertura</p>
+                            <p className="text-sm">{new Date(os.created_at).toLocaleDateString('pt-BR')}</p>
+                          </div>
+                          <div className="space-y-1 col-span-2">
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Descrição</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2">{os.description}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                      <div className="px-4 py-2 bg-primary/5 flex items-center justify-between border-t">
+                        <span className="text-sm font-bold">{formatCurrency(os.total_price || 0)}</span>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => alert(`ID copiado: ${os.id}`)}>
+                          Copiar ID da ordem<Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                  <p className="text-muted-foreground">Este cliente ainda não possui ordens de serviço.</p>
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          <SheetFooter className="mt-6 pt-6 border-t">
+            <Button variant="outline" onClick={() => setIsHistorySheetOpen(false)} className="w-full">
+              Fechar Histórico
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -7,6 +7,7 @@ use chrono::Utc;
 pub struct ChecklistTemplate {
     pub id: String,
     pub title: String,
+    pub items: Option<Vec<String>>,
     pub created_at: Option<String>,
 }
 
@@ -31,6 +32,7 @@ impl ChecklistTemplate {
         Self {
             id: Uuid::new_v4().to_string(),
             title,
+            items: None,
             created_at: Some(Utc::now().to_rfc3339()),
         }
     }

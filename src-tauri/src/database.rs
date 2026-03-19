@@ -79,6 +79,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL DEFAULT '123456', -- Default password for TCC
             role TEXT NOT NULL CHECK (role IN ('admin', 'tech')),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,

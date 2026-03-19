@@ -33,9 +33,21 @@ impl ChecklistRepository {
         let mut stmt = conn.prepare("SELECT id, title, created_at FROM checklist_templates")?;
         
         let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            
+            // Fetch items for this template
+            let mut item_stmt = conn.prepare("SELECT label FROM template_items WHERE template_id = ?1")?;
+            let item_rows = item_stmt.query_map(params![id], |item_row| item_row.get::<_, String>(0))?;
+            
+            let mut items = Vec::new();
+            for item in item_rows {
+                items.push(item?);
+            }
+
             Ok(ChecklistTemplate {
-                id: row.get(0)?,
+                id,
                 title: row.get(1)?,
+                items: Some(items),
                 created_at: row.get(2)?,
             })
         })?;

@@ -46,6 +46,7 @@ pub fn update_service_order(
     id: String,
     customer_id: String,
     customer_name: Option<String>,
+    user_id: Option<String>,
     equipment: String,
     imei: Option<String>,
     description: String,
@@ -60,6 +61,7 @@ pub fn update_service_order(
 
     order.customer_id = customer_id;
     order.customer_name = customer_name;
+    order.user_id = user_id;
     order.equipment = equipment;
     order.imei = imei;
     order.description = description;

@@ -1,14 +1,54 @@
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+mod commands;
+mod database;
+mod models;
+mod repositories;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            commands::customer_commands::create_customer,
+            commands::customer_commands::get_customer,
+            commands::customer_commands::get_customers,
+            commands::customer_commands::update_customer,
+            commands::customer_commands::delete_customer,
+            commands::user_commands::create_user,
+            commands::user_commands::get_user,
+            commands::user_commands::get_user_by_email,
+            commands::user_commands::get_users,
+            commands::user_commands::update_user,
+            commands::user_commands::delete_user,
+            commands::inventory_commands::create_inventory_item,
+            commands::inventory_commands::get_inventory_item,
+            commands::inventory_commands::get_inventory_items,
+            commands::inventory_commands::update_inventory_item,
+            commands::inventory_commands::delete_inventory_item,
+            commands::service_order_commands::create_service_order,
+            commands::service_order_commands::get_service_order,
+            commands::service_order_commands::get_service_orders,
+            commands::service_order_commands::get_service_orders_by_customer_id,
+            commands::service_order_commands::update_service_order,
+            commands::service_order_commands::delete_service_order,
+            commands::service_order_commands::add_part_to_service_order,
+            commands::service_order_commands::get_service_order_parts,
+            commands::dashboard_commands::get_dashboard_data,
+            commands::settings_commands::get_settings,
+            commands::settings_commands::update_settings,
+            // We'll add more commands for other entities as we implement them
+        ])
+        .setup(|_app| {
+            // Initialize the database when the app starts
+            let _ = database::init_db();
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

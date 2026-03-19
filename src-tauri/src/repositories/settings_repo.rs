@@ -12,7 +12,7 @@ impl SettingsRepository {
             "SELECT id, company_name, cnpj, logo_path, address FROM settings WHERE id = 1"
         )?;
         
-        stmt.query_row([], |row| {
+        let result = stmt.query_row([], |row| {
             Ok(Settings {
                 id: row.get(0)?,
                 company_name: row.get(1)?,
@@ -20,7 +20,12 @@ impl SettingsRepository {
                 logo_path: row.get(3)?,
                 address: row.get(4)?,
             })
-        })
+        });
+
+        match result {
+            Ok(settings) => Ok(settings),
+            Err(_) => Ok(Settings::default()),
+        }
     }
 
     pub fn update_settings(settings: &Settings) -> Result<()> {

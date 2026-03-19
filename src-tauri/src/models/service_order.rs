@@ -8,6 +8,7 @@ pub struct ServiceOrder {
     pub id: String,
     pub customer_id: String,
     pub customer_name: Option<String>,
+    pub user_id: Option<String>, // Technician ID
     pub equipment: String,
     pub imei: Option<String>,
     pub description: String,
@@ -25,6 +26,7 @@ impl ServiceOrder {
             id: Uuid::new_v4().to_string(),
             customer_id,
             customer_name: None,
+            user_id: None,
             equipment,
             imei: None,
             description,

@@ -105,6 +105,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             id TEXT PRIMARY KEY,
             customer_id TEXT NOT NULL,
             customer_name TEXT,
+            user_id TEXT, -- Technician ID
             equipment TEXT NOT NULL,
             imei TEXT,
             description TEXT NOT NULL,
@@ -114,14 +115,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
-            FOREIGN KEY (customer_id) REFERENCES customers (id)
-        );
-
-        -- Checklist items table
-        CREATE TABLE IF NOT EXISTS checklist_items (
-            id TEXT PRIMARY KEY,
-            label TEXT NOT NULL,
-            checked BOOLEAN NOT NULL DEFAULT 0
+            FOREIGN KEY (customer_id) REFERENCES customers (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
         );
 
         -- Checklist templates table
@@ -131,13 +126,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Service order checklist table (junction)
+        -- Checklist items belonging to a template (The Blueprint)
+        CREATE TABLE IF NOT EXISTS template_items (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES checklist_templates (id) ON DELETE CASCADE
+        );
+
+        -- Checklist items actually used in a Service Order (The Instance)
         CREATE TABLE IF NOT EXISTS service_order_checklists (
+            id TEXT PRIMARY KEY,
             service_order_id TEXT NOT NULL,
-            checklist_item_id TEXT NOT NULL,
-            PRIMARY KEY (service_order_id, checklist_item_id),
-            FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
-            FOREIGN KEY (checklist_item_id) REFERENCES checklist_items (id)
+            label TEXT NOT NULL,
+            checked BOOLEAN NOT NULL DEFAULT 0,
+            FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE
         );
 
         -- Service order parts table (junction for tracking parts used in orders)
@@ -147,7 +150,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             inventory_item_id TEXT NOT NULL,
             quantity INTEGER NOT NULL,
             unit_cost REAL NOT NULL,
-            FOREIGN KEY (service_order_id) REFERENCES service_orders (id),
+            unit_price REAL NOT NULL,
+            FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE,
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
 

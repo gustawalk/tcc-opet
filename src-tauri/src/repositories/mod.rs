@@ -4,3 +4,4 @@ pub mod inventory_repo;
 pub mod service_order_repo;
 pub mod user_repo;
 pub mod settings_repo;
+pub mod checklist_repo;

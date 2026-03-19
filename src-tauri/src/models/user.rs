@@ -8,6 +8,7 @@ pub struct User {
     pub id: String,
     pub name: String,
     pub email: String,
+    pub password: Option<String>,
     pub role: String, // admin or tech
     pub created_at: Option<String>,
     pub deleted_at: Option<String>,
@@ -19,6 +20,7 @@ impl User {
             id: Uuid::new_v4().to_string(),
             name,
             email,
+            password: Some("123456".to_string()),
             role,
             created_at: Some(Utc::now().to_rfc3339()),
             deleted_at: None,

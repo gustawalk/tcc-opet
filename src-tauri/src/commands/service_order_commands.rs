@@ -10,10 +10,17 @@ pub fn get_service_order_parts(service_order_id: String) -> Result<Vec<ServiceOr
 #[command]
 pub fn create_service_order(
     customer_id: String,
+    customer_name: Option<String>,
+    user_id: Option<String>,
     equipment: String,
+    imei: Option<String>,
     description: String,
 ) -> Result<String, String> {
-    let order = ServiceOrder::new(customer_id, equipment, description);
+    let mut order = ServiceOrder::new(customer_id, equipment, description);
+    order.customer_name = customer_name;
+    order.user_id = user_id;
+    order.imei = imei;
+    
     ServiceOrderRepository::create(&order).map_err(|e: rusqlite::Error| e.to_string())?;
     Ok(order.id)
 }
@@ -39,6 +46,7 @@ pub fn update_service_order(
     id: String,
     customer_id: String,
     customer_name: Option<String>,
+    user_id: Option<String>,
     equipment: String,
     imei: Option<String>,
     description: String,
@@ -53,6 +61,7 @@ pub fn update_service_order(
 
     order.customer_id = customer_id;
     order.customer_name = customer_name;
+    order.user_id = user_id;
     order.equipment = equipment;
     order.imei = imei;
     order.description = description;
@@ -82,4 +91,10 @@ pub fn add_part_to_service_order(
         quantity,
     )
     .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[command]
+pub fn remove_part_from_service_order(part_id: String) -> Result<(), String> {
+    ServiceOrderRepository::remove_part_from_service_order(&part_id)
+        .map_err(|e: rusqlite::Error| e.to_string())
 }

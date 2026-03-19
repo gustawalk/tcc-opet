@@ -41,3 +41,9 @@ pub fn update_user(id: String, name: String, email: String, role: String) -> Res
 pub fn delete_user(id: String) -> Result<(), String> {
     UserRepository::delete(&id).map_err(|e| e.to_string())
 }
+
+#[command]
+pub fn reset_user_password(id: String, password: Option<String>) -> Result<(), String> {
+    let new_password = password.unwrap_or_else(|| "123456".to_string());
+    UserRepository::reset_password(&id, &new_password).map_err(|e| e.to_string())
+}

@@ -26,6 +26,7 @@ pub fn run() {
             commands::user_commands::get_users,
             commands::user_commands::update_user,
             commands::user_commands::delete_user,
+            commands::user_commands::reset_user_password,
             commands::inventory_commands::create_inventory_item,
             commands::inventory_commands::get_inventory_item,
             commands::inventory_commands::get_inventory_items,
@@ -38,11 +39,19 @@ pub fn run() {
             commands::service_order_commands::update_service_order,
             commands::service_order_commands::delete_service_order,
             commands::service_order_commands::add_part_to_service_order,
+            commands::service_order_commands::remove_part_from_service_order,
             commands::service_order_commands::get_service_order_parts,
             commands::dashboard_commands::get_dashboard_data,
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
-            // We'll add more commands for other entities as we implement them
+            commands::settings_commands::reset_database,
+            commands::checklist_commands::create_checklist_template,
+            commands::checklist_commands::get_checklist_templates,
+            commands::checklist_commands::get_checklist_template_items,
+            commands::checklist_commands::update_checklist_template,
+            commands::checklist_commands::delete_checklist_template,
+            commands::checklist_commands::save_service_order_checklist,
+            commands::checklist_commands::get_service_order_checklist,
         ])
         .setup(|_app| {
             // Initialize the database when the app starts

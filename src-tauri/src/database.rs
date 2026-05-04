@@ -16,6 +16,12 @@ pub fn init_db() -> Result<()> {
     // Open the connection once to run migrations
     let conn = Connection::open(&*DB_PATH)?;
     run_migrations(&conn)?;
+    
+    // Initialize seed data if database is empty
+    drop(conn); // Close the connection before seeding
+    crate::seeds::initialize_seed_data()
+        .ok(); // Ignore seed errors (database might already have data)
+    
     Ok(())
 }
 

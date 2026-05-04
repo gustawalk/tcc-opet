@@ -7,6 +7,7 @@ mod commands;
 mod database;
 mod models;
 mod repositories;
+mod seeds;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import {
   TrendingUp,
   Wallet,
@@ -28,37 +29,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardData } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
 
-// Mock function representing the Tauri invoke("get_dashboard_data")
 const fetchDashboardData = async (): Promise<DashboardData> => {
-  // Simulate delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  return {
-    summary: {
-      totalRevenue: 12450.00,
-      netProfit: 8120.00,
-      partsInUseCost: 4330.00,
-      activeOrdersCount: 24,
-      revenueTrend: { value: "12%", isPositive: true },
-      profitTrend: { value: "8%", isPositive: true },
-    },
-    recentOrders: [
-      { id: "OS-1234", customerName: "Maria Silva", equipment: "Notebook Dell G15", status: "Em Manutenção", createdAt: "2023-10-15", totalPrice: 450.00 },
-      { id: "OS-1235", customerName: "João Pereira", equipment: "iPhone 13 Pro", status: "Aguardando Peça", createdAt: "2023-10-16", totalPrice: 1200.00 },
-      { id: "OS-1236", customerName: "Empresa ABC", equipment: "Impressora HP LaserJet", status: "Finalizada", createdAt: "2023-10-17", totalPrice: 320.00 },
-      { id: "OS-1237", customerName: "Carlos Oliveira", equipment: "PlayStation 5", status: "Orçamento", createdAt: "2023-10-18", totalPrice: 0.00 },
-    ],
-    inventoryAlerts: [
-      { id: "p1", name: "Pasta Térmica Arctic Silver", currentStock: 2, minStock: 5 },
-      { id: "p2", name: "Conector de Carga iPhone 11", currentStock: 1, minStock: 3 },
-      { id: "p3", name: "Bateria Dell XPS 13", currentStock: 0, minStock: 2 },
-    ],
-    statusCounts: [
-      { status: "Orçamento", count: 8 },
-      { status: "Em Manutenção", count: 12 },
-      { status: "Finalizada", count: 45 },
-    ]
-  };
+  return await invoke<DashboardData>("get_dashboard_data");
 };
 
 export function Dashboard() {

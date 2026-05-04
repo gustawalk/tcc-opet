@@ -65,7 +65,7 @@ export function ServiceOrderCreate() {
     imei: "",
     description: "",
     status: "Orçamento" as const,
-    techId: "1" // Usuário logado fake
+    techId: "" // Empty - will send null to backend
   });
 
   // Estado da Checklist

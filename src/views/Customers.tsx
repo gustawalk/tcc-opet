@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import {
   UserPlus,
   Search,
@@ -57,33 +58,12 @@ import {
 import { Customer, ServiceOrder } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
 
-// Mock para simular busca de clientes
 const fetchCustomers = async (): Promise<Customer[]> => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return [
-    { id: "1", name: "Maria Silva", phone: "(41) 99999-1111", email: "maria@email.com", address: "Rua das Flores, 123 - Curitiba", created_at: "2023-01-15" },
-    { id: "2", name: "João Pereira", phone: "(41) 98888-2222", email: "joao@email.com", address: "Av. Principal, 500 - Araucária", created_at: "2023-02-20" },
-    { id: "3", name: "Empresa ABC", phone: "(41) 3333-4444", email: "contato@abc.com", address: "Rua Industrial, 10 - Curitiba", created_at: "2023-03-10" },
-    { id: "4", name: "Carlos Oliveira", phone: "(41) 97777-3333", email: "carlos@email.com", address: "Rua das Palmeiras, 45 - São José dos Pinhais", created_at: "2023-04-05" },
-    { id: "5", name: "Ana Santos", phone: "(41) 96666-4444", email: "ana@email.com", address: "Rua XV de Novembro, 1000 - Curitiba", created_at: "2023-05-12" },
-  ];
+  return await invoke<Customer[]>("get_customers");
 };
 
-// Mock para simular busca de OS por cliente
 const fetchCustomerOrders = async (customerId: string): Promise<ServiceOrder[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const mockOrders: Record<string, ServiceOrder[]> = {
-    "1": [
-      { id: "OS-1001", customer_id: "1", equipment: "iPhone 13", status: "Finalizada", created_at: "2023-11-01", total_price: 450.00, description: "Troca de tela" },
-      { id: "OS-1025", customer_id: "1", equipment: "MacBook Pro", status: "Em Manutenção", created_at: "2024-02-10", total_price: 1200.00, description: "Limpeza interna e pasta térmica" },
-      { id: "OS-1040", customer_id: "1", equipment: "iPad Air 4", status: "Orçamento", created_at: "2024-03-01", total_price: 350.00, description: "Bateria estufada" },
-      { id: "OS-1055", customer_id: "1", equipment: "Apple Watch S7", status: "Aguardando Peça", created_at: "2024-03-15", total_price: 600.00, description: "Vidro quebrado" },
-    ],
-    "2": [
-      { id: "OS-1005", customer_id: "2", equipment: "Samsung S22", status: "Aguardando Peça", created_at: "2023-12-15", total_price: 850.00, description: "Troca de conector" },
-    ]
-  };
-  return mockOrders[customerId] || [];
+  return await invoke<ServiceOrder[]>("get_service_orders_by_customer_id", { customerId });
 };
 
 const initialFormData = {
@@ -129,7 +109,7 @@ export function Customers() {
   // Ordenação: Mais recentes primeiro
   const sortedOrders = useMemo(() => {
     return [...customerOrders].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [customerOrders]);
 
@@ -186,7 +166,7 @@ export function Customers() {
       phone: phoneDigitsOnly,
       is_international: isInternational, // Metadado útil
       updated_at: new Date().toISOString(),
-      ...(isEditing ? {} : { created_at: new Date().toISOString() })
+      ...(isEditing ? {} : { createdAt: new Date().toISOString() })
     };
 
     console.log(isEditing ? "Ação: Atualizar cliente" : "Ação: Criar novo cliente", payload);
@@ -301,7 +281,7 @@ export function Customers() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs">
-                        {customer.created_at ? new Date(customer.created_at).toLocaleDateString('pt-BR') : '-'}
+                        {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('pt-BR') : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -472,7 +452,7 @@ export function Customers() {
                           </div>
                           <div className="space-y-1 text-right">
                             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Abertura</p>
-                            <p className="text-sm">{new Date(os.created_at).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-sm">{new Date(os.createdAt).toLocaleDateString('pt-BR')}</p>
                           </div>
                           <div className="space-y-1 col-span-2">
                             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Descrição</p>
@@ -481,7 +461,7 @@ export function Customers() {
                         </div>
                       </CardContent>
                       <div className="px-4 py-2 bg-primary/5 flex items-center justify-between border-t">
-                        <span className="text-sm font-bold">{formatCurrency(os.total_price || 0)}</span>
+                        <span className="text-sm font-bold">{formatCurrency(os.totalPrice || 0)}</span>
                         <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => alert(`ID copiado: ${os.id}`)}>
                           Copiar ID da ordem<Copy className="h-3 w-3" />
                         </Button>

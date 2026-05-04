@@ -6,8 +6,8 @@ export interface Customer {
   phone: string;
   email: string;
   address: string;
-  created_at?: string;
-  deleted_at?: string | null;
+  createdAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface User {
@@ -15,8 +15,8 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'tech';
-  created_at?: string;
-  deleted_at?: string | null;
+  createdAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface InventoryItem {
@@ -24,34 +24,34 @@ export interface InventoryItem {
   name: string;
   description: string;
   type: 'part' | 'service';
-  min_quantity: number;
-  current_quantity: number;
-  cost_price: number;
-  sale_price: number;
-  created_at?: string;
-  deleted_at?: string | null;
+  minQuantity: number;
+  currentQuantity: number;
+  costPrice: number;
+  salePrice: number;
+  createdAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface ServiceOrder {
   id: string;
-  customer_id: string;
-  customer_name?: string;
-  user_id?: string | null;
+  customerId: string;
+  customerName?: string;
+  userId?: string | null;
   equipment: string;
   imei?: string;
   description: string;
   status: OSStatus;
-  total_price?: number;
-  signature_path?: string | null;
-  created_at: string;
-  updated_at?: string;
-  closed_at?: string | null;
+  totalPrice?: number;
+  signaturePath?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  closedAt?: string | null;
 }
 
 export interface Settings {
-  company_name: string;
+  companyName: string;
   cnpj: string;
-  logo_path?: string;
+  logoPath?: string;
   address: string;
 }
 
@@ -64,8 +64,8 @@ export interface ChecklistItem {
 export interface ChecklistTemplate {
   id: string;
   title: string;
-  items: string[]; // Apenas os labels dos itens
-  created_at?: string;
+  items: string[];
+  createdAt?: string;
 }
 
 export interface OSChecklist {

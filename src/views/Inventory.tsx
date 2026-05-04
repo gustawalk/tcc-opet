@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { 
   Plus, 
   Search, 
@@ -54,81 +55,37 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
-// Mock para simular busca de estoque
 const fetchInventory = async (): Promise<InventoryItem[]> => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return [
-    { 
-      id: "1", 
-      name: "Tela iPhone 13 Pro", 
-      description: "Tela original compatível com iPhone 13 Pro", 
-      type: "part",
-      min_quantity: 3, 
-      current_quantity: 2, 
-      cost_price: 850.00, 
-      sale_price: 1450.00 
-    },
-    { 
-      id: "2", 
-      name: "Bateria MacBook Air M1", 
-      description: "Bateria interna para MacBook Air M1 (A2337)", 
-      type: "part",
-      min_quantity: 2, 
-      current_quantity: 5, 
-      cost_price: 320.00, 
-      sale_price: 580.00 
-    },
-    { 
-      id: "3", 
-      name: "SSD 1TB NVMe Kingston", 
-      description: "SSD NVMe M.2 2280 NV2 1TB", 
-      type: "part",
-      min_quantity: 5, 
-      current_quantity: 8, 
-      cost_price: 280.00, 
-      sale_price: 450.00 
-    },
-    { 
-      id: "4", 
-      name: "Conector Carga USB-C G15", 
-      description: "Conector de carga para Dell G15 series", 
-      type: "part",
-      min_quantity: 10, 
-      current_quantity: 12, 
-      cost_price: 15.00, 
-      sale_price: 85.00 
-    },
-    { 
-      id: "5", 
-      name: "Pasta Térmica Arctic MX-4", 
-      description: "Seringa de 4g de pasta térmica de alta performance", 
-      type: "part",
-      min_quantity: 5, 
-      current_quantity: 1, 
-      cost_price: 35.00, 
-      sale_price: 75.00 
-    },
-    { 
-      id: "6", 
-      name: "Mão de Obra iPhone", 
-      description: "Troca de componentes básicos", 
-      type: "service",
-      min_quantity: 0, 
-      current_quantity: 999, 
-      cost_price: 50.00, 
-      sale_price: 150.00 
-    },
-    { 
-      id: "7", 
-      name: "Mão de Obra Drones", 
-      description: "Reparo estrutural ou eletrônico em drones", 
-      type: "service",
-      min_quantity: 0, 
-      current_quantity: 999, 
-      cost_price: 0, 
-      sale_price: 100.00 
-    },
-  ];
+  return await invoke<InventoryItem[]>("get_inventory_items");
+};
+
+const createInventoryItem = async (item: Omit<InventoryItem, "id" | "createdAt" | "deletedAt">) => {
+  return await invoke<string>("create_inventory_item", {
+    name: item.name,
+    description: item.description,
+    type: item.type,
+    minQuantity: item.minQuantity,
+    currentQuantity: item.type === "part" ? 0 : 999,
+    costPrice: item.costPrice,
+    salePrice: item.salePrice,
+  });
+};
+
+const updateInventoryItem = async (item: InventoryItem) => {
+  return await invoke("update_inventory_item", {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    type: item.type,
+    minQuantity: item.minQuantity,
+    currentQuantity: item.currentQuantity,
+    costPrice: item.costPrice,
+    salePrice: item.salePrice,
+  });
+};
+
+const deleteInventoryItem = async (id: string) => {
+  return await invoke("delete_inventory_item", { id });
 };
 
 export function Inventory() {
@@ -141,14 +98,37 @@ export function Inventory() {
     name: "",
     description: "",
     type: "part" as "part" | "service",
-    min_quantity: 0,
-    cost_price: 0,
-    sale_price: 0
+    minQuantity: 0,
+    costPrice: 0,
+    salePrice: 0
   });
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["inventory"],
     queryFn: fetchInventory,
+  });
+
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: createInventoryItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updateInventoryItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteInventoryItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
   });
 
   const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
@@ -174,9 +154,9 @@ export function Inventory() {
       name: "",
       description: "",
       type: type,
-      min_quantity: type === "part" ? 5 : 0,
-      cost_price: 0,
-      sale_price: 0
+      minQuantity: type === "part" ? 5 : 0,
+      costPrice: 0,
+      salePrice: 0
     });
     setIsSheetOpen(true);
   };
@@ -187,28 +167,40 @@ export function Inventory() {
       name: item.name,
       description: item.description,
       type: item.type,
-      min_quantity: item.min_quantity,
-      cost_price: item.cost_price,
-      sale_price: item.sale_price
+      minQuantity: item.minQuantity,
+      costPrice: item.costPrice,
+      salePrice: item.salePrice
     });
     setIsSheetOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (selectedItem) {
-      console.log("Ação: Atualizar item no estoque", { id: selectedItem.id, ...formData });
-      alert("Item atualizado!");
+      await updateMutation.mutateAsync({
+        ...selectedItem,
+        ...formData,
+      });
     } else {
-      console.log("Ação: Criar novo item no estoque", formData);
-      alert("Item criado e adicionado!");
+      await createMutation.mutateAsync({
+        ...formData,
+        currentQuantity: formData.type === "part" ? 0 : 999,
+      } as Omit<InventoryItem, "id" | "createdAt" | "deletedAt">);
     }
     setIsSheetOpen(false);
+    setSelectedItem(null);
+    setFormData({
+      name: "",
+      description: "",
+      type: "part",
+      minQuantity: 0,
+      costPrice: 0,
+      salePrice: 0
+    });
   };
 
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     if (window.confirm("Deseja realmente excluir este item?")) {
-      console.log("Ação: Deletar item do estoque", id);
-      alert("Item removido do estoque!");
+      await deleteMutation.mutateAsync(id);
     }
   };
 
@@ -248,7 +240,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
               <div className="text-2xl font-bold">
-                {parts.filter(i => i.current_quantity <= i.min_quantity && i.current_quantity > 0).length}
+                {parts.filter(i => i.currentQuantity <= i.minQuantity && i.currentQuantity > 0).length}
               </div>
               <span className="text-xs text-muted-foreground mt-1">abaixo do mínimo</span>
             </div>
@@ -262,7 +254,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <Package className="h-5 w-5 text-destructive" />
               <div className="text-2xl font-bold">
-                {parts.filter(i => i.current_quantity === 0).length}
+                {parts.filter(i => i.currentQuantity === 0).length}
               </div>
               <span className="text-xs text-muted-foreground mt-1">itens sem estoque</span>
             </div>
@@ -276,7 +268,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <div className="text-2xl font-bold">
-                {formatCurrency(parts.reduce((acc, i) => acc + (i.cost_price * i.current_quantity), 0))}
+                {formatCurrency(parts.reduce((acc, i) => acc + (i.costPrice * i.currentQuantity), 0))}
               </div>
               <span className="text-xs text-muted-foreground mt-1">preço de custo</span>
             </div>
@@ -338,19 +330,19 @@ export function Inventory() {
                         <TableCell className="text-center">
                           <div className="flex flex-col items-center gap-1">
                             <Badge variant={
-                              item.current_quantity === 0 ? "destructive" :
-                              item.current_quantity <= item.min_quantity ? "default" : "secondary"
+                              item.currentQuantity === 0 ? "destructive" :
+                              item.currentQuantity <= item.minQuantity ? "default" : "secondary"
                             }>
-                              {item.current_quantity} un.
+                              {item.currentQuantity} un.
                             </Badge>
-                            <span className="text-[10px] text-muted-foreground">Mín: {item.min_quantity}</span>
+                            <span className="text-[10px] text-muted-foreground">Mín: {item.minQuantity}</span>
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right font-medium text-muted-foreground">
-                          {formatCurrency(item.cost_price)}
+                          {formatCurrency(item.costPrice)}
                         </TableCell>
                         <TableCell className="text-right font-bold text-primary">
-                          {formatCurrency(item.sale_price)}
+                          {formatCurrency(item.salePrice)}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -430,10 +422,10 @@ export function Inventory() {
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right font-medium text-muted-foreground">
-                          {formatCurrency(item.cost_price)}
+                          {formatCurrency(item.costPrice)}
                         </TableCell>
                         <TableCell className="text-right font-bold text-primary">
-                          {formatCurrency(item.sale_price)}
+                          {formatCurrency(item.salePrice)}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -518,8 +510,8 @@ export function Inventory() {
                     id="min" 
                     type="number"
                     className="pl-9"
-                    value={formData.min_quantity}
-                    onChange={(e) => setFormData({...formData, min_quantity: parseInt(e.target.value)})}
+                    value={formData.minQuantity}
+                    onChange={(e) => setFormData({...formData, minQuantity: parseInt(e.target.value)})}
                   />
                 </div>
               </div>
@@ -535,8 +527,8 @@ export function Inventory() {
                     type="number"
                     step="0.01"
                     className="pl-9"
-                    value={formData.cost_price}
-                    onChange={(e) => setFormData({...formData, cost_price: parseFloat(e.target.value)})}
+                    value={formData.costPrice}
+                    onChange={(e) => setFormData({...formData, costPrice: parseFloat(e.target.value)})}
                   />
                 </div>
               </div>
@@ -549,8 +541,8 @@ export function Inventory() {
                     type="number"
                     step="0.01"
                     className="pl-9"
-                    value={formData.sale_price}
-                    onChange={(e) => setFormData({...formData, sale_price: parseFloat(e.target.value)})}
+                    value={formData.salePrice}
+                    onChange={(e) => setFormData({...formData, salePrice: parseFloat(e.target.value)})}
                   />
                 </div>
               </div>

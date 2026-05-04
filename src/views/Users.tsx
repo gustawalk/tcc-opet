@@ -54,9 +54,9 @@ import {
 const fetchUsers = async (): Promise<UserType[]> => {
   await new Promise(resolve => setTimeout(resolve, 800));
   return [
-    { id: "1", name: "Gustavo Admin", email: "admin@opet.com.br", role: 'admin', created_at: "2023-01-01" },
-    { id: "2", name: "João Técnico", email: "joao@opet.com.br", role: 'tech', created_at: "2023-02-15" },
-    { id: "3", name: "Maria Técnica", email: "maria@opet.com.br", role: 'tech', created_at: "2023-03-20" },
+    { id: "1", name: "Gustavo Admin", email: "admin@opet.com.br", role: 'admin', createdAt: "2023-01-01" },
+    { id: "2", name: "João Técnico", email: "joao@opet.com.br", role: 'tech', createdAt: "2023-02-15" },
+    { id: "3", name: "Maria Técnica", email: "maria@opet.com.br", role: 'tech', createdAt: "2023-03-20" },
   ];
 };
 
@@ -205,7 +205,7 @@ export function Users() {
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {new Date(user.created_at || '').toLocaleDateString('pt-BR')}
+                        {new Date(user.createdAt || '').toLocaleDateString('pt-BR')}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>

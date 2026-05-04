@@ -23,10 +23,10 @@ import { Settings as SettingsType } from "@/lib/types";
 
 // Mock para configurações iniciais
 const initialSettings: SettingsType = {
-  company_name: "OPET Tech Assistência",
+  companyName: "OPET Tech Assistência",
   cnpj: "12.345.678/0001-99",
   address: "Rua Brigadeiro Franco, 1234 - Rebouças, Curitiba - PR",
-  logo_path: ""
+  logoPath: ""
 };
 
 export function Settings() {
@@ -69,8 +69,8 @@ export function Settings() {
             <div className="flex flex-col md:flex-row gap-6">
               <div className="flex flex-col items-center gap-4">
                 <div className="w-32 h-32 rounded-lg border-2 border-dashed flex items-center justify-center bg-muted/50 overflow-hidden group relative">
-                  {settings.logo_path ? (
-                    <img src={settings.logo_path} alt="Logo" className="w-full h-full object-contain" />
+                  {settings.logoPath ? (
+                    <img src={settings.logoPath} alt="Logo" className="w-full h-full object-contain" />
                   ) : (
                     <Building2 className="h-10 w-10 text-muted-foreground" />
                   )}
@@ -89,8 +89,8 @@ export function Settings() {
                   <Label htmlFor="name">Nome da Assistência / Razão Social</Label>
                   <Input 
                     id="name" 
-                    value={settings.company_name} 
-                    onChange={(e) => setSettings({...settings, company_name: e.target.value})}
+                    value={settings.companyName} 
+                    onChange={(e) => setSettings({...settings, companyName: e.target.value})}
                   />
                 </div>
                 <div className="grid gap-2">

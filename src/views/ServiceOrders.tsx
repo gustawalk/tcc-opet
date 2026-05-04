@@ -127,7 +127,7 @@ export function ServiceOrders() {
     return orders.filter(order => {
       const matchesSearch =
         order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (order.customer_name && order.customer_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (order.customerName && order.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
         order.equipment.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
@@ -193,15 +193,15 @@ export function ServiceOrders() {
       const closedAt = editStatus === "Finalizada" ? new Date().toISOString() : null;
       await invoke("update_service_order", {
         id: selectedOS.id,
-        customerId: selectedOS.customer_id,
-        customerName: selectedOS.customer_name || null,
-        userId: selectedOS.user_id || null,
+        customerId: selectedOS.customerId,
+        customerName: selectedOS.customerName || null,
+        userId: selectedOS.userId || null,
         equipment: selectedOS.equipment,
         imei: selectedOS.imei || null,
         description: editDescription,
         status: editStatus,
-        totalPrice: selectedOS.total_price || null,
-        signaturePath: selectedOS.signature_path || null,
+        totalPrice: selectedOS.totalPrice || null,
+        signaturePath: selectedOS.signaturePath || null,
         closedAt
       });
       await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
@@ -315,7 +315,7 @@ export function ServiceOrders() {
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-1.5 font-medium">
                             <User className="h-3 w-3 text-muted-foreground" />
-                            {order.customer_name}
+                            {order.customerName}
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Smartphone className="h-3 w-3" />
@@ -329,11 +329,11 @@ export function ServiceOrders() {
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="h-3 w-3" />
-                          {new Date(order.created_at).toLocaleDateString('pt-BR')}
+                          {new Date(order.createdAt).toLocaleDateString('pt-BR')}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {order.total_price ? formatCurrency(order.total_price) : formatCurrency(0)}
+                        {order.totalPrice ? formatCurrency(order.totalPrice) : formatCurrency(0)}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -397,7 +397,7 @@ export function ServiceOrders() {
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">Cliente</p>
                 <p className="text-sm font-medium flex items-center gap-1.5">
-                  <User className="h-4 w-4" /> {selectedOS?.customer_name}
+                  <User className="h-4 w-4" /> {selectedOS?.customerName}
                 </p>
               </div>
               <div className="space-y-1">
@@ -417,13 +417,13 @@ export function ServiceOrders() {
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">Abertura</p>
                 <p className="text-sm font-medium flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4" /> {selectedOS && new Date(selectedOS.created_at).toLocaleDateString('pt-BR')}
+                  <Calendar className="h-4 w-4" /> {selectedOS && new Date(selectedOS.createdAt).toLocaleDateString('pt-BR')}
                 </p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">Total Previsto</p>
                 <p className="text-sm font-bold text-primary">
-                  {formatCurrency(selectedOS?.total_price || 0)}
+                  {formatCurrency(selectedOS?.totalPrice || 0)}
                 </p>
               </div>
             </div>
@@ -572,10 +572,10 @@ export function ServiceOrders() {
                           >
                             <div className="flex flex-col">
                               <span className="text-xs font-medium">{item.name}</span>
-                              <span className="text-[10px] text-muted-foreground">Estoque: {item.current_quantity} un.</span>
+                              <span className="text-[10px] text-muted-foreground">Estoque: {item.currentQuantity} un.</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-primary">{formatCurrency(item.sale_price)}</span>
+                              <span className="text-xs font-bold text-primary">{formatCurrency(item.salePrice)}</span>
                               <ChevronRight className="h-3 w-3 text-muted-foreground" />
                             </div>
                           </div>

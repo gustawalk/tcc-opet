@@ -217,7 +217,7 @@ export function ServiceOrderCreate() {
   };
 
   const totalServices = useMemo(() => {
-    return selectedServices.reduce((acc, s) => acc + s.sale_price, 0);
+    return selectedServices.reduce((acc, s) => acc + s.salePrice, 0);
   }, [selectedServices]);
 
   return (
@@ -505,7 +505,7 @@ export function ServiceOrderCreate() {
                           >
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{s.name}</span>
-                              <span className="text-xs text-muted-foreground">{formatCurrency(s.sale_price)}</span>
+                              <span className="text-xs text-muted-foreground">{formatCurrency(s.salePrice)}</span>
                             </div>
                             <Plus className="h-4 w-4 text-muted-foreground" />
                           </div>
@@ -530,7 +530,7 @@ export function ServiceOrderCreate() {
                       <div key={service.id} className="flex items-center justify-between p-3 bg-muted/10">
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">{service.name}</span>
-                          <span className="text-xs text-primary font-bold">{formatCurrency(service.sale_price)}</span>
+                          <span className="text-xs text-primary font-bold">{formatCurrency(service.salePrice)}</span>
                         </div>
                         <Button
                           variant="ghost"

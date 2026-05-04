@@ -224,7 +224,7 @@ export function Templates() {
                         <Badge variant="secondary">{template.items.length} itens</Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {template.created_at ? new Date(template.created_at).toLocaleDateString('pt-BR') : '-'}
+                        {template.createdAt ? new Date(template.createdAt).toLocaleDateString('pt-BR') : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>

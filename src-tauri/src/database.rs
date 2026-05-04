@@ -19,8 +19,9 @@ pub fn init_db() -> Result<()> {
     
     // Initialize seed data if database is empty
     drop(conn); // Close the connection before seeding
-    crate::seeds::initialize_seed_data()
-        .ok(); // Ignore seed errors (database might already have data)
+    if let Err(e) = crate::seeds::initialize_seed_data() {
+        eprintln!("[SEED ERROR] Seed initialization failed: {}", e);
+    }
     
     Ok(())
 }

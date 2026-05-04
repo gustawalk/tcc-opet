@@ -199,6 +199,7 @@ export function ServiceOrderCreate() {
       // Step 3: Save checklist if template was selected
       if (selectedTemplate && checklistItems.length > 0) {
         const checklistPayload = checklistItems.map(item => ({
+          id: crypto.randomUUID(),
           label: item.label,
           checked: item.checked
         }));

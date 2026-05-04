@@ -70,12 +70,12 @@ interface ServiceOrderWithChecklist extends ServiceOrder {
 // Interface for service order parts from backend
 interface ServiceOrderPart {
   id: string;
-  service_order_id: string;
-  inventory_item_id: string;
-  inventory_item_name: string;
+  serviceOrderId: string;
+  inventoryItemId: string;
+  inventoryItemName: string;
   quantity: number;
-  unit_cost: number;
-  unit_price: number;
+  unitCost: number;
+  unitPrice: number;
 }
 
 // Fetch items (parts/services) from a service order
@@ -479,9 +479,9 @@ export function ServiceOrders() {
                   <TableBody>
                     {osItems.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="py-2 text-xs font-medium">{item.inventory_item_name}</TableCell>
+                        <TableCell className="py-2 text-xs font-medium">{item.inventoryItemName}</TableCell>
                         <TableCell className="py-2 text-center text-xs">{item.quantity}</TableCell>
-                        <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unit_price)}</TableCell>
+                        <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unitPrice)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -598,8 +598,8 @@ export function ServiceOrders() {
                   <TableBody>
                     {osItems.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="py-2 text-xs font-medium">{item.inventory_item_name}</TableCell>
-                        <TableCell className="py-2 text-right text-xs font-bold">{formatCurrency(item.unit_price)}</TableCell>
+                        <TableCell className="py-2 text-xs font-medium">{item.inventoryItemName}</TableCell>
+                        <TableCell className="py-2 text-right text-xs font-bold">{formatCurrency(item.unitPrice)}</TableCell>
                         <TableCell className="py-2 text-right">
                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemoveItem(item.id)}>
                             <Trash className="h-3 w-3" />
@@ -618,7 +618,7 @@ export function ServiceOrders() {
                 </Table>
               </div>
               <p className="text-right text-sm font-bold">
-                Total: {formatCurrency(osItems.reduce((acc, i) => acc + i.unit_price, 0))}
+                Total: {formatCurrency(osItems.reduce((acc, i) => acc + i.unitPrice, 0))}
               </p>
             </div>
           </div>

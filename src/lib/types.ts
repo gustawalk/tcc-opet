@@ -36,6 +36,7 @@ export interface ServiceOrder {
   id: string;
   customer_id: string;
   customer_name?: string;
+  user_id?: string | null;
   equipment: string;
   imei?: string;
   description: string;

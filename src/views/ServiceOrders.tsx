@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Plus,
   Search,
@@ -66,130 +67,41 @@ interface ServiceOrderWithChecklist extends ServiceOrder {
   checklist?: OSChecklist;
 }
 
-// Mock para simular busca de itens de uma OS
-const fetchOSItems = async (osId: string): Promise<any[]> => {
-  console.log(`Buscando itens da OS: ${osId}`);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return [
-    { id: "1", name: "Tela LCD iPhone 13", quantity: 1, unit_price: 850.00 },
-    { id: "2", name: "Mão de Obra", quantity: 1, unit_price: 150.00 },
-  ];
+// Interface for service order parts from backend
+interface ServiceOrderPart {
+  id: string;
+  service_order_id: string;
+  inventory_item_id: string;
+  inventory_item_name: string;
+  quantity: number;
+  unit_cost: number;
+  unit_price: number;
+}
+
+// Fetch items (parts/services) from a service order
+const fetchOSItems = async (osId: string): Promise<ServiceOrderPart[]> => {
+  return await invoke("get_service_order_parts", { serviceOrderId: osId });
 };
 
-// Mock para simular busca de estoque (para seleção)
+// Fetch inventory items for selection
 const fetchInventory = async (): Promise<InventoryItem[]> => {
-  return [
-    { id: "1", name: "Tela iPhone 13 Pro", description: "...", type: "part", min_quantity: 3, current_quantity: 2, cost_price: 850, sale_price: 1450 },
-    { id: "2", name: "Bateria MacBook Air M1", description: "...", type: "part", min_quantity: 2, current_quantity: 5, cost_price: 320, sale_price: 580 },
-    { id: "3", name: "SSD 1TB NVMe Kingston", description: "...", type: "part", min_quantity: 5, current_quantity: 8, cost_price: 280, sale_price: 450 },
-    { id: "4", name: "Conector Carga USB-C G15", description: "...", type: "part", min_quantity: 10, current_quantity: 12, cost_price: 15, sale_price: 85 },
-    { id: "5", name: "Pasta Térmica Arctic MX-4", description: "...", type: "part", min_quantity: 5, current_quantity: 1, cost_price: 35, sale_price: 75 },
-    { id: "serv-1", name: "Mão de Obra Técnica", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 150 },
-    { id: "serv-2", name: "Limpeza Preventiva", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 100 },
-    { id: "serv-3", name: "Mão de Obra Drones", description: "Serviço", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 200 },
-  ];
+  return await invoke("get_inventory_items");
 };
 
-// Mock para simular busca de ordens de serviço
+// Fetch all service orders from database
 const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return [
-    {
-      id: "OS-2023-001",
-      customer_id: "1",
-      customer_name: "Maria Silva",
-      equipment: "Notebook Dell G15",
-      description: "Troca de tela e limpeza preventiva",
-      status: "Em Manutenção",
-      created_at: "2023-10-15",
-      total_price: 1000.00,
-      checklist: {
-        title: "Checklist Notebook",
-        items: [
-          { id: "1", label: "Teclado", checked: true },
-          { id: "2", label: "Touchpad", checked: true },
-          { id: "3", label: "Tela", checked: false },
-          { id: "4", label: "Webcam", checked: true },
-          { id: "5", label: "Portas USB", checked: true },
-          { id: "6", label: "Carregador", checked: true },
-          { id: "7", label: "Bateria", checked: true },
-          { id: "8", label: "Som", checked: false },
-        ]
-      }
-    },
-    {
-      id: "OS-2023-002",
-      customer_id: "2",
-      customer_name: "João Pereira",
-      equipment: "iPhone 13 Pro",
-      description: "Troca de bateria",
-      status: "Aguardando Peça",
-      created_at: "2023-10-16",
-      total_price: 1200.00,
-      checklist: {
-        title: "Checklist Smartphone",
-        items: [
-          { id: "1", label: "Tela/Touch", checked: true },
-          { id: "2", label: "Câmeras", checked: true },
-          { id: "3", label: "Microfone/Áudio", checked: true },
-          { id: "4", label: "Carga", checked: false },
-          { id: "5", label: "Botões", checked: true },
-          { id: "6", label: "Wi-Fi", checked: true },
-        ]
-      }
-    },
-    {
-      id: "OS-2023-003",
-      customer_id: "3",
-      customer_name: "Empresa ABC",
-      equipment: "Impressora HP LaserJet",
-      description: "Limpeza de roletes e troca de toner",
-      status: "Finalizada",
-      created_at: "2023-10-17",
-      total_price: 320.00
-    },
-    {
-      id: "OS-2023-004",
-      customer_id: "4",
-      customer_name: "Carlos Oliveira",
-      equipment: "PlayStation 5",
-      description: "Superaquecimento - Limpeza e troca de metal líquido",
-      status: "Orçamento",
-      created_at: "2023-10-18",
-      total_price: 0.00,
-      checklist: {
-        title: "Checklist Console",
-        items: [
-          { id: "1", label: "Leitor de Disco", checked: true },
-          { id: "2", label: "Saída HDMI", checked: true },
-          { id: "3", label: "Conexão Wi-Fi", checked: true },
-          { id: "4", label: "Bluetooth", checked: true },
-          { id: "5", label: "Portas USB", checked: true },
-          { id: "6", label: "Ruído Ventoinha", checked: false },
-        ]
-      }
-    },
-    {
-      id: "OS-2023-005",
-      customer_id: "5",
-      customer_name: "Ana Santos",
-      equipment: "Samsung Galaxy S22",
-      description: "Reparo no conector de carga",
-      status: "Cancelada",
-      created_at: "2023-10-19",
-      total_price: 0.00
-    },
-  ];
+  return await invoke("get_service_orders");
 };
 
 export function ServiceOrders() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Estados para Controle de Sheet
   const [selectedOS, setSelectedOS] = useState<ServiceOrderWithChecklist | null>(null);
-  const [osItems, setOsItems] = useState<any[]>([]);
+  const [osItems, setOsItems] = useState<ServiceOrderPart[]>([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -247,7 +159,6 @@ export function ServiceOrders() {
   };
 
   const handleEditOS = async (order: ServiceOrderWithChecklist) => {
-    console.log("Abrindo Edição para OS:", order.id);
     setSelectedOS(order);
     setEditStatus(order.status);
     setEditDescription(order.description);
@@ -257,50 +168,79 @@ export function ServiceOrders() {
   };
 
   const handleViewOS = async (order: ServiceOrderWithChecklist) => {
-    console.log("Abrindo Visualização para OS:", order.id);
     setSelectedOS(order);
     const items = await fetchOSItems(order.id);
     setOsItems(items);
     setIsDetailOpen(true);
   };
 
-  const handleDeleteOS = (id: string) => {
+  const handleDeleteOS = async (id: string) => {
     const confirmDelete = window.confirm(`Deseja realmente excluir a OS ${id}? Esta ação não pode ser desfeita.`);
     if (confirmDelete) {
-      console.log("Ação: Deletar OS", id);
-      alert("Ordem de serviço excluída (Simulado)");
+      try {
+        await invoke("delete_service_order", { id });
+        await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
+        alert("Ordem de serviço excluída!");
+      } catch (error) {
+        alert(`Erro ao excluir: ${error}`);
+      }
     }
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selectedOS) return;
-    const updatedOS = {
-      ...selectedOS,
-      status: editStatus,
-      description: editDescription
-    };
-    console.log("Salvando alterações da OS:", updatedOS);
-    alert("Alterações salvas com sucesso!");
-    setIsEditOpen(false);
+    try {
+      const closedAt = editStatus === "Finalizada" ? new Date().toISOString() : null;
+      await invoke("update_service_order", {
+        id: selectedOS.id,
+        customerId: selectedOS.customer_id,
+        customerName: selectedOS.customer_name || null,
+        userId: selectedOS.user_id || null,
+        equipment: selectedOS.equipment,
+        imei: selectedOS.imei || null,
+        description: editDescription,
+        status: editStatus,
+        totalPrice: selectedOS.total_price || null,
+        signaturePath: selectedOS.signature_path || null,
+        closedAt
+      });
+      await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+      alert("Alterações salvas com sucesso!");
+      setIsEditOpen(false);
+    } catch (error) {
+      alert(`Erro ao salvar: ${error}`);
+    }
   };
 
-  const handleAddInventoryItem = (item: InventoryItem) => {
-    console.log("Adicionando item do estoque à OS:", item.name);
-    const newItem = {
-      id: Math.random().toString(),
-      product_id: item.id,
-      name: item.name,
-      quantity: 1,
-      unit_price: item.sale_price
-    };
-    setOsItems([...osItems, newItem]);
-    setInventorySearch("");
-    setShowInventoryResults(false);
+  const handleAddInventoryItem = async (item: InventoryItem) => {
+    if (!selectedOS) return;
+    try {
+      await invoke("add_part_to_service_order", {
+        serviceOrderId: selectedOS.id,
+        inventoryItemId: item.id,
+        quantity: 1
+      });
+      // Refresh items
+      const items = await fetchOSItems(selectedOS.id);
+      setOsItems(items);
+      setInventorySearch("");
+      setShowInventoryResults(false);
+    } catch (error) {
+      alert(`Erro ao adicionar item: ${error}`);
+    }
   };
 
-  const handleRemoveItem = (itemId: string) => {
-    console.log("Removendo item da OS:", itemId);
-    setOsItems(osItems.filter(i => i.id !== itemId));
+  const handleRemoveItem = async (itemId: string) => {
+    if (!selectedOS) return;
+    try {
+      await invoke("remove_part_from_service_order", { partId: itemId });
+      // Refresh items
+      const items = await fetchOSItems(selectedOS.id);
+      setOsItems(items);
+    } catch (error) {
+      alert(`Erro ao remover item: ${error}`);
+    }
   };
 
   return (
@@ -539,7 +479,7 @@ export function ServiceOrders() {
                   <TableBody>
                     {osItems.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="py-2 text-xs font-medium">{item.name}</TableCell>
+                        <TableCell className="py-2 text-xs font-medium">{item.inventory_item_name}</TableCell>
                         <TableCell className="py-2 text-center text-xs">{item.quantity}</TableCell>
                         <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unit_price)}</TableCell>
                       </TableRow>
@@ -658,7 +598,7 @@ export function ServiceOrders() {
                   <TableBody>
                     {osItems.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="py-2 text-xs font-medium">{item.name}</TableCell>
+                        <TableCell className="py-2 text-xs font-medium">{item.inventory_item_name}</TableCell>
                         <TableCell className="py-2 text-right text-xs font-bold">{formatCurrency(item.unit_price)}</TableCell>
                         <TableCell className="py-2 text-right">
                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemoveItem(item.id)}>

@@ -177,8 +177,10 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at 
-             FROM service_orders WHERE id = ?1"
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+             FROM service_orders so
+             LEFT JOIN customers c ON so.customer_id = c.id
+             WHERE so.id = ?1"
         )?;
         let mut rows = stmt.query_map(params![id], |row: &rusqlite::Row| {
             Ok(ServiceOrder {
@@ -206,8 +208,9 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at 
-             FROM service_orders"
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+             FROM service_orders so
+             LEFT JOIN customers c ON so.customer_id = c.id"
         )?;
         let rows = stmt.query_map(params![], |row: &rusqlite::Row| {
             Ok(ServiceOrder {
@@ -238,8 +241,10 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at 
-             FROM service_orders WHERE customer_id = ?1"
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+             FROM service_orders so
+             LEFT JOIN customers c ON so.customer_id = c.id
+             WHERE so.customer_id = ?1"
         )?;
         let rows = stmt.query_map(params![customer_id], |row: &rusqlite::Row| {
             Ok(ServiceOrder {

@@ -41,14 +41,7 @@ fn seed_users(conn: &rusqlite::Connection) -> Result<(), String> {
         conn.execute(
             "INSERT INTO users (id, name, email, password, role, created_at, deleted_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
-            params![
-                Uuid::new_v4().to_string(),
-                name,
-                email,
-                "123456",
-                role,
-                now
-            ],
+            params![Uuid::new_v4().to_string(), name, email, "123456", role, now],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -58,16 +51,66 @@ fn seed_users(conn: &rusqlite::Connection) -> Result<(), String> {
 
 fn seed_customers(conn: &rusqlite::Connection) -> Result<(), String> {
     let customers = vec![
-        ("Maria Silva", "(41) 99999-1111", "maria@email.com", "Rua das Flores, 123 - Curitiba"),
-        ("João Pereira", "(41) 98888-2222", "joao@email.com", "Av. Principal, 500 - Araucária"),
-        ("Empresa ABC", "(41) 3333-4444", "contato@abc.com", "Rua Industrial, 10 - Curitiba"),
-        ("Carlos Oliveira", "(41) 97777-3333", "carlos@email.com", "Av. Brasil, 250 - Curitiba"),
-        ("Tech Solutions Corp", "(41) 3001-5555", "info@techcorp.com", "Centro Empresarial, 100 - Curitiba"),
-        ("Ana Costa", "(41) 99222-4444", "ana@email.com", "Rua das Acácias, 75 - Pinhais"),
-        ("Roberto Mendes", "(41) 98111-6666", "roberto@email.com", "Av. Paraná, 500 - Curitiba"),
-        ("Startup XYZ", "(41) 3221-7777", "contact@startupxyz.com", "Polo Tech, 200 - Curitiba"),
-        ("Paula Santos", "(41) 99333-8888", "paula@email.com", "Rua Santa Catarina, 88 - Curitiba"),
-        ("IT Services Ltd", "(41) 3333-9999", "admin@itservices.com", "Edifício Commerce, 500 - Curitiba"),
+        (
+            "Maria Silva",
+            "(41) 99999-1111",
+            "maria@email.com",
+            "Rua das Flores, 123 - Curitiba",
+        ),
+        (
+            "João Pereira",
+            "(41) 98888-2222",
+            "joao@email.com",
+            "Av. Principal, 500 - Araucária",
+        ),
+        (
+            "Empresa ABC",
+            "(41) 3333-4444",
+            "contato@abc.com",
+            "Rua Industrial, 10 - Curitiba",
+        ),
+        (
+            "Carlos Oliveira",
+            "(41) 97777-3333",
+            "carlos@email.com",
+            "Av. Brasil, 250 - Curitiba",
+        ),
+        (
+            "Tech Solutions Corp",
+            "(41) 3001-5555",
+            "info@techcorp.com",
+            "Centro Empresarial, 100 - Curitiba",
+        ),
+        (
+            "Ana Costa",
+            "(41) 99222-4444",
+            "ana@email.com",
+            "Rua das Acácias, 75 - Pinhais",
+        ),
+        (
+            "Roberto Mendes",
+            "(41) 98111-6666",
+            "roberto@email.com",
+            "Av. Paraná, 500 - Curitiba",
+        ),
+        (
+            "Startup XYZ",
+            "(41) 3221-7777",
+            "contact@startupxyz.com",
+            "Polo Tech, 200 - Curitiba",
+        ),
+        (
+            "Paula Santos",
+            "(41) 99333-8888",
+            "paula@email.com",
+            "Rua Santa Catarina, 88 - Curitiba",
+        ),
+        (
+            "IT Services Ltd",
+            "(41) 3333-9999",
+            "admin@itservices.com",
+            "Edifício Commerce, 500 - Curitiba",
+        ),
     ];
 
     let now = Utc::now().to_rfc3339();
@@ -89,16 +132,88 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // Parts - with some low stock for alerts
     let parts = vec![
-        ("Tela iPhone 12", "Tela de reposição para iPhone 12", "part", 5, 3, 80.00, 180.00),
-        ("Bateria Samsung Galaxy", "Bateria de lítio para Samsung", "part", 5, 8, 45.00, 120.00),
-        ("Carregador USB-C", "Carregador universal USB-C", "part", 10, 2, 12.00, 45.00),
-        ("Pasta Térmica Arctic Silver", "Pasta térmica premium", "part", 5, 0, 8.00, 35.00),
-        ("Conector de Carga iPhone 13", "Conector Lightning para iPhone 13", "part", 5, 12, 15.00, 55.00),
-        ("Teclado Notebook Acer", "Teclado de reposição Acer", "part", 2, 4, 55.00, 150.00),
+        (
+            "Tela iPhone 12",
+            "Tela de reposição para iPhone 12",
+            "part",
+            5,
+            3,
+            80.00,
+            180.00,
+        ),
+        (
+            "Bateria Samsung Galaxy",
+            "Bateria de lítio para Samsung",
+            "part",
+            5,
+            8,
+            45.00,
+            120.00,
+        ),
+        (
+            "Carregador USB-C",
+            "Carregador universal USB-C",
+            "part",
+            10,
+            2,
+            12.00,
+            45.00,
+        ),
+        (
+            "Pasta Térmica Arctic Silver",
+            "Pasta térmica premium",
+            "part",
+            5,
+            0,
+            8.00,
+            35.00,
+        ),
+        (
+            "Conector de Carga iPhone 13",
+            "Conector Lightning para iPhone 13",
+            "part",
+            5,
+            12,
+            15.00,
+            55.00,
+        ),
+        (
+            "Teclado Notebook Acer",
+            "Teclado de reposição Acer",
+            "part",
+            2,
+            4,
+            55.00,
+            150.00,
+        ),
         ("Webcam HD", "Webcam 1080p USB", "part", 3, 6, 35.00, 100.00),
-        ("SSD 240GB", "Unidade SSD 240GB", "part", 3, 9, 70.00, 180.00),
-        ("RAM DDR4 8GB", "Memória RAM 8GB DDR4", "part", 3, 7, 65.00, 160.00),
-        ("Placa Mãe", "Placa mãe genérica", "part", 1, 2, 120.00, 300.00),
+        (
+            "SSD 240GB",
+            "Unidade SSD 240GB",
+            "part",
+            3,
+            9,
+            70.00,
+            180.00,
+        ),
+        (
+            "RAM DDR4 8GB",
+            "Memória RAM 8GB DDR4",
+            "part",
+            3,
+            7,
+            65.00,
+            160.00,
+        ),
+        (
+            "Placa Mãe",
+            "Placa mãe genérica",
+            "part",
+            1,
+            2,
+            120.00,
+            300.00,
+        ),
     ];
 
     for (name, description, item_type, min_qty, current_qty, cost, sale) in parts {
@@ -122,11 +237,51 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // Services
     let services = vec![
-        ("Mão de Obra iPhone", "Troca de componentes básicos em iPhone", "service", 0, 999, 50.00, 150.00),
-        ("Mão de Obra Notebook", "Reparo estrutural ou eletrônico em notebooks", "service", 0, 999, 60.00, 180.00),
-        ("Limpeza Preventiva", "Limpeza e troca de pasta térmica", "service", 0, 999, 10.00, 80.00),
-        ("Diagnóstico", "Diagnóstico completo do equipamento", "service", 0, 999, 0.00, 50.00),
-        ("Instalação de Software", "Instalação e configuração de softwares", "service", 0, 999, 0.00, 60.00),
+        (
+            "Mão de Obra iPhone",
+            "Troca de componentes básicos em iPhone",
+            "service",
+            0,
+            999,
+            50.00,
+            150.00,
+        ),
+        (
+            "Mão de Obra Notebook",
+            "Reparo estrutural ou eletrônico em notebooks",
+            "service",
+            0,
+            999,
+            60.00,
+            180.00,
+        ),
+        (
+            "Limpeza Preventiva",
+            "Limpeza e troca de pasta térmica",
+            "service",
+            0,
+            999,
+            10.00,
+            80.00,
+        ),
+        (
+            "Diagnóstico",
+            "Diagnóstico completo do equipamento",
+            "service",
+            0,
+            999,
+            0.00,
+            50.00,
+        ),
+        (
+            "Instalação de Software",
+            "Instalação e configuração de softwares",
+            "service",
+            0,
+            999,
+            0.00,
+            60.00,
+        ),
     ];
 
     for (name, description, item_type, min_qty, current_qty, cost, sale) in services {
@@ -194,7 +349,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
     ];
 
     let statuses = vec![
-        ("Finalizada", true),  // 40% - 12 orders
+        ("Finalizada", true), // 40% - 12 orders
         ("Finalizada", true),
         ("Finalizada", true),
         ("Finalizada", true),
@@ -206,7 +361,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         ("Finalizada", true),
         ("Finalizada", true),
         ("Finalizada", true),
-        ("Em Manutenção", false),  // 35% - 10 orders
+        ("Em Manutenção", false), // 35% - 10 orders
         ("Em Manutenção", false),
         ("Em Manutenção", false),
         ("Em Manutenção", false),
@@ -216,12 +371,12 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         ("Em Manutenção", false),
         ("Em Manutenção", false),
         ("Em Manutenção", false),
-        ("Aguardando Peça", false),  // 15% - 4 orders
+        ("Aguardando Peça", false), // 15% - 4 orders
         ("Aguardando Peça", false),
         ("Aguardando Peça", false),
         ("Aguardando Peça", false),
-        ("Orçamento", false),  // 5% - 1 order
-        ("Cancelada", false),  // 5% - 1 order
+        ("Orçamento", false), // 5% - 1 order
+        ("Cancelada", false), // 5% - 1 order
     ];
 
     let descriptions = vec![
@@ -242,11 +397,11 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         let user_id = &users[idx % users.len()];
         let equipment = equipment_types[idx % equipment_types.len()];
         let description = descriptions[idx % descriptions.len()];
-        
+
         // Spread orders across 30 days
         let days_ago = 30 - (idx as i64 % 30);
         let created_at = (now - Duration::days(days_ago)).to_rfc3339();
-        
+
         let closed_at = if *is_finished {
             Some((now - Duration::days(days_ago - 2)).to_rfc3339())
         } else {
@@ -254,7 +409,10 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         };
 
         let order_id = Uuid::new_v4().to_string();
-        let imei = if equipment.contains("iPhone") || equipment.contains("Galaxy") || equipment.contains("iPad") {
+        let imei = if equipment.contains("iPhone")
+            || equipment.contains("Galaxy")
+            || equipment.contains("iPad")
+        {
             Some(format!("{}123456789012", idx))
         } else {
             None
@@ -288,7 +446,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         for item_idx in 0..num_items {
             let (inventory_id, sale_price, cost_price) =
                 &inventory_items[(idx * 3 + item_idx) % inventory_items.len()];
-            
+
             let quantity = 1;
             total_price += sale_price;
 
@@ -315,6 +473,76 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
+    // Add checklists to some "Finalizada" orders for demonstration
+    // Get the first 6 service orders that were created (these are the "Finalizada" ones)
+    let mut os_stmt = conn
+        .prepare("SELECT id, equipment FROM service_orders WHERE status = 'Finalizada' LIMIT 6")
+        .map_err(|e| e.to_string())?;
+    let orders_with_checklist: Vec<(String, String)> = os_stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<(String, String)>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Define checklist items based on equipment type
+    let smartphone_items = vec![
+        ("Tela/Touch", true),
+        ("Câmeras", true),
+        ("Microfone/Áudio", true),
+        ("Carregamento", false),
+        ("Botões", true),
+        ("Wi-Fi/Bluetooth", true),
+        ("Sensor de proximidade", true),
+        ("Alto-falante", false),
+    ];
+
+    let notebook_items = vec![
+        ("Teclado", true),
+        ("Touchpad", true),
+        ("Tela/Monitor", true),
+        ("Webcam", false),
+        ("Portas USB", true),
+        ("Carregador", true),
+        ("Bateria", true),
+        ("Ventilação", false),
+    ];
+
+    let printer_items = vec![
+        ("Alimentação de papel", true),
+        ("Impressão", true),
+        ("Scanner", false),
+        ("Conexão USB", true),
+        ("Conexão Wi-Fi", false),
+        ("Roletes", true),
+        ("Display/Led", true),
+    ];
+
+    for (order_id, equipment) in orders_with_checklist {
+        let items = if equipment.contains("iPhone") || equipment.contains("Galaxy") || equipment.contains("iPad") || equipment.contains("Samsung") {
+            &smartphone_items
+        } else if equipment.contains("Notebook") || equipment.contains("Monitor") {
+            &notebook_items
+        } else if equipment.contains("Impressora") {
+            &printer_items
+        } else {
+            &smartphone_items
+        };
+
+        for (label, checked) in items {
+            conn.execute(
+                "INSERT INTO service_order_checklists (id, service_order_id, label, checked)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    order_id,
+                    label,
+                    checked
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
     Ok(())
 }
 
@@ -329,7 +557,7 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Calculate financial data for this day
         let query = "
-            SELECT 
+            SELECT
                 COALESCE(SUM(CASE WHEN so.closed_at IS NOT NULL THEN so.total_price ELSE 0 END), 0) as total_revenue,
                 COALESCE(SUM(CASE WHEN so.closed_at IS NOT NULL THEN sop.unit_cost * sop.quantity ELSE 0 END), 0) as total_cost,
                 COUNT(CASE WHEN so.status NOT IN ('Finalizada', 'Cancelada') THEN 1 END) as active_orders
@@ -387,8 +615,8 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
                 "Botões",
                 "Wi-Fi/Bluetooth",
                 "Sensor de proximidade",
-                "Alto-falante"
-            ]
+                "Alto-falante",
+            ],
         ),
         (
             "Checklist Notebook",
@@ -400,8 +628,8 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
                 "Carregador",
                 "Bateria",
                 "Touchpad",
-                "Ventilação"
-            ]
+                "Ventilação",
+            ],
         ),
         (
             "Checklist Tablet",
@@ -413,8 +641,8 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
                 "Bluetooth",
                 "Alto-falante",
                 "Botão Power",
-                "Conector de carga"
-            ]
+                "Conector de carga",
+            ],
         ),
         (
             "Checklist Impressora",
@@ -426,8 +654,8 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
                 "Conexão Wi-Fi",
                 "Roletes",
                 "Cartucho/Toner",
-                "Display/Led"
-            ]
+                "Display/Led",
+            ],
         ),
         (
             "Checklist Consoles",
@@ -439,14 +667,14 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
                 "Disco",
                 "USB",
                 "Áudio",
-                "Botões"
-            ]
-        )
+                "Botões",
+            ],
+        ),
     ];
 
     for (title, items) in templates {
         let template_id = Uuid::new_v4().to_string();
-        
+
         // Insert template
         conn.execute(
             "INSERT INTO checklist_templates (id, title, created_at)

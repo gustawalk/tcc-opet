@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { 
   Plus, 
   Search, 
@@ -50,26 +51,16 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Mock para simular busca de templates
 const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return [
-    { 
-      id: "1", 
-      title: "Checklist Smartphone", 
-      items: ["Tela/Touch", "Câmera Frontal", "Câmera Traseira", "Microfone", "Alto-falante", "Carga", "Botões", "Wifi/Sinal"],
-      created_at: "2023-10-01" 
-    },
-    { 
-      id: "2", 
-      title: "Checklist Notebook", 
-      items: ["Teclado", "Touchpad", "Tela", "Webcam", "Portas USB", "Carregador", "Bateria", "Som", "Temperatura"],
-      created_at: "2023-10-05" 
-    },
-  ];
+  return await invoke("get_checklist_templates");
+};
+
+const fetchTemplateItems = async (templateId: string): Promise<string[]> => {
+  return await invoke("get_checklist_template_items", { id: templateId });
 };
 
 export function Templates() {
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
@@ -98,10 +89,16 @@ export function Templates() {
     setIsSheetOpen(true);
   };
 
-  const handleEditTemplate = (template: ChecklistTemplate) => {
+  const handleEditTemplate = async (template: ChecklistTemplate) => {
     setSelectedTemplate(template);
     setTitle(template.title);
-    setItems([...template.items]);
+    try {
+      const templateItems = await fetchTemplateItems(template.id);
+      setItems(templateItems);
+    } catch (error) {
+      console.error("Error fetching template items:", error);
+      setItems(template.items || []);
+    }
     setNewItem("");
     setIsSheetOpen(true);
   };
@@ -117,7 +114,7 @@ export function Templates() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       alert("O título é obrigatório");
       return;
@@ -127,25 +124,37 @@ export function Templates() {
       return;
     }
 
-    const payload = {
-      title,
-      items
-    };
-
-    if (selectedTemplate) {
-      console.log("Ação: Atualizar Template", { id: selectedTemplate.id, ...payload });
-      alert("Template atualizado!");
-    } else {
-      console.log("Ação: Criar Novo Template", payload);
-      alert("Template criado!");
+    try {
+      if (selectedTemplate) {
+        await invoke("update_checklist_template", {
+          id: selectedTemplate.id,
+          title,
+          items
+        });
+        alert("Template atualizado!");
+      } else {
+        await invoke("create_checklist_template", {
+          title,
+          items
+        });
+        alert("Template criado!");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+      setIsSheetOpen(false);
+    } catch (error) {
+      alert(`Erro ao salvar template: ${error}`);
     }
-    setIsSheetOpen(false);
   };
 
-  const handleDeleteTemplate = (id: string) => {
+  const handleDeleteTemplate = async (id: string) => {
     if (window.confirm("Deseja realmente excluir este template?")) {
-      console.log("Ação: Deletar Template", id);
-      alert("Template removido!");
+      try {
+        await invoke("delete_checklist_template", { id });
+        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+        alert("Template removido!");
+      } catch (error) {
+        alert(`Erro ao excluir template: ${error}`);
+      }
     }
   };
 

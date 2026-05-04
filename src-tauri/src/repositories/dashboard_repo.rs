@@ -55,6 +55,7 @@ pub struct StatusCount {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DashboardData {
     pub summary: FinancialSummary,
     pub recent_orders: Vec<RecentOS>,

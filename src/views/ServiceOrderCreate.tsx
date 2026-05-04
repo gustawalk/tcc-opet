@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
   BrushCleaning,
@@ -30,39 +31,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "@/lib/formatters";
 
-// Mock para simular busca de clientes do Tauri invoke("get_customers")
 const fetchCustomers = async (): Promise<Customer[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return [
-    { id: "1", name: "Maria Silva", phone: "(41) 99999-1111", email: "maria@email.com", address: "Rua das Flores, 123 - Curitiba" },
-    { id: "2", name: "João Pereira", phone: "(41) 98888-2222", email: "joao@email.com", address: "Av. Principal, 500 - Araucária" },
-    { id: "3", name: "Empresa ABC", phone: "(41) 3333-4444", email: "contato@abc.com", address: "Rua Industrial, 10 - Curitiba" },
-  ];
+  return await invoke<Customer[]>("get_customers");
 };
 
-// Mock para usuários/técnicos
 const fetchTechs = async (): Promise<UserType[]> => {
-  return [
-    { id: "1", name: "Gustavo Admin", email: "admin@opet.com.br", role: 'admin' },
-    { id: "2", name: "João Técnico", email: "joao@opet.com.br", role: 'tech' },
-  ];
+  const users = await invoke<UserType[]>("get_users");
+  return users.filter(user => user.role === "tech");
 };
 
-// Mock para buscar templates
 const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
-  return [
-    { id: "1", title: "Checklist Smartphone", items: ["Tela/Touch", "Câmeras", "Microfone/Áudio", "Carga", "Botões", "Wi-Fi"] },
-    { id: "2", title: "Checklist Notebook", items: ["Teclado", "Tela", "Webcam", "Portas USB", "Carregador", "Bateria"] },
-  ];
+  return await invoke<ChecklistTemplate[]>("get_checklist_templates");
 };
 
-// Mock para buscar serviços do estoque
 const fetchInventoryServices = async (): Promise<InventoryItem[]> => {
-  return [
-    { id: "6", name: "Mão de Obra iPhone", description: "Troca de componentes básicos", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 50.00, sale_price: 150.00 },
-    { id: "7", name: "Mão de Obra Drones", description: "Reparo estrutural ou eletrônico em drones", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 0, sale_price: 100.00 },
-    { id: "8", name: "Limpeza Preventiva", description: "Limpeza e troca de pasta térmica", type: "service", min_quantity: 0, current_quantity: 999, cost_price: 10.00, sale_price: 80.00 },
-  ];
+  const items = await invoke<InventoryItem[]>("get_inventory_items");
+  return items.filter(item => item.type === "service");
 };
 
 export function ServiceOrderCreate() {
@@ -180,23 +164,56 @@ export function ServiceOrderCreate() {
     setShowCustomerList(false);
   };
 
-  const handleSave = () => {
-    const selectedTech = techs.find(t => t.id === formData.techId);
-    const payload = {
-      ...formData,
-      customerName: customerSearch,
-      customerId: selectedCustomer?.id,
-      openedBy: selectedTech?.name,
-      services: selectedServices,
-      checklist: selectedTemplate ? {
-        title: selectedTemplate.title,
-        items: checklistItems
-      } : null
-    };
-    console.log("Salvando OS com Checklist e Serviços:", payload);
-    // Aqui viria o invoke("create_os", { payload })
-    alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
-    navigate("/os");
+  const handleSave = async () => {
+    if (!selectedCustomer) {
+      alert("Por favor, selecione um cliente.");
+      return;
+    }
+    if (!formData.equipment) {
+      alert("Por favor, informe o equipamento.");
+      return;
+    }
+
+    try {
+      const selectedTech = techs.find(t => t.id === formData.techId);
+      
+      // Step 1: Create the service order
+      const orderId = await invoke<string>("create_service_order", {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        userId: formData.techId || null,
+        equipment: formData.equipment,
+        imei: formData.imei || null,
+        description: formData.description
+      });
+
+      // Step 2: Add each selected service as a part to the OS
+      for (const service of selectedServices) {
+        await invoke("add_part_to_service_order", {
+          serviceOrderId: orderId,
+          inventoryItemId: service.id,
+          quantity: 1
+        });
+      }
+
+      // Step 3: Save checklist if template was selected
+      if (selectedTemplate && checklistItems.length > 0) {
+        const checklistPayload = checklistItems.map(item => ({
+          label: item.label,
+          checked: item.checked
+        }));
+        await invoke("save_service_order_checklist", {
+          osId: orderId,
+          items: checklistPayload
+        });
+      }
+
+      alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
+      navigate("/os");
+    } catch (error) {
+      console.error("Erro ao criar OS:", error);
+      alert(`Erro ao criar ordem de serviço: ${error}`);
+    }
   };
 
   const totalServices = useMemo(() => {

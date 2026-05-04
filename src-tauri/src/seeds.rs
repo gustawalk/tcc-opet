@@ -23,6 +23,7 @@ pub fn initialize_seed_data() -> Result<(), String> {
     seed_inventory(&conn)?;
     seed_service_orders(&conn)?;
     seed_financial_snapshots(&conn)?;
+    seed_checklist_templates(&conn)?;
 
     Ok(())
 }
@@ -369,6 +370,100 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             ],
         )
         .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
+    let templates = vec![
+        (
+            "Checklist Smartphone",
+            vec![
+                "Tela/Touch",
+                "Câmeras",
+                "Microfone/Áudio",
+                "Carregamento",
+                "Botões",
+                "Wi-Fi/Bluetooth",
+                "Sensor de proximidade",
+                "Alto-falante"
+            ]
+        ),
+        (
+            "Checklist Notebook",
+            vec![
+                "Teclado",
+                "Tela/Monitor",
+                "Webcam",
+                "Portas USB",
+                "Carregador",
+                "Bateria",
+                "Touchpad",
+                "Ventilação"
+            ]
+        ),
+        (
+            "Checklist Tablet",
+            vec![
+                "Tela/Touch",
+                "Bateria",
+                "Câmeras",
+                "Wi-Fi",
+                "Bluetooth",
+                "Alto-falante",
+                "Botão Power",
+                "Conector de carga"
+            ]
+        ),
+        (
+            "Checklist Impressora",
+            vec![
+                "Alimentação de papel",
+                "Impressão",
+                "Scanner",
+                "Conexão USB",
+                "Conexão Wi-Fi",
+                "Roletes",
+                "Cartucho/Toner",
+                "Display/Led"
+            ]
+        ),
+        (
+            "Checklist Consoles",
+            vec![
+                "HDMI",
+                "Controle",
+                "Ventilação",
+                "Fonte",
+                "Disco",
+                "USB",
+                "Áudio",
+                "Botões"
+            ]
+        )
+    ];
+
+    for (title, items) in templates {
+        let template_id = Uuid::new_v4().to_string();
+        
+        // Insert template
+        conn.execute(
+            "INSERT INTO checklist_templates (id, title, created_at)
+             VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+            params![template_id, title],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Insert template items
+        for item in items {
+            conn.execute(
+                "INSERT INTO template_items (id, template_id, label)
+                 VALUES (?1, ?2, ?3)",
+                params![Uuid::new_v4().to_string(), template_id, item],
+            )
+            .map_err(|e| e.to_string())?;
+        }
     }
 
     Ok(())

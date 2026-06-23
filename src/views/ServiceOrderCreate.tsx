@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
@@ -15,7 +15,6 @@ import {
   Plus,
   ShieldCheck,
   ClipboardCheck,
-  ChevronRight,
   Trash2,
   DollarSign
 } from "lucide-react";
@@ -25,11 +24,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Customer, User as UserType, ChecklistTemplate, ChecklistItem, InventoryItem } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "@/lib/formatters";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { cn } from "@/lib/utils";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -51,11 +51,17 @@ const fetchInventoryServices = async (): Promise<InventoryItem[]> => {
 
 export function ServiceOrderCreate() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   // Estados do formulário
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerList, setShowCustomerList] = useState(false);
+  const [originalCustomerData, setOriginalCustomerData] = useState<{
+    phone: string;
+    email: string;
+    address: string;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     phone: "",
@@ -71,12 +77,34 @@ export function ServiceOrderCreate() {
   // Estado da Checklist
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
-  const [showTemplateList, setShowTemplateList] = useState(false);
 
   // Estado de Serviços selecionados
   const [selectedServices, setSelectedServices] = useState<InventoryItem[]>([]);
   const [serviceSearch, setServiceSearch] = useState("");
   const [showServiceList, setShowServiceList] = useState(false);
+
+  const customerContainerRef = useRef<HTMLDivElement>(null);
+  const serviceContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (customerContainerRef.current && !customerContainerRef.current.contains(e.target as Node)) {
+        setShowCustomerList(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (serviceContainerRef.current && !serviceContainerRef.current.contains(e.target as Node)) {
+        setShowServiceList(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Busca de clientes
   const { data: customers = [] } = useQuery({
@@ -112,15 +140,21 @@ export function ServiceOrderCreate() {
 
   // Filtragem de serviços para o search
   const filteredServices = useMemo(() => {
-    if (!serviceSearch) return [];
+    if (!serviceSearch.trim()) return services;
+    const term = serviceSearch.toLowerCase();
     return services.filter(s =>
-      s.name.toLowerCase().includes(serviceSearch.toLowerCase())
+      s.name.toLowerCase().includes(term)
     );
   }, [serviceSearch, services]);
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
     setCustomerSearch(customer.name);
+    setOriginalCustomerData({
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+    });
     setFormData({
       ...formData,
       phone: customer.phone,
@@ -138,7 +172,6 @@ export function ServiceOrderCreate() {
       checked: false
     }));
     setChecklistItems(initialItems);
-    setShowTemplateList(false);
   };
 
   const toggleChecklistItem = (id: string) => {
@@ -148,11 +181,12 @@ export function ServiceOrderCreate() {
   };
 
   const handleAddService = (service: InventoryItem) => {
-    if (!selectedServices.find(s => s.id === service.id)) {
+    if (selectedServices.find(s => s.id === service.id)) {
+      setSelectedServices(selectedServices.filter(s => s.id !== service.id));
+    } else {
       setSelectedServices([...selectedServices, service]);
     }
     setServiceSearch("");
-    setShowServiceList(false);
   };
 
   const handleRemoveService = (id: string) => {
@@ -161,33 +195,75 @@ export function ServiceOrderCreate() {
 
   const handleNewCustomer = () => {
     setSelectedCustomer(null);
+    setOriginalCustomerData(null);
     setShowCustomerList(false);
   };
 
   const handleSave = async () => {
     if (!selectedCustomer) {
-      alert("Por favor, selecione um cliente.");
-      return;
+      if (!customerSearch.trim()) {
+        alert("Por favor, informe o nome do cliente.");
+        return;
+      }
+      if (!formData.phone.trim()) {
+        alert("Por favor, informe o telefone do cliente.");
+        return;
+      }
+      if (!formData.email.trim()) {
+        alert("Por favor, informe o e-mail do cliente.");
+        return;
+      }
     }
+
     if (!formData.equipment) {
       alert("Por favor, informe o equipamento.");
       return;
     }
 
     try {
-      const selectedTech = techs.find(t => t.id === formData.techId);
-      
-      // Step 1: Create the service order
+      let customerId: string;
+      let customerName: string;
+
+      if (selectedCustomer) {
+        customerId = selectedCustomer.id;
+        customerName = selectedCustomer.name;
+
+        const hasChanges =
+          formData.phone.trim() !== originalCustomerData?.phone ||
+          formData.email.trim() !== originalCustomerData?.email ||
+          formData.address.trim() !== originalCustomerData?.address;
+
+        if (hasChanges) {
+          await invoke("update_customer", {
+            id: selectedCustomer.id,
+            name: selectedCustomer.name,
+            phone: formData.phone.trim(),
+            email: formData.email.trim(),
+            address: formData.address.trim(),
+          });
+          queryClient.invalidateQueries({ queryKey: ["customers-list"] });
+        }
+      } else {
+        const newId = await invoke<string>("create_customer", {
+          name: customerSearch.trim(),
+          phone: formData.phone.trim(),
+          email: formData.email.trim(),
+          address: formData.address.trim(),
+        });
+        customerId = newId;
+        customerName = customerSearch.trim();
+        queryClient.invalidateQueries({ queryKey: ["customers-list"] });
+      }
+
       const orderId = await invoke<string>("create_service_order", {
-        customerId: selectedCustomer.id,
-        customerName: selectedCustomer.name,
+        customerId,
+        customerName,
         userId: formData.techId || null,
         equipment: formData.equipment,
         imei: formData.imei || null,
         description: formData.description
       });
 
-      // Step 2: Add each selected service as a part to the OS
       for (const service of selectedServices) {
         await invoke("add_part_to_service_order", {
           serviceOrderId: orderId,
@@ -196,7 +272,6 @@ export function ServiceOrderCreate() {
         });
       }
 
-      // Step 3: Save checklist if template was selected
       if (selectedTemplate && checklistItems.length > 0) {
         const checklistPayload = checklistItems.map(item => ({
           id: crypto.randomUUID(),
@@ -209,7 +284,8 @@ export function ServiceOrderCreate() {
         });
       }
 
-      alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name}!`);
+      const selectedTech = techs.find(t => t.id === formData.techId);
+      alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name || 'Não atribuído'}!`);
       navigate("/os");
     } catch (error) {
       console.error("Erro ao criar OS:", error);
@@ -249,7 +325,7 @@ export function ServiceOrderCreate() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
+            <div ref={customerContainerRef} className="relative">
               <Label htmlFor="customer">Nome do Cliente</Label>
               <div className="relative mt-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -269,7 +345,7 @@ export function ServiceOrderCreate() {
               {/* Lista de busca de cliente */}
               {showCustomerList && (customerSearch.length > 0 || filteredCustomers.length > 0) && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
-                  <ScrollArea className="max-h-[200px]">
+                  <div className="overflow-y-auto" style={{ maxHeight: 5 * 36 }}>
                     <div className="p-1">
                       {filteredCustomers.length > 0 ? (
                         filteredCustomers.map((c) => (
@@ -295,7 +371,7 @@ export function ServiceOrderCreate() {
                         </div>
                       )}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </Card>
               )}
             </div>
@@ -399,7 +475,7 @@ export function ServiceOrderCreate() {
               <ClipboardCheck className="h-5 w-5 text-primary" />
               Checklist de Entrada
               <span title="Limpar checklist">
-                <BrushCleaning aria-label="teste" className="h-5 w-5 text-primary cursor-pointer hover:text-gray-400 transition-all" onClick={() => { setSelectedTemplate(null) }} />
+                <BrushCleaning aria-label="Limpar checklist" className="h-5 w-5 text-primary cursor-pointer hover:text-gray-400 transition-all" onClick={() => { setSelectedTemplate(null) }} />
               </span>
             </CardTitle>
             <CardDescription>
@@ -407,35 +483,19 @@ export function ServiceOrderCreate() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
+            <div>
               <Label>Template</Label>
-              <Button
-                variant="outline"
-                className="w-full justify-between mt-1 text-left font-normal"
-                onClick={() => setShowTemplateList(!showTemplateList)}
-              >
-                {selectedTemplate ? selectedTemplate.title : "Selecione um modelo..."}
-                <Plus className="h-4 w-4 ml-2 opacity-50" />
-              </Button>
-
-              {showTemplateList && (
-                <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
-                  <ScrollArea className="max-h-48">
-                    <div className="p-1">
-                      {templates.map((t) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
-                          onClick={() => handleSelectTemplate(t)}
-                        >
-                          <span className="text-sm">{t.title}</span>
-                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </Card>
-              )}
+              <SearchableSelect
+                className="mt-1"
+                options={templates}
+                value={selectedTemplate?.id ?? null}
+                onSelect={handleSelectTemplate}
+                placeholder="Selecione um modelo..."
+                searchPlaceholder="Buscar template..."
+                maxOptions={5}
+                getKey={(t) => t.id}
+                getLabel={(t) => t.title}
+              />
             </div>
 
             {selectedTemplate && (
@@ -477,7 +537,7 @@ export function ServiceOrderCreate() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
+            <div ref={serviceContainerRef} className="relative">
               <Label>Buscar Serviço</Label>
               <div className="relative mt-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -493,15 +553,18 @@ export function ServiceOrderCreate() {
                 />
               </div>
 
-              {showServiceList && (serviceSearch.length > 0) && (
+              {showServiceList && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg border-primary/20 overflow-hidden">
-                  <ScrollArea className="max-h-48">
+                  <div className="overflow-y-auto" style={{ maxHeight: 5 * 36 }}>
                     <div className="p-1">
                       {filteredServices.length > 0 ? (
                         filteredServices.map((s) => (
                           <div
                             key={s.id}
-                            className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
+                            className={cn(
+                              "flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors",
+                              selectedServices.some(sel => sel.id === s.id) && "bg-primary/10"
+                            )}
                             onClick={() => handleAddService(s)}
                           >
                             <div className="flex flex-col">
@@ -517,7 +580,7 @@ export function ServiceOrderCreate() {
                         </div>
                       )}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </Card>
               )}
             </div>

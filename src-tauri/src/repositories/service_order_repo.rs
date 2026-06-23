@@ -76,6 +76,10 @@ impl ServiceOrderRepository {
             qty_cost_price
         };
 
+        if quantity <= 0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
         if current_quantity < quantity {
             return Err(rusqlite::Error::InvalidQuery);
         }
@@ -210,7 +214,9 @@ impl ServiceOrderRepository {
         let mut stmt = conn.prepare(
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
              FROM service_orders so
-             LEFT JOIN customers c ON so.customer_id = c.id"
+             LEFT JOIN customers c ON so.customer_id = c.id
+             WHERE so.deleted_at IS NULL
+             ORDER BY so.created_at DESC"
         )?;
         let rows = stmt.query_map(params![], |row: &rusqlite::Row| {
             Ok(ServiceOrder {
@@ -244,7 +250,7 @@ impl ServiceOrderRepository {
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
-             WHERE so.customer_id = ?1"
+             WHERE so.customer_id = ?1 AND so.deleted_at IS NULL"
         )?;
         let rows = stmt.query_map(params![customer_id], |row: &rusqlite::Row| {
             Ok(ServiceOrder {
@@ -299,7 +305,10 @@ impl ServiceOrderRepository {
     pub fn delete(id: &str) -> Result<()> {
         let conn = get_db()?;
 
-        conn.execute("DELETE FROM service_orders WHERE id = ?1", params![id])?;
+        conn.execute(
+            "UPDATE service_orders SET deleted_at = ?1 WHERE id = ?2",
+            params![Utc::now().to_rfc3339(), id],
+        )?;
         Ok(())
     }
 }

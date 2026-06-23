@@ -511,7 +511,7 @@ export function Inventory() {
                     type="number"
                     className="pl-9"
                     value={formData.minQuantity}
-                    onChange={(e) => setFormData({...formData, minQuantity: parseInt(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, minQuantity: parseInt(e.target.value) || 0})}
                   />
                 </div>
               </div>
@@ -528,7 +528,7 @@ export function Inventory() {
                     step="0.01"
                     className="pl-9"
                     value={formData.costPrice}
-                    onChange={(e) => setFormData({...formData, costPrice: parseFloat(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, costPrice: parseFloat(e.target.value) || 0})}
                   />
                 </div>
               </div>
@@ -542,7 +542,7 @@ export function Inventory() {
                     step="0.01"
                     className="pl-9"
                     value={formData.salePrice}
-                    onChange={(e) => setFormData({...formData, salePrice: parseFloat(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, salePrice: parseFloat(e.target.value) || 0})}
                   />
                 </div>
               </div>

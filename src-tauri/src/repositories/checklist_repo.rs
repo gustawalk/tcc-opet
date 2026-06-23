@@ -1,6 +1,7 @@
 use crate::database::get_db;
 use crate::models::checklist::{ChecklistTemplate, ChecklistItem};
 use rusqlite::{params, Result};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub struct ChecklistRepository;
@@ -30,32 +31,31 @@ impl ChecklistRepository {
 
     pub fn get_templates() -> Result<Vec<ChecklistTemplate>> {
         let conn = get_db()?;
+
         let mut stmt = conn.prepare("SELECT id, title, created_at FROM checklist_templates")?;
-        
-        let rows = stmt.query_map([], |row| {
-            let id: String = row.get(0)?;
-            
-            // Fetch items for this template
-            let mut item_stmt = conn.prepare("SELECT label FROM template_items WHERE template_id = ?1")?;
-            let item_rows = item_stmt.query_map(params![id], |item_row| item_row.get::<_, String>(0))?;
-            
-            let mut items = Vec::new();
-            for item in item_rows {
-                items.push(item?);
-            }
+        let templates_raw: Vec<(String, String, Option<String>)> = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?.collect::<Result<Vec<_>, _>>()?;
 
-            Ok(ChecklistTemplate {
-                id,
-                title: row.get(1)?,
-                items: Some(items),
-                created_at: row.get(2)?,
-            })
-        })?;
+        let mut item_stmt = conn.prepare("SELECT template_id, label FROM template_items")?;
+        let all_items: Vec<(String, String)> = item_stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?.collect::<Result<Vec<_>, _>>()?;
 
-        let mut templates = Vec::new();
-        for row in rows {
-            templates.push(row?);
+        let mut items_map: HashMap<String, Vec<String>> = HashMap::new();
+        for (tid, label) in all_items {
+            items_map.entry(tid).or_default().push(label);
         }
+
+        let templates = templates_raw.into_iter().map(|(id, title, created_at)| {
+            ChecklistTemplate {
+                items: items_map.remove(&id),
+                id,
+                title,
+                created_at,
+            }
+        }).collect();
+
         Ok(templates)
     }
 

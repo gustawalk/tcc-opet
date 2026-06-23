@@ -61,7 +61,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
-                    isActive={location.pathname === item.path}
+                    isActive={item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)}
                     tooltip={item.label}
                   >
                     <Link to={item.path} className="flex items-center gap-3 px-3">

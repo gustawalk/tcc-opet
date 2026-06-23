@@ -481,7 +481,7 @@ export function ServiceOrders() {
                       <TableRow key={item.id}>
                         <TableCell className="py-2 text-xs font-medium">{item.inventoryItemName}</TableCell>
                         <TableCell className="py-2 text-center text-xs">{item.quantity}</TableCell>
-                        <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unitPrice)}</TableCell>
+                        <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unitPrice * item.quantity)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -618,7 +618,7 @@ export function ServiceOrders() {
                 </Table>
               </div>
               <p className="text-right text-sm font-bold">
-                Total: {formatCurrency(osItems.reduce((acc, i) => acc + i.unitPrice, 0))}
+                Total: {formatCurrency(osItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0))}
               </p>
             </div>
           </div>

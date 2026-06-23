@@ -478,7 +478,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         let created_at = (now - Duration::days(days_ago)).to_rfc3339();
 
         let closed_at = if *is_finished {
-            Some((now - Duration::days(days_ago - 2)).to_rfc3339())
+            Some((now - Duration::days((days_ago - 2).max(0))).to_rfc3339())
         } else {
             None
         };

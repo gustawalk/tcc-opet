@@ -106,7 +106,20 @@ impl ServiceOrderRepository {
             params![quantity, inventory_item_id],
         )?;
 
-        // 4. Update the Service Order total price
+        // 4. Log the movement
+        transaction.execute(
+            "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, created_at)
+             VALUES (?1, ?2, 'saida', ?3, ?4, ?5)",
+            params![
+                Uuid::new_v4().to_string(),
+                inventory_item_id,
+                quantity,
+                service_order_id,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+
+        // 5. Update the Service Order total price
         transaction.execute(
             "UPDATE service_orders 
              SET total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?1)
@@ -137,7 +150,20 @@ impl ServiceOrderRepository {
             params![quantity, inventory_item_id],
         )?;
 
-        // 2. Delete the part record
+        // 2. Log the movement
+        transaction.execute(
+            "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, created_at)
+             VALUES (?1, ?2, 'entrada', ?3, ?4, ?5)",
+            params![
+                Uuid::new_v4().to_string(),
+                inventory_item_id,
+                quantity,
+                os_id,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+
+        // 3. Delete the part record
         transaction.execute("DELETE FROM service_order_parts WHERE id = ?1", params![part_id])?;
 
         // 3. Recalculate OS total

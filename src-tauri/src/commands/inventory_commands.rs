@@ -1,4 +1,5 @@
 use crate::models::inventory_item::InventoryItem;
+use crate::models::inventory_movement::InventoryMovement;
 use crate::repositories::inventory_repo::InventoryRepository;
 use tauri::command;
 
@@ -65,4 +66,19 @@ pub fn update_inventory_item(
 #[command]
 pub fn delete_inventory_item(id: String) -> Result<(), String> {
     InventoryRepository::delete(&id).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[command]
+pub fn restock_inventory_item(id: String, quantity: i32) -> Result<(), String> {
+    InventoryRepository::add_stock(&id, quantity).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[command]
+pub fn remove_stock_inventory_item(id: String, quantity: i32) -> Result<(), String> {
+    InventoryRepository::remove_stock(&id, quantity).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[command]
+pub fn get_inventory_movements(id: String) -> Result<Vec<InventoryMovement>, String> {
+    InventoryRepository::get_movements(&id).map_err(|e: rusqlite::Error| e.to_string())
 }

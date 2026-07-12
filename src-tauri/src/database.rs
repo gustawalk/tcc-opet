@@ -176,8 +176,22 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Inventory movements table (audit trail)
+        CREATE TABLE IF NOT EXISTS inventory_movements (
+            id TEXT PRIMARY KEY,
+            inventory_item_id TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('entrada', 'saida')),
+            quantity INTEGER NOT NULL,
+            reference_os_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
+        );
+
         -- Index for faster snapshot queries by date
         CREATE INDEX IF NOT EXISTS idx_financial_snapshots_date ON financial_snapshots(snapshot_date);
+
+        -- Index for inventory movements lookup
+        CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(inventory_item_id);
         ",
     )?;
 

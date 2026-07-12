@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { 
-  Plus, 
-  Search, 
-  MoreVertical, 
-  Package, 
-  TrendingUp, 
+import {
+  Plus,
+  Search,
+  MoreVertical,
+  Package,
+  PackagePlus,
+  TrendingUp,
   AlertTriangle,
   Edit,
   Trash2,
@@ -15,24 +16,24 @@ import {
   DollarSign,
   Box
 } from "lucide-react";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -42,9 +43,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { InventoryItem } from "@/lib/types";
+import { InventoryItem, InventoryMovement } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -57,6 +66,10 @@ import { Separator } from "@/components/ui/separator";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
+};
+
+const fetchMovements = async (itemId: string): Promise<InventoryMovement[]> => {
+  return await invoke<InventoryMovement[]>("get_inventory_movements", { id: itemId });
 };
 
 const createInventoryItem = async (item: Omit<InventoryItem, "id" | "createdAt" | "deletedAt">) => {
@@ -92,7 +105,7 @@ export function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  
+
   // Form State
   const [formData, setFormData] = useState({
     name: "",
@@ -102,6 +115,18 @@ export function Inventory() {
     costPrice: 0,
     salePrice: 0
   });
+
+  // Restock state
+  const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
+  const [restockQuantity, setRestockQuantity] = useState(1);
+
+  // Remove state
+  const [removeItem, setRemoveItem] = useState<InventoryItem | null>(null);
+  const [removeQuantity, setRemoveQuantity] = useState(1);
+
+  // History state
+  const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["inventory"],
@@ -131,18 +156,54 @@ export function Inventory() {
     },
   });
 
+  const restockMutation = useMutation({
+    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+      return await invoke("restock_inventory_item", { id, quantity });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+      setRestockItem(null);
+      setRestockQuantity(1);
+    },
+  });
+
+  const removeStockMutation = useMutation({
+    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+      return await invoke("remove_stock_inventory_item", { id, quantity });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+      setRemoveItem(null);
+      setRemoveQuantity(1);
+    },
+  });
+
+  const { data: movements = [] } = useQuery({
+    queryKey: ["inventory-movements", historyItem?.id],
+    queryFn: () => fetchMovements(historyItem!.id),
+    enabled: isHistoryOpen && !!historyItem,
+  });
+
   const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
   const services = useMemo(() => items.filter(i => i.type === "service"), [items]);
 
   const filteredParts = useMemo(() => {
-    return parts.filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return parts
+      .filter(item =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        if (a.currentQuantity === 0 && b.currentQuantity !== 0) return -1;
+        if (a.currentQuantity !== 0 && b.currentQuantity === 0) return 1;
+        return 0;
+      });
   }, [parts, searchTerm]);
 
   const filteredServices = useMemo(() => {
-    return services.filter(item => 
+    return services.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -204,11 +265,6 @@ export function Inventory() {
     }
   };
 
-  const handleMovement = (item: InventoryItem) => {
-    console.log("Ação: Ver histórico de movimentação de", item.name);
-    alert(`Histórico de movimentações para: ${item.name} (Simulado)`);
-  };
-
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -219,9 +275,6 @@ export function Inventory() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => console.log("Ação: Exportar inventário")}>
-            <History className="h-4 w-4" /> Movimentações
-          </Button>
           <Button onClick={() => handleAddItem("part")} className="gap-2">
             <Plus className="h-4 w-4" /> Nova Peça
           </Button>
@@ -331,7 +384,7 @@ export function Inventory() {
                           <div className="flex flex-col items-center gap-1">
                             <Badge variant={
                               item.currentQuantity === 0 ? "destructive" :
-                              item.currentQuantity <= item.minQuantity ? "default" : "secondary"
+                                item.currentQuantity <= item.minQuantity ? "default" : "secondary"
                             }>
                               {item.currentQuantity} un.
                             </Badge>
@@ -353,14 +406,20 @@ export function Inventory() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleMovement(item)}>
+                              <DropdownMenuItem onClick={() => { setRestockItem(item); setRestockQuantity(1); }}>
+                                <PackagePlus className="mr-2 h-4 w-4" /> Adicionar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setRemoveItem(item); setRemoveQuantity(1); }} disabled={item.currentQuantity < 1}>
+                                <Package className="mr-2 h-4 w-4" /> Remover
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setHistoryItem(item); setIsHistoryOpen(true); }}>
                                 <History className="mr-2 h-4 w-4" /> Histórico
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleEditItem(item)}>
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => handleDeleteItem(item.id)}
                               >
@@ -440,7 +499,7 @@ export function Inventory() {
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => handleDeleteItem(item.id)}
                               >
@@ -465,6 +524,123 @@ export function Inventory() {
         </Card>
       </div>
 
+      {/* Restock Dialog */}
+      <Dialog open={!!restockItem} onOpenChange={(open) => { if (!open) setRestockItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adicionar ao Estoque</DialogTitle>
+            <DialogDescription>
+              Adicione unidades ao estoque de <strong>{restockItem?.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="restock-qty">Quantidade a adicionar</Label>
+            <Input
+              id="restock-qty"
+              type="number"
+              min="1"
+              className="mt-2"
+              value={restockQuantity}
+              onChange={(e) => setRestockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestockItem(null)}>Cancelar</Button>
+            <Button
+              onClick={() => restockItem && restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity })}
+              disabled={restockMutation.isPending}
+              className="gap-2"
+            >
+              <PackagePlus className="h-4 w-4" /> {restockMutation.isPending ? "Adicionando..." : "Adicionar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Dialog */}
+      <Dialog open={!!removeItem} onOpenChange={(open) => { if (!open) setRemoveItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover do Estoque</DialogTitle>
+            <DialogDescription>
+              Remova unidades do estoque de <strong>{removeItem?.name}</strong>. Estoque atual: {removeItem?.currentQuantity} un.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="remove-qty">Quantidade a remover</Label>
+            <Input
+              id="remove-qty"
+              type="number"
+              min="1"
+              max={removeItem?.currentQuantity ?? 1}
+              className="mt-2"
+              value={removeQuantity}
+              onChange={(e) => setRemoveQuantity(Math.max(1, Math.min(removeItem?.currentQuantity ?? 1, parseInt(e.target.value) || 1)))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveItem(null)}>Cancelar</Button>
+            <Button
+              onClick={() => removeItem && removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity })}
+              disabled={removeStockMutation.isPending}
+              variant="destructive"
+              className="gap-2"
+            >
+              <Package className="h-4 w-4" /> {removeStockMutation.isPending ? "Removendo..." : "Remover"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Sheet */}
+      <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Histórico de Movimentações</SheetTitle>
+            <SheetDescription>
+              {historyItem ? `Movimentações de ${historyItem.name}` : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="py-4">
+            {movements.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">Nenhuma movimentação encontrada.</p>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-center">Quantidade</TableHead>
+                      <TableHead className="text-right">Data</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {movements.map((mov) => (
+                      <TableRow key={mov.id}>
+                        <TableCell>
+                          <Badge variant={mov.type === "entrada" ? "default" : "destructive"}>
+                            {mov.type === "entrada" ? "Entrada" : "Saída"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center font-medium">{mov.quantity} un.</TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {mov.createdAt ? new Date(mov.createdAt).toLocaleString("pt-BR") : "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+          <SheetFooter>
+            <Button variant="outline" className="w-full" onClick={() => setIsHistoryOpen(false)}>
+              Fechar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       {/* Sheet para Cadastro/Edição de Item */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent>
@@ -473,7 +649,7 @@ export function Inventory() {
               {selectedItem ? "Editar" : "Novo"} {formData.type === "part" ? "Item no Estoque" : "Serviço"}
             </SheetTitle>
             <SheetDescription>
-              {formData.type === "part" 
+              {formData.type === "part"
                 ? "Cadastre peças e insumos para gerenciar seu estoque."
                 : "Cadastre serviços e mão de obra para suas ordens de serviço."}
             </SheetDescription>
@@ -482,23 +658,23 @@ export function Inventory() {
           <div className="grid gap-4 py-6">
             <div className="grid gap-2">
               <Label htmlFor="name">Nome do {formData.type === "part" ? "Produto" : "Serviço"}</Label>
-              <Input 
-                id="name" 
+              <Input
+                id="name"
                 value={formData.name}
                 placeholder={formData.type === "part" ? "Ex: Tela iPhone 11" : "Ex: Mão de obra Drone"}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Descrição</Label>
-              <Textarea 
-                id="description" 
+              <Textarea
+                id="description"
                 value={formData.description}
                 placeholder="Ex: Detalhes adicionais..."
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
-            
+
             <Separator />
 
             {formData.type === "part" && (
@@ -506,12 +682,12 @@ export function Inventory() {
                 <Label htmlFor="min">Qtd. Mínima (Alerta)</Label>
                 <div className="relative">
                   <Box className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="min" 
+                  <Input
+                    id="min"
                     type="number"
                     className="pl-9"
                     value={formData.minQuantity}
-                    onChange={(e) => setFormData({...formData, minQuantity: parseInt(e.target.value) || 0})}
+                    onChange={(e) => setFormData({ ...formData, minQuantity: parseInt(e.target.value) || 0 })}
                   />
                 </div>
               </div>
@@ -522,13 +698,13 @@ export function Inventory() {
                 <Label htmlFor="cost">{formData.type === "part" ? "Preço de Custo" : "Custo Estimado"}</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="cost" 
+                  <Input
+                    id="cost"
                     type="number"
                     step="0.01"
                     className="pl-9"
                     value={formData.costPrice}
-                    onChange={(e) => setFormData({...formData, costPrice: parseFloat(e.target.value) || 0})}
+                    onChange={(e) => setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 })}
                   />
                 </div>
               </div>
@@ -536,13 +712,13 @@ export function Inventory() {
                 <Label htmlFor="sale">Preço de Venda</Label>
                 <div className="relative">
                   <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
-                  <Input 
-                    id="sale" 
+                  <Input
+                    id="sale"
                     type="number"
                     step="0.01"
                     className="pl-9"
                     value={formData.salePrice}
-                    onChange={(e) => setFormData({...formData, salePrice: parseFloat(e.target.value) || 0})}
+                    onChange={(e) => setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })}
                   />
                 </div>
               </div>

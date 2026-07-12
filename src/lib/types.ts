@@ -91,6 +91,15 @@ export interface RecentOS {
   totalPrice: number;
 }
 
+export interface InventoryMovement {
+  id: string;
+  inventoryItemId: string;
+  type: 'entrada' | 'saida';
+  quantity: number;
+  referenceOsId?: string | null;
+  createdAt?: string;
+}
+
 export interface InventoryAlert {
   id: string;
   name: string;

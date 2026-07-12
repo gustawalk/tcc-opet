@@ -49,8 +49,8 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         <Sidebar>
           <SidebarHeader className="h-16 flex items-center px-6 border-b">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg flex items-center justify-center">
-                <LogoIcon />
+              <div className="rounded-lg flex items-center justify-center">
+                <LogoIcon width={32} height={32} />
               </div>
               <span className="font-bold text-lg tracking-tight">OpetS Manager</span>
             </div>

@@ -123,6 +123,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
+            deleted_at TEXT,
             FOREIGN KEY (customer_id) REFERENCES customers (id),
             FOREIGN KEY (user_id) REFERENCES users (id)
         );
@@ -179,6 +180,17 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_financial_snapshots_date ON financial_snapshots(snapshot_date);
         ",
     )?;
+
+    // Migration: add deleted_at column to service_orders if missing
+    if let Err(e) = conn.execute_batch(
+        "ALTER TABLE service_orders ADD COLUMN deleted_at TEXT;"
+    ) {
+        // Column already exists or other error — ignore if it's a duplicate column error
+        let err_msg = e.to_string();
+        if !err_msg.contains("duplicate column") {
+            eprintln!("[MIGRATION WARNING] Could not add deleted_at to service_orders: {}", err_msg);
+        }
+    }
 
     // Insert default settings if not exists
     conn.execute(

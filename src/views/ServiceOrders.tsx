@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,12 +12,9 @@ import {
   Calendar,
   User,
   Smartphone,
-  Wrench,
   Save,
   Trash,
   ChevronRight,
-  ClipboardCheck,
-  CheckSquare
 } from "lucide-react";
 import {
   Card,
@@ -120,6 +117,10 @@ export function ServiceOrders() {
     queryKey: ["service-orders"],
     queryFn: fetchServiceOrders,
   });
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["service-orders"] });
+  }, []);
 
   const { data: inventory = [] } = useQuery({
     queryKey: ["inventory-lookup"],

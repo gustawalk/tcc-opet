@@ -144,7 +144,7 @@ export function Dashboard() {
               <TableBody>
                 {recentOrders.map((os) => (
                   <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate("/os")}>
-                    <TableCell className="font-medium">{os.id}</TableCell>
+                    <TableCell className="font-medium">{os.displayId || os.id.slice(0, 8)}</TableCell>
                     <TableCell>{os.customerName}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{os.equipment}</TableCell>
                     <TableCell>

@@ -440,7 +440,7 @@ export function Customers() {
                     <Card key={os.id} className="overflow-hidden border-primary/10 hover:border-primary/30 transition-colors">
                       <CardHeader className="p-4 pb-2 bg-muted/30">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-primary">{os.id}</span>
+                          <span className="text-sm font-bold text-primary">{os.displayId || os.id.slice(0, 8)}</span>
                           {getStatusBadge(os.status)}
                         </div>
                       </CardHeader>
@@ -462,8 +462,8 @@ export function Customers() {
                       </CardContent>
                       <div className="px-4 py-2 bg-primary/5 flex items-center justify-between border-t">
                         <span className="text-sm font-bold">{formatCurrency(os.totalPrice || 0)}</span>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => alert(`ID copiado: ${os.id}`)}>
-                          Copiar ID da ordem<Copy className="h-3 w-3" />
+                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => alert(`ID copiado: ${os.displayId || os.id.slice(0, 8)}`)}>
+                          Copiar ID<Copy className="h-3 w-3" />
                         </Button>
                       </div>
                     </Card>

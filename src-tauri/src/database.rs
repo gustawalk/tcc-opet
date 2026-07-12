@@ -123,6 +123,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
+            display_id TEXT NOT NULL DEFAULT '',
+            discount_percent REAL NOT NULL DEFAULT 0.0,
             deleted_at TEXT,
             FOREIGN KEY (customer_id) REFERENCES customers (id),
             FOREIGN KEY (user_id) REFERENCES users (id)
@@ -195,14 +197,17 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         ",
     )?;
 
-    // Migration: add deleted_at column to service_orders if missing
-    if let Err(e) = conn.execute_batch(
-        "ALTER TABLE service_orders ADD COLUMN deleted_at TEXT;"
-    ) {
-        // Column already exists or other error — ignore if it's a duplicate column error
-        let err_msg = e.to_string();
-        if !err_msg.contains("duplicate column") {
-            eprintln!("[MIGRATION WARNING] Could not add deleted_at to service_orders: {}", err_msg);
+    // Migration: add columns to service_orders if missing
+    for migration in &[
+        "ALTER TABLE service_orders ADD COLUMN deleted_at TEXT;",
+        "ALTER TABLE service_orders ADD COLUMN display_id TEXT NOT NULL DEFAULT '';",
+        "ALTER TABLE service_orders ADD COLUMN discount_percent REAL NOT NULL DEFAULT 0.0;",
+    ] {
+        if let Err(e) = conn.execute_batch(migration) {
+            let err_msg = e.to_string();
+            if !err_msg.contains("duplicate column") {
+                eprintln!("[MIGRATION WARNING] Could not run migration '{}': {}", migration.trim(), err_msg);
+            }
         }
     }
 

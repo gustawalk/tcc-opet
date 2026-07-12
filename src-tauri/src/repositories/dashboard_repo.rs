@@ -36,6 +36,8 @@ pub struct RecentOS {
     pub created_at: String,
     #[serde(rename = "totalPrice")]
     pub total_price: f64,
+    #[serde(rename = "displayId")]
+    pub display_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +79,7 @@ impl DashboardRepository {
         
         let mut stmt = conn.prepare(
             "SELECT 
-                (SELECT COALESCE(SUM(total_price), 0.0) FROM service_orders WHERE status = 'Finalizada') as total_revenue,
+                (SELECT COALESCE(SUM(total_price * (1.0 - COALESCE(discount_percent, 0.0) / 100.0)), 0.0) FROM service_orders WHERE status = 'Finalizada') as total_revenue,
                 (SELECT COALESCE(SUM(sop.quantity * sop.unit_cost), 0.0) 
                  FROM service_order_parts sop 
                  JOIN service_orders so ON sop.service_order_id = so.id 
@@ -127,7 +129,7 @@ impl DashboardRepository {
 
         // 3. Get Recent Orders
         let mut stmt = conn.prepare(
-            "SELECT so.id, c.name, so.equipment, so.status, so.created_at, COALESCE(so.total_price, 0.0)
+            "SELECT so.id, c.name, so.equipment, so.status, so.created_at, COALESCE(so.total_price, 0.0), so.display_id
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              ORDER BY so.created_at DESC LIMIT 4"
@@ -140,6 +142,7 @@ impl DashboardRepository {
                 status: row.get(3)?,
                 created_at: row.get(4)?,
                 total_price: row.get(5)?,
+                display_id: row.get(6)?,
             })
         })?.collect::<Result<Vec<_>, _>>()?;
 

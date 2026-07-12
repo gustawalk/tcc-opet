@@ -46,6 +46,8 @@ export interface ServiceOrder {
   createdAt: string;
   updatedAt?: string;
   closedAt?: string | null;
+  displayId: string;
+  discountPercent: number;
 }
 
 export interface Settings {

@@ -108,6 +108,8 @@ export function ServiceOrders() {
   // Estados de Edição Temporários
   const [editStatus, setEditStatus] = useState<OSStatus>("Orçamento");
   const [editDescription, setEditDescription] = useState("");
+  const [editDiscount, setEditDiscount] = useState(0);
+  const [editDiscountInput, setEditDiscountInput] = useState("0");
 
   // Estado para busca de itens no estoque
   const [inventorySearch, setInventorySearch] = useState("");
@@ -126,7 +128,7 @@ export function ServiceOrders() {
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesSearch =
-        order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.displayId.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.customerName && order.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
         order.equipment.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -162,6 +164,8 @@ export function ServiceOrders() {
     setSelectedOS(order);
     setEditStatus(order.status);
     setEditDescription(order.description);
+    setEditDiscount(order.discountPercent);
+    setEditDiscountInput(String(order.discountPercent));
     const items = await fetchOSItems(order.id);
     setOsItems(items);
     setIsEditOpen(true);
@@ -191,6 +195,7 @@ export function ServiceOrders() {
     if (!selectedOS) return;
     try {
       const closedAt = editStatus === "Finalizada" ? new Date().toISOString() : null;
+      const discountVal = Math.max(0, Math.min(100, parseInt(editDiscountInput) || 0));
       await invoke("update_service_order", {
         id: selectedOS.id,
         customerId: selectedOS.customerId,
@@ -202,9 +207,11 @@ export function ServiceOrders() {
         status: editStatus,
         totalPrice: selectedOS.totalPrice || null,
         signaturePath: selectedOS.signaturePath || null,
-        closedAt
+        closedAt,
+        discountPercent: discountVal
       });
       await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["service-order"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
       alert("Alterações salvas com sucesso!");
       setIsEditOpen(false);
@@ -309,7 +316,7 @@ export function ServiceOrders() {
                   filteredOrders.map((order) => (
                     <TableRow key={order.id} className="group transition-colors hover:bg-muted/50">
                       <TableCell className="font-mono text-xs font-bold">
-                        {order.id}
+                        {order.displayId || order.id.slice(0, 8)}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
@@ -333,7 +340,9 @@ export function ServiceOrders() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {order.totalPrice ? formatCurrency(order.totalPrice) : formatCurrency(0)}
+                        {order.discountPercent > 0
+                          ? <><span className="text-xs line-through text-muted-foreground mr-1">{formatCurrency(order.totalPrice || 0)}</span> {formatCurrency((order.totalPrice || 0) * (1 - order.discountPercent / 100))}</>
+                          : formatCurrency(order.totalPrice || 0)}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -617,9 +626,40 @@ export function ServiceOrders() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-right text-sm font-bold">
-                Total: {formatCurrency(osItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0))}
-              </p>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs font-semibold uppercase">Desconto</Label>
+                  <Input
+                    type="number"
+                    value={editDiscountInput}
+                    onChange={(e) => setEditDiscountInput(e.target.value)}
+                    onBlur={() => {
+                      const n = Math.max(0, Math.min(100, parseInt(editDiscountInput) || 0));
+                      setEditDiscount(n);
+                      setEditDiscountInput(String(n));
+                    }}
+                    className="w-20 h-8 text-sm"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+                <div className="text-right">
+                  {editDiscount > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs line-through text-muted-foreground">
+                        {formatCurrency(osItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0))}
+                      </span>
+                      <span className="text-sm font-bold text-primary">
+                        {formatCurrency(osItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0) * (1 - editDiscount / 100))}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-bold">
+                      Total: {formatCurrency(osItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0))}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

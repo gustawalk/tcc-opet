@@ -15,13 +15,15 @@ pub fn create_service_order(
     equipment: String,
     imei: Option<String>,
     description: String,
+    discount_percent: Option<f64>,
 ) -> Result<String, String> {
     let mut order = ServiceOrder::new(customer_id, equipment, description);
     order.customer_name = customer_name;
     order.user_id = user_id;
     order.imei = imei;
+    order.discount_percent = discount_percent.unwrap_or(0.0);
     
-    ServiceOrderRepository::create(&order).map_err(|e: rusqlite::Error| e.to_string())?;
+    ServiceOrderRepository::create(&mut order).map_err(|e: rusqlite::Error| e.to_string())?;
     Ok(order.id)
 }
 
@@ -54,6 +56,7 @@ pub fn update_service_order(
     total_price: Option<f64>,
     signature_path: Option<String>,
     closed_at: Option<String>,
+    discount_percent: Option<f64>,
 ) -> Result<(), String> {
     let mut order = ServiceOrderRepository::get_by_id(&id)
         .map_err(|e: rusqlite::Error| e.to_string())?
@@ -69,6 +72,7 @@ pub fn update_service_order(
     order.total_price = total_price;
     order.signature_path = signature_path;
     order.closed_at = closed_at;
+    order.discount_percent = discount_percent.unwrap_or(0.0);
     order.updated_at = Some(chrono::Utc::now().to_rfc3339());
 
     ServiceOrderRepository::update(&order).map_err(|e: rusqlite::Error| e.to_string())

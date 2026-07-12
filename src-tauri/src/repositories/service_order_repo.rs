@@ -1,7 +1,7 @@
 use crate::database::get_db;
 use crate::models::service_order::ServiceOrder;
 use chrono::Utc;
-use rusqlite::{params, Result};
+use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
@@ -178,12 +178,22 @@ impl ServiceOrderRepository {
         Ok(())
     }
 
-    pub fn create(order: &ServiceOrder) -> Result<()> {
+    fn next_display_id(conn: &Connection) -> Result<String> {
+        let next_num: i32 = conn.query_row(
+            "SELECT COALESCE(MAX(CAST(SUBSTR(display_id, 4) AS INTEGER)), 0) + 1 FROM service_orders",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(format!("OS-{:06}", next_num))
+    }
+
+    pub fn create(order: &mut ServiceOrder) -> Result<()> {
         let conn = get_db()?;
+        order.display_id = Self::next_display_id(&conn)?;
 
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at, display_id, discount_percent) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 order.id,
                 order.customer_id,
@@ -197,7 +207,9 @@ impl ServiceOrderRepository {
                 order.signature_path,
                 order.created_at,
                 order.updated_at,
-                order.closed_at
+                order.closed_at,
+                order.display_id,
+                order.discount_percent
             ],
         )?;
         Ok(())
@@ -207,7 +219,7 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              WHERE so.id = ?1"
@@ -227,6 +239,8 @@ impl ServiceOrderRepository {
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
                 closed_at: row.get(12)?,
+                display_id: row.get(13)?,
+                discount_percent: row.get(14)?,
             })
         })?;
 
@@ -238,7 +252,7 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              WHERE so.deleted_at IS NULL
@@ -259,6 +273,8 @@ impl ServiceOrderRepository {
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
                 closed_at: row.get(12)?,
+                display_id: row.get(13)?,
+                discount_percent: row.get(14)?,
             })
         })?;
 
@@ -273,7 +289,7 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at 
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              WHERE so.customer_id = ?1 AND so.deleted_at IS NULL"
@@ -293,6 +309,8 @@ impl ServiceOrderRepository {
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
                 closed_at: row.get(12)?,
+                display_id: row.get(13)?,
+                discount_percent: row.get(14)?,
             })
         })?;
 
@@ -308,8 +326,8 @@ impl ServiceOrderRepository {
 
         conn.execute(
             "UPDATE service_orders 
-             SET customer_id = ?1, customer_name = ?2, user_id = ?3, equipment = ?4, imei = ?5, description = ?6, status = ?7, total_price = ?8, signature_path = ?9, updated_at = ?10, closed_at = ?11
-             WHERE id = ?12",
+             SET customer_id = ?1, customer_name = ?2, user_id = ?3, equipment = ?4, imei = ?5, description = ?6, status = ?7, total_price = ?8, signature_path = ?9, updated_at = ?10, closed_at = ?11, discount_percent = ?12
+             WHERE id = ?13",
             params![
                 order.customer_id,
                 order.customer_name,
@@ -322,6 +340,7 @@ impl ServiceOrderRepository {
                 order.signature_path,
                 Utc::now().to_rfc3339(),
                 order.closed_at,
+                order.discount_percent,
                 order.id
             ],
         )?;

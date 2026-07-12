@@ -4,7 +4,6 @@ import {
   Package,
   Wrench,
   Settings,
-  Search,
   LogOut,
   ClipboardList,
   Plus,
@@ -25,8 +24,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { LogoIcon } from "@/components/LogoIcon";
 
 const menuItems = [
@@ -93,15 +90,6 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
           <header className="h-16 flex items-center justify-between px-6 border-b bg-background sticky top-0 z-10">
             <div className="flex items-center gap-4">
               <SidebarTrigger />
-              <Separator orientation="vertical" className="h-4" />
-              <div className="hidden md:flex relative max-w-sm">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Buscar OS ou Cliente..."
-                  className="pl-9 h-9 w-[300px] lg:w-[400px]"
-                />
-              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>

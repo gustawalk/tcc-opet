@@ -46,6 +46,7 @@ import {
 import { ServiceOrder, OSStatus, InventoryItem, OSChecklist } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
+import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
 import {
   Tabs,
   TabsList,
@@ -384,134 +385,17 @@ export function ServiceOrders() {
         </Card>
       </div>
 
-      {/* SHEET DE DETALHES (VIEW) */}
-      <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
-            <div className="flex justify-between items-start pt-4">
-              <div className="space-y-1">
-                <SheetTitle className="text-2xl font-bold flex items-center gap-2">
-                  <Wrench className="h-6 w-6 text-primary" /> {selectedOS?.id}
-                </SheetTitle>
-                <SheetDescription>
-                  Detalhamento completo da ordem de serviço.
-                </SheetDescription>
-              </div>
-              {selectedOS && getStatusBadge(selectedOS.status)}
-            </div>
-          </SheetHeader>
-
-          <div className="mt-8 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground font-semibold uppercase">Cliente</p>
-                <p className="text-sm font-medium flex items-center gap-1.5">
-                  <User className="h-4 w-4" /> {selectedOS?.customerName}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground font-semibold uppercase">Equipamento</p>
-                <p className="text-sm font-medium flex items-center gap-1.5">
-                  <Smartphone className="h-4 w-4" /> {selectedOS?.equipment}
-                </p>
-              </div>
-              {selectedOS?.imei && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground font-semibold uppercase">IMEI / Serial</p>
-                  <p className="text-sm font-medium flex items-center gap-1.5">
-                    <Smartphone className="h-4 w-4 text-primary" /> {selectedOS.imei}
-                  </p>
-                </div>
-              )}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground font-semibold uppercase">Abertura</p>
-                <p className="text-sm font-medium flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4" /> {selectedOS && new Date(selectedOS.createdAt).toLocaleDateString('pt-BR')}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground font-semibold uppercase">Total Previsto</p>
-                <p className="text-sm font-bold text-primary">
-                  {formatCurrency(selectedOS?.totalPrice || 0)}
-                </p>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Checklist View */}
-            {selectedOS?.checklist && (
-              <>
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground font-semibold uppercase flex items-center gap-2">
-                    <ClipboardCheck className="h-4 w-4" /> {selectedOS.checklist.title}
-                  </p>
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 border rounded-md p-3 bg-muted/20">
-                    {selectedOS.checklist.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        {item.checked ? (
-                          <CheckSquare className="h-4 w-4 text-primary" />
-                        ) : (
-                          <div className="h-4 w-4 border border-muted-foreground rounded-sm" />
-                        )}
-                        <span className={`text-xs ${item.checked ? "font-medium" : "text-muted-foreground"}`}>
-                          {item.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Separator />
-              </>
-            )}
-
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground font-semibold uppercase">Relato / Problema</p>
-              <div className="p-3 bg-muted/50 rounded-md border text-sm">
-                {selectedOS?.description}
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <p className="text-xs text-muted-foreground font-semibold uppercase">Peças & Mão de Obra</p>
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/50">
-                    <TableRow>
-                      <TableHead className="h-8 text-[10px]">Item</TableHead>
-                      <TableHead className="h-8 text-center text-[10px]">Qtd</TableHead>
-                      <TableHead className="h-8 text-right text-[10px]">Valor</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {osItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="py-2 text-xs font-medium">{item.inventoryItemName}</TableCell>
-                        <TableCell className="py-2 text-center text-xs">{item.quantity}</TableCell>
-                        <TableCell className="py-2 text-right text-xs">{formatCurrency(item.unitPrice * item.quantity)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </div>
-
-          <SheetFooter className="mt-8">
-            <Button variant="default" className="w-full gap-2" onClick={() => console.log("Gerando PDF com Checklist...")}>
-              Gerar PDF da OS
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <ServiceOrderDetailSheet
+        orderId={selectedOS?.id ?? null}
+        open={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+      />
 
       {/* SHEET DE EDIÇÃO (EDIT) */}
       <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
         <SheetContent className="sm:max-w-xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Editar OS {selectedOS?.id}</SheetTitle>
+            <SheetTitle>Editar - {selectedOS?.displayId || selectedOS?.id.slice(0, 8)}</SheetTitle>
             <SheetDescription>
               Atualize o status, descrição ou gerencie os itens desta OS.
             </SheetDescription>

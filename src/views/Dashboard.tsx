@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardData } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
+import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
 
 const fetchDashboardData = async (): Promise<DashboardData> => {
   return await invoke<DashboardData>("get_dashboard_data");
@@ -35,6 +37,7 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard-data"],
     queryFn: fetchDashboardData,
@@ -143,7 +146,7 @@ export function Dashboard() {
               </TableHeader>
               <TableBody>
                 {recentOrders.map((os) => (
-                  <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate("/os")}>
+                  <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setSelectedOrderId(os.id)}>
                     <TableCell className="font-medium">{os.displayId || os.id.slice(0, 8)}</TableCell>
                     <TableCell>{os.customerName}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{os.equipment}</TableCell>
@@ -225,6 +228,11 @@ export function Dashboard() {
           </Card>
         </div>
       </div>
+      <ServiceOrderDetailSheet
+        orderId={selectedOrderId}
+        open={!!selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+      />
     </div>
   );
 }

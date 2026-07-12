@@ -38,6 +38,8 @@ pub struct RecentOS {
     pub total_price: f64,
     #[serde(rename = "displayId")]
     pub display_id: String,
+    #[serde(rename = "discountPercent")]
+    pub discount_percent: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,7 +131,7 @@ impl DashboardRepository {
 
         // 3. Get Recent Orders
         let mut stmt = conn.prepare(
-            "SELECT so.id, c.name, so.equipment, so.status, so.created_at, COALESCE(so.total_price, 0.0), so.display_id
+            "SELECT so.id, c.name, so.equipment, so.status, so.created_at, COALESCE(so.total_price, 0.0), so.display_id, COALESCE(so.discount_percent, 0.0)
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              ORDER BY so.created_at DESC LIMIT 4"
@@ -143,6 +145,7 @@ impl DashboardRepository {
                 created_at: row.get(4)?,
                 total_price: row.get(5)?,
                 display_id: row.get(6)?,
+                discount_percent: row.get(7)?,
             })
         })?.collect::<Result<Vec<_>, _>>()?;
 

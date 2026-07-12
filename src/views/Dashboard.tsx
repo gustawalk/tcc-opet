@@ -159,7 +159,11 @@ export function Dashboard() {
                         {os.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(os.totalPrice)}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {os.discountPercent > 0
+                        ? <><span className="text-xs line-through text-muted-foreground mr-1">{formatCurrency(os.totalPrice)}</span> {formatCurrency(os.totalPrice * (1 - os.discountPercent / 100))}</>
+                        : formatCurrency(os.totalPrice)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

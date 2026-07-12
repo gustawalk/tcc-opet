@@ -92,6 +92,7 @@ export interface RecentOS {
   createdAt: string;
   totalPrice: number;
   displayId: string;
+  discountPercent: number;
 }
 
 export interface InventoryMovement {

@@ -91,6 +91,7 @@ export interface RecentOS {
   status: OSStatus;
   createdAt: string;
   totalPrice: number;
+  displayId: string;
 }
 
 export interface InventoryMovement {

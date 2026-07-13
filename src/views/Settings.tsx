@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Settings as SettingsType } from "@/lib/types";
+import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
 // Mock para configurações iniciais
 const initialSettings: SettingsType = {
@@ -31,8 +32,16 @@ const initialSettings: SettingsType = {
 
 export function Settings() {
   const [settings, setSettings] = useState<SettingsType>(initialSettings);
+  const [errors, setErrors] = useState<ValidationErrors>({});
 
   const handleSave = () => {
+    const result = settingsSchema.safeParse(settings);
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     console.log("Ação: Salvar configurações do sistema", settings);
     alert("Configurações salvas com sucesso!");
   };
@@ -90,16 +99,18 @@ export function Settings() {
                   <Input 
                     id="name" 
                     value={settings.companyName} 
-                    onChange={(e) => setSettings({...settings, companyName: e.target.value})}
+                    onChange={(e) => { setSettings({...settings, companyName: e.target.value}); setErrors(clearFieldError(errors, "companyName")); }}
                   />
+                  {errors.companyName && <p className="text-xs text-destructive">{errors.companyName}</p>}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="cnpj">CNPJ</Label>
                   <Input 
                     id="cnpj" 
                     value={settings.cnpj} 
-                    onChange={(e) => setSettings({...settings, cnpj: e.target.value})}
+                    onChange={(e) => { setSettings({...settings, cnpj: e.target.value}); setErrors(clearFieldError(errors, "cnpj")); }}
                   />
+                  {errors.cnpj && <p className="text-xs text-destructive">{errors.cnpj}</p>}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="address">Endereço Completo</Label>
@@ -109,9 +120,10 @@ export function Settings() {
                       id="address" 
                       className="pl-9"
                       value={settings.address} 
-                      onChange={(e) => setSettings({...settings, address: e.target.value})}
+                      onChange={(e) => { setSettings({...settings, address: e.target.value}); setErrors(clearFieldError(errors, "address")); }}
                     />
                   </div>
+                  {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}
                 </div>
               </div>
             </div>

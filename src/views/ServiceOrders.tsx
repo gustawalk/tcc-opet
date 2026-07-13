@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { editServiceOrderSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
 // Estendendo o tipo ServiceOrder para incluir checklist opcional para os mocks
 interface ServiceOrderWithChecklist extends ServiceOrder {
@@ -108,6 +109,7 @@ export function ServiceOrders() {
   const [editDescription, setEditDescription] = useState("");
   const [editDiscount, setEditDiscount] = useState(0);
   const [editDiscountInput, setEditDiscountInput] = useState("0");
+  const [editErrors, setEditErrors] = useState<ValidationErrors>({});
 
   // Estado para busca de itens no estoque
   const [inventorySearch, setInventorySearch] = useState("");
@@ -195,9 +197,16 @@ export function ServiceOrders() {
 
   const handleSaveEdit = async () => {
     if (!selectedOS) return;
+    const discountVal = Math.max(0, Math.min(100, parseInt(editDiscountInput) || 0));
+    const result = editServiceOrderSchema.safeParse({ description: editDescription, discount: discountVal });
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setEditErrors(fieldErrors);
+      return;
+    }
+    setEditErrors({});
     try {
       const closedAt = editStatus === "Finalizada" ? new Date().toISOString() : null;
-      const discountVal = Math.max(0, Math.min(100, parseInt(editDiscountInput) || 0));
       await invoke("update_service_order", {
         id: selectedOS.id,
         customerId: selectedOS.customerId,
@@ -427,9 +436,10 @@ export function ServiceOrders() {
               <Textarea
                 id="edit-desc"
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
+                onChange={(e) => { setEditDescription(e.target.value); setEditErrors(clearFieldError(editErrors, "description")); }}
                 className="min-h-[100px] text-sm"
               />
+              {editErrors.description && <p className="text-xs text-destructive">{editErrors.description}</p>}
             </div>
 
             <Separator />

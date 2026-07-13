@@ -14,7 +14,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'tech';
+  phone?: string;
+  cpf?: string;
+  joinDate?: string;
   createdAt?: string;
   deletedAt?: string | null;
 }

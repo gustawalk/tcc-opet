@@ -63,6 +63,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { inventoryItemSchema, quantitySchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
@@ -115,6 +116,9 @@ export function Inventory() {
     costPrice: 0,
     salePrice: 0
   });
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [restockErrors, setRestockErrors] = useState<ValidationErrors>({});
+  const [removeErrors, setRemoveErrors] = useState<ValidationErrors>({});
 
   // Restock state
   const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
@@ -211,6 +215,7 @@ export function Inventory() {
 
   const handleAddItem = (type: "part" | "service" = "part") => {
     setSelectedItem(null);
+    setErrors({});
     setFormData({
       name: "",
       description: "",
@@ -224,6 +229,7 @@ export function Inventory() {
 
   const handleEditItem = (item: InventoryItem) => {
     setSelectedItem(item);
+    setErrors({});
     setFormData({
       name: item.name,
       description: item.description,
@@ -236,6 +242,13 @@ export function Inventory() {
   };
 
   const handleSave = async () => {
+    const result = inventoryItemSchema.safeParse(formData);
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     if (selectedItem) {
       await updateMutation.mutateAsync({
         ...selectedItem,
@@ -546,8 +559,15 @@ export function Inventory() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRestockItem(null)}>Cancelar</Button>
+            {restockErrors.quantity && <p className="text-xs text-destructive">{restockErrors.quantity}</p>}
             <Button
-              onClick={() => restockItem && restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity })}
+              onClick={() => {
+                const r = quantitySchema.safeParse({ quantity: restockQuantity });
+                const fe = parseErrors(r);
+                if (fe) { setRestockErrors(fe); return; }
+                setRestockErrors({});
+                restockItem && restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity });
+              }}
               disabled={restockMutation.isPending}
               className="gap-2"
             >
@@ -580,8 +600,15 @@ export function Inventory() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveItem(null)}>Cancelar</Button>
+            {removeErrors.quantity && <p className="text-xs text-destructive">{removeErrors.quantity}</p>}
             <Button
-              onClick={() => removeItem && removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity })}
+              onClick={() => {
+                const r = quantitySchema.safeParse({ quantity: removeQuantity });
+                const fe = parseErrors(r);
+                if (fe) { setRemoveErrors(fe); return; }
+                setRemoveErrors({});
+                removeItem && removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity });
+              }}
               disabled={removeStockMutation.isPending}
               variant="destructive"
               className="gap-2"
@@ -662,8 +689,9 @@ export function Inventory() {
                 id="name"
                 value={formData.name}
                 placeholder={formData.type === "part" ? "Ex: Tela iPhone 11" : "Ex: Mão de obra Drone"}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setErrors(clearFieldError(errors, "name")); }}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Descrição</Label>
@@ -671,8 +699,9 @@ export function Inventory() {
                 id="description"
                 value={formData.description}
                 placeholder="Ex: Detalhes adicionais..."
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(clearFieldError(errors, "description")); }}
               />
+              {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
             </div>
 
             <Separator />
@@ -687,9 +716,10 @@ export function Inventory() {
                     type="number"
                     className="pl-9"
                     value={formData.minQuantity}
-                    onChange={(e) => setFormData({ ...formData, minQuantity: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => { setFormData({ ...formData, minQuantity: parseInt(e.target.value) || 0 }); setErrors(clearFieldError(errors, "minQuantity")); }}
                   />
                 </div>
+                {errors.minQuantity && <p className="text-xs text-destructive">{errors.minQuantity}</p>}
               </div>
             )}
 
@@ -704,9 +734,10 @@ export function Inventory() {
                     step="0.01"
                     className="pl-9"
                     value={formData.costPrice}
-                    onChange={(e) => setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => { setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 }); setErrors(clearFieldError(errors, "costPrice")); }}
                   />
                 </div>
+                {errors.costPrice && <p className="text-xs text-destructive">{errors.costPrice}</p>}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="sale">Preço de Venda</Label>
@@ -718,7 +749,7 @@ export function Inventory() {
                     step="0.01"
                     className="pl-9"
                     value={formData.salePrice}
-                    onChange={(e) => setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => { setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 }); setErrors(clearFieldError(errors, "salePrice")); }}
                   />
                 </div>
               </div>

@@ -5,14 +5,14 @@ import {
   UserPlus, 
   Search, 
   MoreVertical, 
-  ShieldCheck, 
-  ShieldAlert, 
   Edit, 
   Trash2,
   Mail,
   User,
-  Key,
-  Save
+  Save,
+  Calendar,
+  Phone,
+  IdCard,
 } from "lucide-react";
 import { 
   Card, 
@@ -41,7 +41,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { User as UserType } from "@/lib/types";
-import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
@@ -50,6 +49,8 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
+import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { formatBRPhone, formatCPF, formatDate } from "@/lib/formatters";
 
 const fetchUsers = async (): Promise<UserType[]> => {
   return await invoke<UserType[]>("get_users");
@@ -59,13 +60,15 @@ export function Users() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const [errors, setErrors] = useState<ValidationErrors>({});
   const queryClient = useQueryClient();
   
-  // Form State
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    role: "tech" as "admin" | "tech",
+    phone: "",
+    cpf: "",
+    joinDate: new Date().toISOString().split("T")[0],
   });
 
   const { data: users = [], isLoading } = useQuery({
@@ -74,7 +77,7 @@ export function Users() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; email: string; role: string }) => {
+    mutationFn: async (data: { name: string; email: string; phone?: string; cpf?: string; joinDate?: string }) => {
       return await invoke("create_user", data);
     },
     onSuccess: () => {
@@ -87,7 +90,7 @@ export function Users() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; email: string; role: string }) => {
+    mutationFn: async (data: { id: string; name: string; email: string; phone?: string; cpf?: string; joinDate?: string }) => {
       return await invoke("update_user", data);
     },
     onSuccess: () => {
@@ -111,20 +114,6 @@ export function Users() {
     },
   });
 
-  const resetPasswordMutation = useMutation({
-    mutationFn: async (data: { id: string; password: string | null }) => {
-      return await invoke("reset_user_password", data);
-    },
-    onSuccess: (_data, variables) => {
-      const user = users.find(u => u.id === variables.id);
-      alert(`Senha do usuário ${user?.name || ''} foi redefinida para "123456"`);
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
-    onError: (err) => {
-      alert(`Erro ao resetar senha: ${err}`);
-    },
-  });
-
   const filteredUsers = useMemo(() => {
     return users.filter(user => 
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -134,21 +123,38 @@ export function Users() {
 
   const handleAddUser = () => {
     setSelectedUser(null);
-    setFormData({ name: "", email: "", role: "tech" });
+    setErrors({});
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      cpf: "",
+      joinDate: new Date().toISOString().split("T")[0],
+    });
     setIsSheetOpen(true);
   };
 
   const handleEditUser = (user: UserType) => {
     setSelectedUser(user);
+    setErrors({});
     setFormData({ 
       name: user.name, 
       email: user.email, 
-      role: user.role,
+      phone: user.phone || "",
+      cpf: user.cpf || "",
+      joinDate: user.joinDate || new Date().toISOString().split("T")[0],
     });
     setIsSheetOpen(true);
   };
 
   const handleSave = () => {
+    const result = userSchema.safeParse(formData);
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     if (selectedUser) {
       updateMutation.mutate({ id: selectedUser.id, ...formData });
     } else {
@@ -162,21 +168,22 @@ export function Users() {
     }
   };
 
-  const handleResetPassword = (user: UserType) => {
-    resetPasswordMutation.mutate({ id: user.id, password: null });
+  const updateField = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+    setErrors(clearFieldError(errors, field));
   };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Usuários</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Funcionários</h2>
           <p className="text-muted-foreground mt-1">
-            Controle de acesso à plataforma para técnicos e administradores.
+            Gerencie os colaboradores da sua assistência técnica.
           </p>
         </div>
         <Button onClick={handleAddUser} className="gap-2">
-          <UserPlus className="h-4 w-4" /> Novo Usuário
+          <UserPlus className="h-4 w-4" /> Novo Funcionário
         </Button>
       </div>
 
@@ -185,12 +192,12 @@ export function Users() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <CardTitle>Equipe</CardTitle>
-              <CardDescription>Gerencie quem pode acessar o sistema e suas permissões.</CardDescription>
+              <CardDescription>Lista de todos os colaboradores cadastrados.</CardDescription>
             </div>
             <div className="relative w-full md:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar usuário..."
+                placeholder="Buscar funcionário..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -204,8 +211,8 @@ export function Users() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Função</TableHead>
-                  <TableHead className="hidden md:table-cell">Cadastrado em</TableHead>
+                  <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                  <TableHead className="hidden md:table-cell">Data Entrada</TableHead>
                   <TableHead className="text-right w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -214,7 +221,7 @@ export function Users() {
                   Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i}>
                       <TableCell><div className="h-10 w-48 bg-muted animate-pulse rounded" /></TableCell>
-                      <TableCell><div className="h-5 w-24 bg-muted animate-pulse rounded" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><div className="h-5 w-24 bg-muted animate-pulse rounded" /></TableCell>
                       <TableCell className="hidden md:table-cell"><div className="h-5 w-32 bg-muted animate-pulse rounded" /></TableCell>
                       <TableCell><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
                     </TableRow>
@@ -234,19 +241,11 @@ export function Users() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {user.role === 'admin' ? (
-                          <Badge variant="default" className="gap-1.5">
-                            <ShieldCheck className="h-3 w-3" /> Administrador
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="gap-1.5">
-                            <ShieldAlert className="h-3 w-3" /> Técnico
-                          </Badge>
-                        )}
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                        {user.phone || "—"}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {new Date(user.createdAt || '').toLocaleDateString('pt-BR')}
+                        {user.joinDate ? formatDate(user.joinDate) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -259,9 +258,6 @@ export function Users() {
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                             <DropdownMenuItem onClick={() => handleEditUser(user)}>
                               <Edit className="mr-2 h-4 w-4" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleResetPassword(user)}>
-                              <Key className="mr-2 h-4 w-4" /> Resetar Senha
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -278,7 +274,7 @@ export function Users() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                      Nenhum usuário encontrado.
+                      Nenhum funcionário encontrado.
                     </TableCell>
                   </TableRow>
                 )}
@@ -288,13 +284,12 @@ export function Users() {
         </CardContent>
       </Card>
 
-      {/* Sheet para Cadastro/Edição */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>{selectedUser ? "Editar Usuário" : "Novo Usuário"}</SheetTitle>
+            <SheetTitle>{selectedUser ? "Editar Funcionário" : "Novo Funcionário"}</SheetTitle>
             <SheetDescription>
-              Preencha os dados de acesso e permissão do colaborador.
+              Preencha os dados do colaborador.
             </SheetDescription>
           </SheetHeader>
 
@@ -304,8 +299,9 @@ export function Users() {
               <Input 
                 id="name" 
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => updateField("name", e.target.value)}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">E-mail</Label>
@@ -313,26 +309,47 @@ export function Users() {
                 id="email" 
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                onChange={(e) => updateField("email", e.target.value)}
               />
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>
             <div className="grid gap-2">
-              <Label>Função / Permissão</Label>
-              <div className="flex gap-2">
-                <Button 
-                  variant={formData.role === 'admin' ? "default" : "outline"}
-                  className="flex-1 gap-2"
-                  onClick={() => setFormData({...formData, role: 'admin'})}
-                >
-                  <ShieldCheck className="h-4 w-4" /> Admin
-                </Button>
-                <Button 
-                  variant={formData.role === 'tech' ? "default" : "outline"}
-                  className="flex-1 gap-2"
-                  onClick={() => setFormData({...formData, role: 'tech'})}
-                >
-                  <ShieldAlert className="h-4 w-4" /> Técnico
-                </Button>
+              <Label htmlFor="phone">Telefone</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="phone"
+                  className="pl-9"
+                  value={formData.phone}
+                  onChange={(e) => updateField("phone", formatBRPhone(e.target.value))}
+                  placeholder="(41) 99999-8888"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cpf">CPF</Label>
+              <div className="relative">
+                <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="cpf"
+                  className="pl-9"
+                  value={formData.cpf}
+                  onChange={(e) => updateField("cpf", formatCPF(e.target.value))}
+                  placeholder="000.000.000-00"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="joinDate">Data de Entrada</Label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="joinDate"
+                  type="date"
+                  className="pl-9"
+                  value={formData.joinDate}
+                  onChange={(e) => updateField("joinDate", e.target.value)}
+                />
               </div>
             </div>
           </div>
@@ -342,7 +359,7 @@ export function Users() {
               Cancelar
             </Button>
             <Button className="w-full gap-2" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
-              <Save className="h-4 w-4" /> {createMutation.isPending || updateMutation.isPending ? "Salvando..." : selectedUser ? "Salvar Alterações" : "Criar Usuário"}
+              <Save className="h-4 w-4" /> {createMutation.isPending || updateMutation.isPending ? "Salvando..." : selectedUser ? "Salvar Alterações" : "Criar Funcionário"}
             </Button>
           </SheetFooter>
         </SheetContent>

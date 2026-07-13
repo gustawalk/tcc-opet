@@ -10,14 +10,15 @@ impl UserRepository {
         let conn = get_db()?;
 
         conn.execute(
-            "INSERT INTO users (id, name, email, password, role, created_at, deleted_at) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO users (id, name, email, phone, cpf, join_date, created_at, deleted_at) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 user.id,
                 user.name,
                 user.email,
-                user.password,
-                user.role,
+                user.phone,
+                user.cpf,
+                user.join_date,
                 user.created_at,
                 user.deleted_at
             ],
@@ -29,7 +30,7 @@ impl UserRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, email, password, role, created_at, deleted_at 
+            "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE id = ?1 AND deleted_at IS NULL",
         )?;
         let mut rows = stmt.query_map(params![id], |row: &rusqlite::Row| {
@@ -37,10 +38,11 @@ impl UserRepository {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 email: row.get(2)?,
-                password: row.get(3)?,
-                role: row.get(4)?,
-                created_at: row.get(5)?,
-                deleted_at: row.get(6)?,
+                phone: row.get(3)?,
+                cpf: row.get(4)?,
+                join_date: row.get(5)?,
+                created_at: row.get(6)?,
+                deleted_at: row.get(7)?,
             })
         })?;
 
@@ -52,7 +54,7 @@ impl UserRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, email, password, role, created_at, deleted_at 
+            "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE email = ?1 AND deleted_at IS NULL",
         )?;
         let mut rows = stmt.query_map(params![email], |row: &rusqlite::Row| {
@@ -60,10 +62,11 @@ impl UserRepository {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 email: row.get(2)?,
-                password: row.get(3)?,
-                role: row.get(4)?,
-                created_at: row.get(5)?,
-                deleted_at: row.get(6)?,
+                phone: row.get(3)?,
+                cpf: row.get(4)?,
+                join_date: row.get(5)?,
+                created_at: row.get(6)?,
+                deleted_at: row.get(7)?,
             })
         })?;
 
@@ -75,7 +78,7 @@ impl UserRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, email, password, role, created_at, deleted_at 
+            "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE deleted_at IS NULL",
         )?;
         let rows = stmt.query_map(params![], |row: &rusqlite::Row| {
@@ -83,10 +86,11 @@ impl UserRepository {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 email: row.get(2)?,
-                password: row.get(3)?,
-                role: row.get(4)?,
-                created_at: row.get(5)?,
-                deleted_at: row.get(6)?,
+                phone: row.get(3)?,
+                cpf: row.get(4)?,
+                join_date: row.get(5)?,
+                created_at: row.get(6)?,
+                deleted_at: row.get(7)?,
             })
         })?;
 
@@ -102,12 +106,14 @@ impl UserRepository {
 
         conn.execute(
             "UPDATE users 
-             SET name = ?1, email = ?2, role = ?3, updated_at = ?4
-             WHERE id = ?5",
+             SET name = ?1, email = ?2, phone = ?3, cpf = ?4, join_date = ?5, updated_at = ?6
+             WHERE id = ?7",
             params![
                 user.name,
                 user.email,
-                user.role,
+                user.phone,
+                user.cpf,
+                user.join_date,
                 Utc::now().to_rfc3339(),
                 user.id
             ],
@@ -121,15 +127,6 @@ impl UserRepository {
         conn.execute(
             "UPDATE users SET deleted_at = ?1 WHERE id = ?2",
             params![Utc::now().to_rfc3339(), id],
-        )?;
-        Ok(())
-    }
-
-    pub fn reset_password(id: &str, new_password: &str) -> Result<()> {
-        let conn = get_db()?;
-        conn.execute(
-            "UPDATE users SET password = ?1, updated_at = ?2 WHERE id = ?3",
-            params![new_password, Utc::now().to_rfc3339(), id],
         )?;
         Ok(())
     }

@@ -56,7 +56,8 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Customer, ServiceOrder } from "@/lib/types";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatBRPhone } from "@/lib/formatters";
+import { customerSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -73,25 +74,15 @@ const initialFormData = {
   address: "",
 };
 
-// Utilitário para formatar telefone BR
-const formatBRPhone = (value: string) => {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
-};
-
 export function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
-
-  // Estados para o Sheet de Cadastro/Edição
   const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isInternational, setIsInternational] = useState<boolean>(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [formData, setFormData] = useState(initialFormData);
+  const [errors, setErrors] = useState<ValidationErrors>({});
 
-  // Estados para o Sheet de Histórico de OS
   const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
@@ -106,7 +97,6 @@ export function Customers() {
     enabled: !!viewingCustomer,
   });
 
-  // Ordenação: Mais recentes primeiro
   const sortedOrders = useMemo(() => {
     return [...customerOrders].sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -124,6 +114,7 @@ export function Customers() {
   const handleAddCustomer = () => {
     setIsEditing(false);
     setSelectedCustomerId(null);
+    setErrors({});
     setFormData(initialFormData);
     setIsInternational(false);
     setIsSheetOpen(true);
@@ -132,11 +123,9 @@ export function Customers() {
   const handleEditCustomer = (customer: Customer) => {
     setIsEditing(true);
     setSelectedCustomerId(customer.id);
-
-    // Tenta detectar se é internacional (se não segue o padrão BR de dígitos)
+    setErrors({});
     const onlyDigits = customer.phone.replace(/\D/g, "");
     const isIntl = onlyDigits.length > 11 || (onlyDigits.length > 0 && onlyDigits.length < 10);
-
     setIsInternational(isIntl);
     setFormData({
       name: customer.name,
@@ -156,15 +145,26 @@ export function Customers() {
     }
   };
 
-  const handleSaveCustomer = () => {
-    // Payload contém apenas números no telefone
-    const phoneDigitsOnly = formData.phone.replace(/\D/g, "");
+  const updateField = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+    setErrors(clearFieldError(errors, field));
+  };
 
+  const handleSaveCustomer = () => {
+    const result = customerSchema.safeParse(formData);
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+
+    const phoneDigitsOnly = formData.phone.replace(/\D/g, "");
     const payload = {
       ...(isEditing ? { id: selectedCustomerId } : {}),
       ...formData,
       phone: phoneDigitsOnly,
-      is_international: isInternational, // Metadado útil
+      is_international: isInternational,
       updated_at: new Date().toISOString(),
       ...(isEditing ? {} : { createdAt: new Date().toISOString() })
     };
@@ -347,8 +347,9 @@ export function Customers() {
                 id="name"
                 placeholder="Ex: Maria Silva"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => updateField("name", e.target.value)}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>
 
             <div className="grid gap-2">
@@ -359,7 +360,7 @@ export function Customers() {
                 <div className="flex items-center gap-2">
                   <Checkbox
                     checked={isInternational}
-                    onChange={(check) => { setIsInternational(check.target.checked) }}
+                    onChange={(e) => setIsInternational(e.target.checked)}
                   />
                   <Label htmlFor="intl" className="text-xs font-normal cursor-pointer flex items-center gap-1">
                     <Globe className="h-3 w-3" /> Internacional
@@ -372,6 +373,7 @@ export function Customers() {
                 value={formData.phone}
                 onChange={handlePhoneChange}
               />
+              {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
             </div>
 
             <div className="grid gap-2">
@@ -383,8 +385,9 @@ export function Customers() {
                 type="email"
                 placeholder="cliente@email.com"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => updateField("email", e.target.value)}
               />
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>
 
             <div className="grid gap-2">
@@ -396,8 +399,9 @@ export function Customers() {
                 placeholder="Rua, número, bairro, cidade..."
                 className="min-h-[100px]"
                 value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                onChange={(e) => updateField("address", e.target.value)}
               />
+              {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}
             </div>
           </div>
 

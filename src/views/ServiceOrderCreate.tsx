@@ -30,6 +30,7 @@ import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "@/lib/formatters";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { cn } from "@/lib/utils";
+import { serviceOrderCreateSchema, newCustomerSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -79,6 +80,7 @@ export function ServiceOrderCreate() {
 
   // Estado de Serviços selecionados
   const [selectedServices, setSelectedServices] = useState<InventoryItem[]>([]);
+  const [errors, setErrors] = useState<ValidationErrors>({});
   const [serviceSearch, setServiceSearch] = useState("");
   const [showServiceList, setShowServiceList] = useState(false);
 
@@ -199,25 +201,32 @@ export function ServiceOrderCreate() {
   };
 
   const handleSave = async () => {
+    const soResult = serviceOrderCreateSchema.safeParse(formData);
+    let allErrors: ValidationErrors = {};
+
+    const soFieldErrors = parseErrors(soResult);
+    if (soFieldErrors) {
+      allErrors = { ...allErrors, ...soFieldErrors };
+    }
+
     if (!selectedCustomer) {
-      if (!customerSearch.trim()) {
-        alert("Por favor, informe o nome do cliente.");
-        return;
-      }
-      if (!formData.phone.trim()) {
-        alert("Por favor, informe o telefone do cliente.");
-        return;
-      }
-      if (!formData.email.trim()) {
-        alert("Por favor, informe o e-mail do cliente.");
-        return;
+      const customerResult = newCustomerSchema.safeParse({
+        name: customerSearch,
+        phone: formData.phone,
+        email: formData.email,
+        address: formData.address,
+      });
+      const customerFieldErrors = parseErrors(customerResult);
+      if (customerFieldErrors) {
+        allErrors = { ...allErrors, ...customerFieldErrors };
       }
     }
 
-    if (!formData.equipment) {
-      alert("Por favor, informe o equipamento.");
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
       return;
     }
+    setErrors({});
 
     try {
       let customerId: string;
@@ -336,10 +345,12 @@ export function ServiceOrderCreate() {
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
                     setShowCustomerList(true);
+                    setErrors(clearFieldError(errors, "name"));
                   }}
                   onFocus={() => setShowCustomerList(true)}
                 />
               </div>
+              {!selectedCustomer && errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
 
               {/* Lista de busca de cliente */}
               {showCustomerList && (customerSearch.length > 0 || filteredCustomers.length > 0) && (
@@ -385,9 +396,10 @@ export function ServiceOrderCreate() {
                     placeholder="(00) 00000-0000"
                     className="pl-9"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors(clearFieldError(errors, "phone")); }}
                   />
                 </div>
+                {!selectedCustomer && errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>
@@ -399,9 +411,10 @@ export function ServiceOrderCreate() {
                     placeholder="cliente@email.com"
                     className="pl-9"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors(clearFieldError(errors, "email")); }}
                   />
                 </div>
+                {!selectedCustomer && errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
               </div>
             </div>
 
@@ -414,9 +427,10 @@ export function ServiceOrderCreate() {
                   placeholder="Rua, Número, Bairro, Cidade"
                   className="pl-9"
                   value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, address: e.target.value }); setErrors(clearFieldError(errors, "address")); }}
                 />
               </div>
+              {!selectedCustomer && errors.address && <p className="text-xs text-destructive">{errors.address}</p>}
             </div>
 
             <div className="space-y-2">
@@ -430,7 +444,6 @@ export function ServiceOrderCreate() {
                 maxOptions={5}
                 getKey={(u: UserType) => u.id}
                 getLabel={(u: UserType) => u.name}
-                getSubtitle={(u: UserType) => u.role === "admin" ? "Administrador" : "Técnico"}
               />
             </div>
           </CardContent>
@@ -645,8 +658,9 @@ export function ServiceOrderCreate() {
                 id="equipment"
                 placeholder="Ex: iPhone 13 Pro Max"
                 value={formData.equipment}
-                onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, equipment: e.target.value }); setErrors(clearFieldError(errors, "equipment")); }}
               />
+              {errors.equipment && <p className="text-xs text-destructive">{errors.equipment}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="imei">IMEI / Serial (Opcional)</Label>
@@ -664,8 +678,9 @@ export function ServiceOrderCreate() {
                 placeholder="Relato do cliente..."
                 className="min-h-[100px]"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(clearFieldError(errors, "description")); }}
               />
+              {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
             </div>
           </CardContent>
           <CardFooter className="bg-muted/30 border-t flex justify-end items-center py-4">

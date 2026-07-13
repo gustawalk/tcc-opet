@@ -93,18 +93,18 @@ pub fn initialize_seed_data() -> Result<(), String> {
 
 fn seed_users(conn: &rusqlite::Connection) -> Result<(), String> {
     let users = vec![
-        ("Gustavo Admin", "admin@opet.com.br", "admin"),
-        ("João Técnico", "joao@opet.com.br", "tech"),
-        ("Maria Técnica", "maria@opet.com.br", "tech"),
+        ("Gustavo Admin", "admin@opet.com.br"),
+        ("João Técnico", "joao@opet.com.br"),
+        ("Maria Técnica", "maria@opet.com.br"),
     ];
 
     let now = Utc::now().to_rfc3339();
 
-    for (name, email, role) in users {
+    for (name, email) in users {
         conn.execute(
-            "INSERT INTO users (id, name, email, password, role, created_at, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
-            params![Uuid::new_v4().to_string(), name, email, "123456", role, now],
+            "INSERT INTO users (id, name, email, created_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, NULL)",
+            params![Uuid::new_v4().to_string(), name, email, now],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -386,14 +386,14 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
     println!("[SEED] seed_service_orders: Fetching users...");
     let mut user_stmt = conn
-        .prepare("SELECT id FROM users WHERE role = 'tech'")
+        .prepare("SELECT id FROM users WHERE deleted_at IS NULL")
         .map_err(|e| e.to_string())?;
     let users: Vec<String> = user_stmt
         .query_map([], |row| row.get(0))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<String>, _>>()
         .map_err(|e| e.to_string())?;
-    println!("[SEED] seed_service_orders: Found {} tech users", users.len());
+    println!("[SEED] seed_service_orders: Found {} users", users.len());
 
     println!("[SEED] seed_service_orders: Fetching inventory items...");
     let mut inventory_stmt = conn

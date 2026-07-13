@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChecklistTemplate } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { templateSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import {
   Sheet,
   SheetContent,
@@ -69,6 +70,7 @@ export function Templates() {
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
+  const [errors, setErrors] = useState<ValidationErrors>({});
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ["checklist-templates"],
@@ -83,6 +85,7 @@ export function Templates() {
 
   const handleAddTemplate = () => {
     setSelectedTemplate(null);
+    setErrors({});
     setTitle("");
     setItems([]);
     setNewItem("");
@@ -107,6 +110,7 @@ export function Templates() {
     if (newItem.trim()) {
       setItems([...items, newItem.trim()]);
       setNewItem("");
+      setErrors(clearFieldError(errors, "items"));
     }
   };
 
@@ -115,14 +119,13 @@ export function Templates() {
   };
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      alert("O título é obrigatório");
+    const result = templateSchema.safeParse({ title, items });
+    const fieldErrors = parseErrors(result);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
       return;
     }
-    if (items.length === 0) {
-      alert("Adicione pelo menos um item ao checklist");
-      return;
-    }
+    setErrors({});
 
     try {
       if (selectedTemplate) {
@@ -280,14 +283,16 @@ export function Templates() {
                 id="title" 
                 value={title}
                 placeholder="Ex: Checklist iPhone"
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => { setTitle(e.target.value); setErrors(clearFieldError(errors, "title")); }}
               />
+              {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
             </div>
             
             <Separator />
 
             <div className="flex flex-col gap-4 flex-1 overflow-hidden">
               <Label>Itens do Checklist</Label>
+              {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
               <div className="flex gap-2">
                 <Input 
                   placeholder="Novo item..." 

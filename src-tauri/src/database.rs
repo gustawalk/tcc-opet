@@ -86,8 +86,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL DEFAULT '123456', -- Default password for TCC
-            role TEXT NOT NULL CHECK (role IN ('admin', 'tech')),
+            phone TEXT DEFAULT '',
+            cpf TEXT DEFAULT '',
+            join_date TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             deleted_at TEXT
@@ -208,6 +209,37 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             if !err_msg.contains("duplicate column") {
                 eprintln!("[MIGRATION WARNING] Could not run migration '{}': {}", migration.trim(), err_msg);
             }
+        }
+    }
+
+    // Migration: migrate users table from old schema (password, role) to new schema (phone, cpf, join_date)
+    {
+        let has_password_col: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'password'")
+            .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+            .map(|count| count > 0)
+            .unwrap_or(false);
+
+        if has_password_col {
+            eprintln!("[MIGRATION] Migrating users table to new schema...");
+            conn.execute_batch(
+                "CREATE TABLE users_new (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    phone TEXT DEFAULT '',
+                    cpf TEXT DEFAULT '',
+                    join_date TEXT DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT,
+                    deleted_at TEXT
+                );
+                INSERT INTO users_new (id, name, email, created_at, updated_at, deleted_at)
+                    SELECT id, name, email, created_at, updated_at, deleted_at FROM users;
+                DROP TABLE users;
+                ALTER TABLE users_new RENAME TO users;"
+            ).map_err(|e| eprintln!("[MIGRATION ERROR] Failed to migrate users table: {}", e)).ok();
+            eprintln!("[MIGRATION] Users table migrated successfully.");
         }
     }
 

@@ -27,7 +27,6 @@ pub fn run() {
             commands::user_commands::get_users,
             commands::user_commands::update_user,
             commands::user_commands::delete_user,
-            commands::user_commands::reset_user_password,
             commands::inventory_commands::create_inventory_item,
             commands::inventory_commands::get_inventory_item,
             commands::inventory_commands::get_inventory_items,

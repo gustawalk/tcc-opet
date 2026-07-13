@@ -237,7 +237,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         if has_role_col {
             eprintln!("[MIGRATION] Migrating users table to new schema...");
             conn.execute_batch(
-                "DROP TABLE IF EXISTS users_new;
+                "PRAGMA foreign_keys = OFF;
+                DROP TABLE IF EXISTS users_new;
                 CREATE TABLE users_new (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -252,7 +253,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 INSERT INTO users_new (id, name, email, created_at, updated_at, deleted_at)
                     SELECT id, name, email, created_at, updated_at, deleted_at FROM users;
                 DROP TABLE users;
-                ALTER TABLE users_new RENAME TO users;"
+                ALTER TABLE users_new RENAME TO users;
+                PRAGMA foreign_keys = ON;"
             ).map_err(|e| eprintln!("[MIGRATION ERROR] Failed to migrate users table: {}", e)).ok();
             eprintln!("[MIGRATION] Users table migrated successfully.");
         }

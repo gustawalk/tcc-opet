@@ -226,15 +226,15 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
     }
 
-    // Migration: migrate users table from old schema (password, role) to new schema (phone, cpf, join_date)
+    // Migration: migrate users table from old schema (role) to new schema (phone, cpf, join_date)
     {
-        let has_password_col: bool = conn
-            .prepare("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'password'")
+        let has_role_col: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'role'")
             .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
             .map(|count| count > 0)
             .unwrap_or(false);
 
-        if has_password_col {
+        if has_role_col {
             eprintln!("[MIGRATION] Migrating users table to new schema...");
             conn.execute_batch(
                 "CREATE TABLE users_new (

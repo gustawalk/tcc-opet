@@ -35,9 +35,8 @@ const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
 };
 
-const fetchTechs = async (): Promise<UserType[]> => {
-  const users = await invoke<UserType[]>("get_users");
-  return users.filter(user => user.role === "tech");
+const fetchUsers = async (): Promise<UserType[]> => {
+  return await invoke<UserType[]>("get_users");
 };
 
 const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
@@ -112,10 +111,10 @@ export function ServiceOrderCreate() {
     queryFn: fetchCustomers,
   });
 
-  // Busca de técnicos
-  const { data: techs = [] } = useQuery({
-    queryKey: ["techs-list"],
-    queryFn: fetchTechs,
+  // Busca de usuários
+  const { data: users = [] } = useQuery({
+    queryKey: ["users"],
+    queryFn: fetchUsers,
   });
 
   // Busca de templates
@@ -284,8 +283,8 @@ export function ServiceOrderCreate() {
         });
       }
 
-      const selectedTech = techs.find(t => t.id === formData.techId);
-      alert(`Ordem de serviço criada com sucesso por ${selectedTech?.name || 'Não atribuído'}!`);
+      const selectedTech = users.find((u: UserType) => u.id === formData.techId);
+      alert(`Ordem de serviço criada com sucesso! Responsável: ${selectedTech?.name || 'Não atribuído'}.`);
       navigate("/os");
     } catch (error) {
       console.error("Erro ao criar OS:", error);
@@ -419,6 +418,21 @@ export function ServiceOrderCreate() {
                 />
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label>Responsável Técnico</Label>
+              <SearchableSelect
+                options={users}
+                value={formData.techId}
+                onSelect={(user) => setFormData({ ...formData, techId: user.id })}
+                placeholder="Selecione um responsável..."
+                searchPlaceholder="Buscar por nome..."
+                maxOptions={5}
+                getKey={(u: UserType) => u.id}
+                getLabel={(u: UserType) => u.name}
+                getSubtitle={(u: UserType) => u.role === "admin" ? "Administrador" : "Técnico"}
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -453,7 +467,7 @@ export function ServiceOrderCreate() {
                 <span className="text-muted-foreground">Técnico Resp.:</span>
                 <span className="font-medium flex items-center gap-1">
                   <ShieldCheck className="h-3 w-3 text-primary" />
-                  {techs.find(t => t.id === formData.techId)?.name || "Nenhum"}
+                  {users.find((u: UserType) => u.id === formData.techId)?.name || "Nenhum"}
                 </span>
               </div>
               <div className="flex justify-between">

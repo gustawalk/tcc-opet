@@ -148,6 +148,12 @@ export function ServiceOrderDetailSheet({ orderId, open, onClose }: ServiceOrder
                 </div>
               )}
               <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-semibold uppercase">Responsável</p>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <User className="h-4 w-4" /> {displayOrder.userName || "Não atribuído"}
+                </p>
+              </div>
+              <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">Abertura</p>
                 <p className="text-sm font-medium flex items-center gap-1.5">
                   <Calendar className="h-4 w-4" /> {new Date(displayOrder.createdAt).toLocaleDateString('pt-BR')}

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { 
   UserPlus, 
   Search, 
@@ -50,32 +51,78 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 
-// Mock para simular busca de usuários
 const fetchUsers = async (): Promise<UserType[]> => {
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return [
-    { id: "1", name: "Gustavo Admin", email: "admin@opet.com.br", role: 'admin', createdAt: "2023-01-01" },
-    { id: "2", name: "João Técnico", email: "joao@opet.com.br", role: 'tech', createdAt: "2023-02-15" },
-    { id: "3", name: "Maria Técnica", email: "maria@opet.com.br", role: 'tech', createdAt: "2023-03-20" },
-  ];
+  return await invoke<UserType[]>("get_users");
 };
 
 export function Users() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const queryClient = useQueryClient();
   
   // Form State
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     role: "tech" as "admin" | "tech",
-    password: ""
   });
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users"],
     queryFn: fetchUsers,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; email: string; role: string }) => {
+      return await invoke("create_user", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setIsSheetOpen(false);
+    },
+    onError: (err) => {
+      alert(`Erro ao criar usuário: ${err}`);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: string; name: string; email: string; role: string }) => {
+      return await invoke("update_user", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setIsSheetOpen(false);
+    },
+    onError: (err) => {
+      alert(`Erro ao atualizar usuário: ${err}`);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await invoke("delete_user", { id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) => {
+      alert(`Erro ao excluir usuário: ${err}`);
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (data: { id: string; password: string | null }) => {
+      return await invoke("reset_user_password", data);
+    },
+    onSuccess: (_data, variables) => {
+      const user = users.find(u => u.id === variables.id);
+      alert(`Senha do usuário ${user?.name || ''} foi redefinida para "123456"`);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) => {
+      alert(`Erro ao resetar senha: ${err}`);
+    },
   });
 
   const filteredUsers = useMemo(() => {
@@ -87,7 +134,7 @@ export function Users() {
 
   const handleAddUser = () => {
     setSelectedUser(null);
-    setFormData({ name: "", email: "", role: "tech", password: "" });
+    setFormData({ name: "", email: "", role: "tech" });
     setIsSheetOpen(true);
   };
 
@@ -96,33 +143,27 @@ export function Users() {
     setFormData({ 
       name: user.name, 
       email: user.email, 
-      role: user.role, 
-      password: "" // Não carregamos a senha
+      role: user.role,
     });
     setIsSheetOpen(true);
   };
 
   const handleSave = () => {
     if (selectedUser) {
-      console.log("Ação: Atualizar usuário", { id: selectedUser.id, ...formData });
-      alert("Usuário atualizado com sucesso!");
+      updateMutation.mutate({ id: selectedUser.id, ...formData });
     } else {
-      console.log("Ação: Criar novo usuário", formData);
-      alert("Usuário criado com sucesso!");
+      createMutation.mutate(formData);
     }
-    setIsSheetOpen(false);
   };
 
   const handleDeleteUser = (id: string) => {
     if (window.confirm("Deseja realmente excluir este usuário?")) {
-      console.log("Ação: Deletar usuário", id);
-      alert("Usuário removido!");
+      deleteMutation.mutate(id);
     }
   };
 
   const handleResetPassword = (user: UserType) => {
-    console.log("Ação: Resetar senha de", user.name);
-    alert(`Link de reset enviado para ${user.email}`);
+    resetPasswordMutation.mutate({ id: user.id, password: null });
   };
 
   return (
@@ -294,25 +335,14 @@ export function Users() {
                 </Button>
               </div>
             </div>
-            {!selectedUser && (
-              <div className="grid gap-2">
-                <Label htmlFor="password">Senha Inicial</Label>
-                <Input 
-                  id="password" 
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                />
-              </div>
-            )}
           </div>
 
           <SheetFooter>
             <Button variant="outline" className="w-full" onClick={() => setIsSheetOpen(false)}>
               Cancelar
             </Button>
-            <Button className="w-full gap-2" onClick={handleSave}>
-              <Save className="h-4 w-4" /> {selectedUser ? "Salvar Alterações" : "Criar Usuário"}
+            <Button className="w-full gap-2" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+              <Save className="h-4 w-4" /> {createMutation.isPending || updateMutation.isPending ? "Salvando..." : selectedUser ? "Salvar Alterações" : "Criar Usuário"}
             </Button>
           </SheetFooter>
         </SheetContent>

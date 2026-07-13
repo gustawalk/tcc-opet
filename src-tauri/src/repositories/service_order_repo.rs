@@ -219,9 +219,10 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
+             LEFT JOIN users ON so.user_id = users.id
              WHERE so.id = ?1"
         )?;
         let mut rows = stmt.query_map(params![id], |row: &rusqlite::Row| {
@@ -230,6 +231,7 @@ impl ServiceOrderRepository {
                 customer_id: row.get(1)?,
                 customer_name: row.get(2)?,
                 user_id: row.get(3)?,
+                user_name: row.get(15)?,
                 equipment: row.get(4)?,
                 imei: row.get(5)?,
                 description: row.get(6)?,
@@ -252,9 +254,10 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
+             LEFT JOIN users ON so.user_id = users.id
              WHERE so.deleted_at IS NULL
              ORDER BY so.created_at DESC"
         )?;
@@ -264,6 +267,7 @@ impl ServiceOrderRepository {
                 customer_id: row.get(1)?,
                 customer_name: row.get(2)?,
                 user_id: row.get(3)?,
+                user_name: row.get(15)?,
                 equipment: row.get(4)?,
                 imei: row.get(5)?,
                 description: row.get(6)?,
@@ -289,9 +293,10 @@ impl ServiceOrderRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
+             LEFT JOIN users ON so.user_id = users.id
              WHERE so.customer_id = ?1 AND so.deleted_at IS NULL"
         )?;
         let rows = stmt.query_map(params![customer_id], |row: &rusqlite::Row| {
@@ -300,6 +305,7 @@ impl ServiceOrderRepository {
                 customer_id: row.get(1)?,
                 customer_name: row.get(2)?,
                 user_id: row.get(3)?,
+                user_name: row.get(15)?,
                 equipment: row.get(4)?,
                 imei: row.get(5)?,
                 description: row.get(6)?,

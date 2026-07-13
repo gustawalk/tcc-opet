@@ -9,6 +9,7 @@ pub struct ServiceOrder {
     pub customer_id: String,
     pub customer_name: Option<String>,
     pub user_id: Option<String>, // Technician ID
+    pub user_name: Option<String>,
     pub equipment: String,
     pub imei: Option<String>,
     pub description: String,
@@ -29,6 +30,7 @@ impl ServiceOrder {
             customer_id,
             customer_name: None,
             user_id: None,
+            user_name: None,
             equipment,
             imei: None,
             description,

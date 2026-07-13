@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { 
   Building2, 
   Save, 
@@ -22,28 +24,52 @@ import { Badge } from "@/components/ui/badge";
 import { Settings as SettingsType } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 
-// Mock para configurações iniciais
-const initialSettings: SettingsType = {
-  companyName: "OPET Tech Assistência",
-  cnpj: "12.345.678/0001-99",
-  address: "Rua Brigadeiro Franco, 1234 - Rebouças, Curitiba - PR",
-  logoPath: ""
+const fetchSettings = async (): Promise<SettingsType> => {
+  return await invoke<SettingsType>("get_settings");
 };
 
 export function Settings() {
-  const [settings, setSettings] = useState<SettingsType>(initialSettings);
+  const queryClient = useQueryClient();
   const [errors, setErrors] = useState<ValidationErrors>({});
 
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: fetchSettings,
+  });
+
+  const [localSettings, setLocalSettings] = useState<SettingsType>({
+    companyName: "",
+    cnpj: "",
+    address: "",
+    logoPath: "",
+  });
+
+  useEffect(() => {
+    if (settingsData) {
+      setLocalSettings(settingsData);
+    }
+  }, [settingsData]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: SettingsType) => {
+      return await invoke("update_settings", { settings: data });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      alert("Configurações salvas com sucesso!");
+    },
+    onError: (err) => alert(`Erro ao salvar configurações: ${err}`),
+  });
+
   const handleSave = () => {
-    const result = settingsSchema.safeParse(settings);
+    const result = settingsSchema.safeParse(localSettings);
     const fieldErrors = parseErrors(result);
     if (fieldErrors) {
       setErrors(fieldErrors);
       return;
     }
     setErrors({});
-    console.log("Ação: Salvar configurações do sistema", settings);
-    alert("Configurações salvas com sucesso!");
+    updateMutation.mutate(localSettings);
   };
 
   const handleLogoUpload = () => {
@@ -78,8 +104,8 @@ export function Settings() {
             <div className="flex flex-col md:flex-row gap-6">
               <div className="flex flex-col items-center gap-4">
                 <div className="w-32 h-32 rounded-lg border-2 border-dashed flex items-center justify-center bg-muted/50 overflow-hidden group relative">
-                  {settings.logoPath ? (
-                    <img src={settings.logoPath} alt="Logo" className="w-full h-full object-contain" />
+                  {localSettings.logoPath ? (
+                    <img src={localSettings.logoPath} alt="Logo" className="w-full h-full object-contain" />
                   ) : (
                     <Building2 className="h-10 w-10 text-muted-foreground" />
                   )}
@@ -98,8 +124,8 @@ export function Settings() {
                   <Label htmlFor="name">Nome da Assistência / Razão Social</Label>
                   <Input 
                     id="name" 
-                    value={settings.companyName} 
-                    onChange={(e) => { setSettings({...settings, companyName: e.target.value}); setErrors(clearFieldError(errors, "companyName")); }}
+                    value={localSettings.companyName} 
+                    onChange={(e) => { setLocalSettings({...localSettings, companyName: e.target.value}); setErrors(clearFieldError(errors, "companyName")); }}
                   />
                   {errors.companyName && <p className="text-xs text-destructive">{errors.companyName}</p>}
                 </div>
@@ -107,8 +133,8 @@ export function Settings() {
                   <Label htmlFor="cnpj">CNPJ</Label>
                   <Input 
                     id="cnpj" 
-                    value={settings.cnpj} 
-                    onChange={(e) => { setSettings({...settings, cnpj: e.target.value}); setErrors(clearFieldError(errors, "cnpj")); }}
+                    value={localSettings.cnpj} 
+                    onChange={(e) => { setLocalSettings({...localSettings, cnpj: e.target.value}); setErrors(clearFieldError(errors, "cnpj")); }}
                   />
                   {errors.cnpj && <p className="text-xs text-destructive">{errors.cnpj}</p>}
                 </div>
@@ -119,8 +145,8 @@ export function Settings() {
                     <Input 
                       id="address" 
                       className="pl-9"
-                      value={settings.address} 
-                      onChange={(e) => { setSettings({...settings, address: e.target.value}); setErrors(clearFieldError(errors, "address")); }}
+                      value={localSettings.address} 
+                      onChange={(e) => { setLocalSettings({...localSettings, address: e.target.value}); setErrors(clearFieldError(errors, "address")); }}
                     />
                   </div>
                   {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}

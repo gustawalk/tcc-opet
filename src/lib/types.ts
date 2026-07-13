@@ -54,6 +54,7 @@ export interface ServiceOrder {
 }
 
 export interface Settings {
+  id?: number;
   companyName: string;
   cnpj: string;
   logoPath?: string;

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
   UserPlus,
@@ -91,6 +91,42 @@ export function Customers() {
     queryFn: fetchCustomers,
   });
 
+  const queryClient = useQueryClient();
+
+  const createCustomerMutation = useMutation({
+    mutationFn: async (data: { name: string; phone: string; email: string; address: string }) => {
+      return await invoke("create_customer", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setIsSheetOpen(false);
+      setFormData(initialFormData);
+    },
+    onError: (err) => alert(`Erro ao criar cliente: ${err}`),
+  });
+
+  const updateCustomerMutation = useMutation({
+    mutationFn: async (data: { id: string; name: string; phone: string; email: string; address: string }) => {
+      return await invoke("update_customer", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setIsSheetOpen(false);
+      setFormData(initialFormData);
+    },
+    onError: (err) => alert(`Erro ao atualizar cliente: ${err}`),
+  });
+
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await invoke("delete_customer", { id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+    onError: (err) => alert(`Erro ao excluir cliente: ${err}`),
+  });
+
   const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
     queryKey: ["customer-orders", viewingCustomer?.id],
     queryFn: () => fetchCustomerOrders(viewingCustomer!.id),
@@ -159,26 +195,22 @@ export function Customers() {
     }
     setErrors({});
 
-    const phoneDigitsOnly = formData.phone.replace(/\D/g, "");
     const payload = {
-      ...(isEditing ? { id: selectedCustomerId } : {}),
       ...formData,
-      phone: phoneDigitsOnly,
-      is_international: isInternational,
-      updated_at: new Date().toISOString(),
-      ...(isEditing ? {} : { createdAt: new Date().toISOString() })
+      phone: formData.phone.replace(/\D/g, ""),
     };
 
-    console.log(isEditing ? "Ação: Atualizar cliente" : "Ação: Criar novo cliente", payload);
-
-    setIsSheetOpen(false);
-    setFormData(initialFormData);
+    if (isEditing && selectedCustomerId) {
+      updateCustomerMutation.mutate({ id: selectedCustomerId, ...payload });
+    } else {
+      createCustomerMutation.mutate(payload);
+    }
   };
 
   const handleDeleteCustomer = (id: string) => {
     const customer = customers.find(c => c.id === id);
     if (confirm(`Deseja realmente excluir o cliente ${customer?.name}?`)) {
-      console.log("Ação: Deletar cliente (Soft Delete)", { id, deleted_at: new Date().toISOString() });
+      deleteCustomerMutation.mutate(id);
     }
   };
 

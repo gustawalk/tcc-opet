@@ -212,6 +212,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
     }
 
+    // Migration: add columns to users if missing from intermediate schema
+    for migration in &[
+        "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT '';",
+        "ALTER TABLE users ADD COLUMN cpf TEXT DEFAULT '';",
+        "ALTER TABLE users ADD COLUMN join_date TEXT DEFAULT '';",
+    ] {
+        if let Err(e) = conn.execute_batch(migration) {
+            let err_msg = e.to_string();
+            if !err_msg.contains("duplicate column") {
+                eprintln!("[MIGRATION WARNING] Could not run migration '{}': {}", migration.trim(), err_msg);
+            }
+        }
+    }
+
     // Migration: migrate users table from old schema (password, role) to new schema (phone, cpf, join_date)
     {
         let has_password_col: bool = conn

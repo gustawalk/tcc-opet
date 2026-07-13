@@ -237,7 +237,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         if has_role_col {
             eprintln!("[MIGRATION] Migrating users table to new schema...");
             conn.execute_batch(
-                "CREATE TABLE users_new (
+                "DROP TABLE IF EXISTS users_new;
+                CREATE TABLE users_new (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     email TEXT NOT NULL UNIQUE,

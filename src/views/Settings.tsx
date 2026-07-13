@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Building2, 
   Save, 
@@ -72,8 +73,18 @@ export function Settings() {
     updateMutation.mutate(localSettings);
   };
 
-  const handleLogoUpload = () => {
-    console.log("Ação: Abrir seletor de arquivo para logo");
+  const handleLogoUpload = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{
+        name: "Imagens",
+        extensions: ["png", "jpg", "jpeg", "svg", "ico", "webp"],
+      }],
+    });
+    if (selected) {
+      const dataUrl = await invoke<string>("read_file_as_base64", { path: selected });
+      setLocalSettings((prev) => ({ ...prev, logoPath: dataUrl }));
+    }
   };
 
   return (

@@ -15,6 +15,7 @@ mod seeds;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::customer_commands::create_customer,
             commands::customer_commands::get_customer,
@@ -48,6 +49,7 @@ pub fn run() {
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
             commands::settings_commands::reset_database,
+            commands::settings_commands::read_file_as_base64,
             commands::checklist_commands::create_checklist_template,
             commands::checklist_commands::get_checklist_templates,
             commands::checklist_commands::get_checklist_template_items,

@@ -1,5 +1,7 @@
 use crate::models::settings::Settings;
 use crate::repositories::settings_repo::SettingsRepository;
+use base64::Engine;
+use std::path::Path;
 use tauri::command;
 
 #[command]
@@ -38,4 +40,26 @@ pub fn reset_database() -> Result<(), String> {
     crate::database::init_db().map_err(|e| e.to_string())?;
     
     Ok(())
+}
+
+fn mime_from_path(path: &Path) -> &str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        _ => "image/png",
+    }
+}
+
+#[command]
+pub fn read_file_as_base64(path: String) -> Result<String, String> {
+    let file_path = Path::new(&path);
+    let mime = mime_from_path(file_path);
+    let bytes = std::fs::read(file_path).map_err(|e| format!("Erro ao ler arquivo: {e}"))?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
 }

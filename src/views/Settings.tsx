@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Settings as SettingsType } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { formatCNPJ } from "@/lib/formatters";
 
 const fetchSettings = async (): Promise<SettingsType> => {
   return await invoke<SettingsType>("get_settings");
@@ -132,7 +133,7 @@ export function Settings() {
 
               <div className="flex-1 space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="name">Nome da Assistência / Razão Social</Label>
+                  <Label htmlFor="name">Razão Social</Label>
                   <Input 
                     id="name" 
                     value={localSettings.companyName} 
@@ -145,7 +146,7 @@ export function Settings() {
                   <Input 
                     id="cnpj" 
                     value={localSettings.cnpj} 
-                    onChange={(e) => { setLocalSettings({...localSettings, cnpj: e.target.value}); setErrors(clearFieldError(errors, "cnpj")); }}
+                    onChange={(e) => { setLocalSettings({...localSettings, cnpj: formatCNPJ(e.target.value)}); setErrors(clearFieldError(errors, "cnpj")); }}
                   />
                   {errors.cnpj && <p className="text-xs text-destructive">{errors.cnpj}</p>}
                 </div>

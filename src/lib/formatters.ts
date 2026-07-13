@@ -32,3 +32,15 @@ export const formatCNPJ = (value: string) => {
   if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
   return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
 };
+
+export const formatName = (value: string) => {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed
+    .split(" ")
+    .map((word) =>
+      word.length > 2
+        ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        : word.toLowerCase()
+    )
+    .join(" ");
+};

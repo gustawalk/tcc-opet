@@ -50,7 +50,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
-import { formatBRPhone, formatCPF, formatDate } from "@/lib/formatters";
+import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
 
 const fetchUsers = async (): Promise<UserType[]> => {
   return await invoke<UserType[]>("get_users");
@@ -299,7 +299,7 @@ export function Users() {
               <Input 
                 id="name" 
                 value={formData.name}
-                onChange={(e) => updateField("name", e.target.value)}
+                onChange={(e) => updateField("name", formatName(e.target.value))}
               />
               {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>

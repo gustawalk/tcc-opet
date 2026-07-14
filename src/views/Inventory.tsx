@@ -636,9 +636,10 @@ export function Inventory() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead className="text-center">Quantidade</TableHead>
-                      <TableHead className="text-right">Data</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-center">Quantidade</TableHead>
+                    <TableHead>OS</TableHead>
+                    <TableHead className="text-right">Data</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -650,6 +651,9 @@ export function Inventory() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center font-medium">{mov.quantity} un.</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {mov.osDisplayId ?? "-"}
+                        </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
                           {mov.createdAt ? new Date(mov.createdAt).toLocaleString("pt-BR") : "-"}
                         </TableCell>

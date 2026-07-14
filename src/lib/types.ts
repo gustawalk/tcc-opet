@@ -105,6 +105,7 @@ export interface InventoryMovement {
   type: 'entrada' | 'saida';
   quantity: number;
   referenceOsId?: string | null;
+  osDisplayId?: string | null;
   createdAt?: string;
 }
 

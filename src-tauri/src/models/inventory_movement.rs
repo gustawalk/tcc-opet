@@ -10,6 +10,7 @@ pub struct InventoryMovement {
     pub r#type: String, // 'entrada' or 'saida'
     pub quantity: i32,
     pub reference_os_id: Option<String>,
+    pub os_display_id: Option<String>,
     pub created_at: Option<String>,
 }
 
@@ -26,6 +27,7 @@ impl InventoryMovement {
             r#type,
             quantity,
             reference_os_id,
+            os_display_id: None,
             created_at: Some(Utc::now().to_rfc3339()),
         }
     }

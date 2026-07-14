@@ -180,10 +180,11 @@ impl InventoryRepository {
         let conn = get_db()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, inventory_item_id, type, quantity, reference_os_id, created_at
-             FROM inventory_movements
-             WHERE inventory_item_id = ?1
-             ORDER BY created_at DESC"
+            "SELECT im.id, im.inventory_item_id, im.type, im.quantity, im.reference_os_id, im.created_at, so.display_id AS os_display_id
+             FROM inventory_movements im
+             LEFT JOIN service_orders so ON im.reference_os_id = so.id
+             WHERE im.inventory_item_id = ?1
+             ORDER BY im.created_at DESC"
         )?;
 
         let rows = stmt.query_map(params![item_id], |row: &rusqlite::Row| {
@@ -194,6 +195,7 @@ impl InventoryRepository {
                 quantity: row.get(3)?,
                 reference_os_id: row.get(4)?,
                 created_at: row.get(5)?,
+                os_display_id: row.get(6)?,
             })
         })?;
 

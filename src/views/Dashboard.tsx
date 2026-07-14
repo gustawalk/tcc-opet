@@ -45,7 +45,7 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-8 animate-in fade-in duration-200">
         <div className="flex items-center justify-between">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-10 w-32" />
@@ -77,7 +77,7 @@ export function Dashboard() {
   const { summary, recentOrders, inventoryAlerts, statusCounts } = data;
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+    <div className="flex flex-col gap-8 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Visão Geral</h2>

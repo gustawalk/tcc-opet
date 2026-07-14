@@ -306,7 +306,7 @@ export function ServiceOrderCreate() {
   }, [selectedServices]);
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500 max-w-5xl mx-auto">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)}>

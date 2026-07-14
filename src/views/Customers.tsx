@@ -15,7 +15,7 @@ import {
   User as UserIcon,
   Globe,
   History,
-  Copy
+  Copy,
 } from "lucide-react";
 import {
   Card,
@@ -58,6 +58,8 @@ import {
 import { Customer, ServiceOrder } from "@/lib/types";
 import { formatCurrency, formatBRPhone } from "@/lib/formatters";
 import { customerSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { useSort } from "@/hooks/useSort";
+import { SortableHeader } from "@/components/shared/SortableHeader";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -85,6 +87,7 @@ export function Customers() {
 
   const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+  const { sortConfig, cycleSort } = useSort();
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["customers"],
@@ -139,13 +142,42 @@ export function Customers() {
     );
   }, [customerOrders]);
 
+  const getCustomerSortValue = (customer: Customer, column: string): string | number => {
+    switch (column) {
+      case "name": return customer.name;
+      case "phone": return customer.phone;
+      case "email": return customer.email;
+      case "address": return customer.address;
+      case "createdAt": return customer.createdAt || "";
+      default: return "";
+    }
+  };
+
   const filteredCustomers = useMemo(() => {
-    return customers.filter(customer =>
+    let result = customers.filter(customer =>
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone.includes(searchTerm)
     );
-  }, [customers, searchTerm]);
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getCustomerSortValue(a, col);
+        const valB = getCustomerSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    }
+
+    return result;
+  }, [customers, searchTerm, sortConfig]);
 
   const handleAddCustomer = () => {
     setIsEditing(false);
@@ -263,17 +295,17 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="hidden md:table-cell">Contato</TableHead>
-                  <TableHead className="hidden lg:table-cell">Endereço</TableHead>
-                  <TableHead className="hidden md:table-cell">Cadastrado em</TableHead>
-                  <TableHead className="text-right w-[100px]">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="max-h-[500px] overflow-y-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHeader column="name" label="Cliente" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="phone" label="Contato" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <SortableHeader column="address" label="Endereço" sortConfig={sortConfig} onSort={cycleSort} className="hidden lg:table-cell" />
+                    <SortableHeader column="createdAt" label="Cadastrado em" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <TableHead className="text-right w-[100px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
@@ -350,10 +382,10 @@ export function Customers() {
                   </TableRow>
                 )}
               </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
       {/* Sheet para Adicionar/Editar Cliente */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>

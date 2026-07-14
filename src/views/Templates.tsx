@@ -10,7 +10,7 @@ import {
   Trash2, 
   Save, 
   X,
-  GripVertical
+  GripVertical,
 } from "lucide-react";
 import { 
   Card, 
@@ -41,6 +41,8 @@ import {
 import { ChecklistTemplate } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { templateSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { useSort } from "@/hooks/useSort";
+import { SortableHeader } from "@/components/shared/SortableHeader";
 import {
   Sheet,
   SheetContent,
@@ -65,6 +67,7 @@ export function Templates() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
+  const { sortConfig, cycleSort } = useSort();
   
   // Form State
   const [title, setTitle] = useState("");
@@ -77,11 +80,38 @@ export function Templates() {
     queryFn: fetchTemplates,
   });
 
+  const getTemplateSortValue = (template: ChecklistTemplate, column: string): string | number => {
+    switch (column) {
+      case "title": return template.title;
+      case "items": return template.items.length;
+      case "createdAt": return template.createdAt || "";
+      default: return "";
+    }
+  };
+
   const filteredTemplates = useMemo(() => {
-    return templates.filter(t => 
+    let result = templates.filter(t => 
       t.title.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [templates, searchTerm]);
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getTemplateSortValue(a, col);
+        const valB = getTemplateSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    }
+
+    return result;
+  }, [templates, searchTerm, sortConfig]);
 
   const handleAddTemplate = () => {
     setSelectedTemplate(null);
@@ -194,16 +224,16 @@ export function Templates() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Itens</TableHead>
-                  <TableHead className="hidden md:table-cell">Criado em</TableHead>
-                  <TableHead className="text-right w-[100px]">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="max-h-[500px] overflow-y-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHeader column="title" label="Título" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="items" label="Itens" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="createdAt" label="Criado em" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <TableHead className="text-right w-[100px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 2 }).map((_, i) => (
@@ -261,12 +291,12 @@ export function Templates() {
                   </TableRow>
                 )}
               </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Sheet para Cadastro/Edição de Template */}
+        {/* Sheet para Cadastro/Edição de Template */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent className="sm:max-w-md flex flex-col h-full">
           <SheetHeader>

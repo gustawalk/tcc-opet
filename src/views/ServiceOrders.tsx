@@ -60,6 +60,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { editServiceOrderSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { useSort } from "@/hooks/useSort";
+import { SortableHeader } from "@/components/shared/SortableHeader";
 
 // Estendendo o tipo ServiceOrder para incluir checklist opcional para os mocks
 interface ServiceOrderWithChecklist extends ServiceOrder {
@@ -97,6 +99,7 @@ export function ServiceOrders() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { sortConfig, cycleSort } = useSort();
 
   // Estados para Controle de Sheet
   const [selectedOS, setSelectedOS] = useState<ServiceOrderWithChecklist | null>(null);
@@ -129,8 +132,19 @@ export function ServiceOrders() {
     queryFn: fetchInventory,
   });
 
+  const getOrderSortValue = (order: ServiceOrder, column: string): string | number => {
+    switch (column) {
+      case "displayId": return order.displayId;
+      case "customerName": return order.customerName || "";
+      case "status": return order.status;
+      case "createdAt": return order.createdAt;
+      case "totalPrice": return order.totalPrice || 0;
+      default: return "";
+    }
+  };
+
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    let result = orders.filter(order => {
       const matchesSearch =
         order.displayId.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.customerName && order.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -140,7 +154,25 @@ export function ServiceOrders() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [orders, searchTerm, statusFilter]);
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getOrderSortValue(a, col);
+        const valB = getOrderSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    }
+
+    return result;
+  }, [orders, searchTerm, statusFilter, sortConfig]);
 
   const filteredInventory = useMemo(() => {
     if (!inventorySearch) return [];
@@ -300,14 +332,15 @@ export function ServiceOrders() {
 
         <Card>
           <CardContent className="p-0">
-            <Table>
+            <div className="max-h-[500px] overflow-y-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[120px]">ID</TableHead>
-                  <TableHead>Cliente & Equipamento</TableHead>
-                  <TableHead className="hidden md:table-cell">Status</TableHead>
-                  <TableHead className="hidden lg:table-cell">Abertura</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
+                  <SortableHeader column="displayId" label="ID" sortConfig={sortConfig} onSort={cycleSort} className="w-[120px]" />
+                  <SortableHeader column="customerName" label="Cliente & Equipamento" sortConfig={sortConfig} onSort={cycleSort} />
+                  <SortableHeader column="status" label="Status" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                  <SortableHeader column="createdAt" label="Abertura" sortConfig={sortConfig} onSort={cycleSort} className="hidden lg:table-cell" />
+                  <SortableHeader column="totalPrice" label="Valor" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
                   <TableHead className="text-right w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -390,12 +423,13 @@ export function ServiceOrders() {
                   </TableRow>
                 )}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           </CardContent>
-        </Card>
-      </div>
+          </Card>
+        </div>
 
-      <ServiceOrderDetailSheet
+        <ServiceOrderDetailSheet
         orderId={selectedOS?.id ?? null}
         open={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}

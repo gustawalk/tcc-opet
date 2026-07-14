@@ -14,7 +14,7 @@ import {
   History,
   Save,
   DollarSign,
-  Box
+  Box,
 } from "lucide-react";
 import {
   Card,
@@ -64,6 +64,8 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { inventoryItemSchema, quantitySchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { useSort } from "@/hooks/useSort";
+import { SortableHeader } from "@/components/shared/SortableHeader";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
@@ -138,6 +140,7 @@ export function Inventory() {
   });
 
   const queryClient = useQueryClient();
+  const { sortConfig, cycleSort } = useSort();
 
   const createMutation = useMutation({
     mutationFn: createInventoryItem,
@@ -193,25 +196,80 @@ export function Inventory() {
   const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
   const services = useMemo(() => items.filter(i => i.type === "service"), [items]);
 
+  const getPartSortValue = (item: InventoryItem, column: string): string | number => {
+    switch (column) {
+      case "name": return item.name;
+      case "currentQuantity": return item.currentQuantity;
+      case "costPrice": return item.costPrice;
+      case "salePrice": return item.salePrice;
+      default: return "";
+    }
+  };
+
+  const getServiceSortValue = (item: InventoryItem, column: string): string | number => {
+    switch (column) {
+      case "name": return item.name;
+      case "costPrice": return item.costPrice;
+      case "salePrice": return item.salePrice;
+      default: return "";
+    }
+  };
+
   const filteredParts = useMemo(() => {
-    return parts
-      .filter(item =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => {
+    let result = parts.filter(item =>
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getPartSortValue(a, col);
+        const valB = getPartSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    } else {
+      result = [...result].sort((a, b) => {
         if (a.currentQuantity === 0 && b.currentQuantity !== 0) return -1;
         if (a.currentQuantity !== 0 && b.currentQuantity === 0) return 1;
         return 0;
       });
-  }, [parts, searchTerm]);
+    }
+
+    return result;
+  }, [parts, searchTerm, sortConfig]);
 
   const filteredServices = useMemo(() => {
-    return services.filter(item =>
+    let result = services.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [services, searchTerm]);
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getServiceSortValue(a, col);
+        const valB = getServiceSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    }
+
+    return result;
+  }, [services, searchTerm, sortConfig]);
 
   const handleAddItem = (type: "part" | "service" = "part") => {
     setSelectedItem(null);
@@ -362,14 +420,14 @@ export function Inventory() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="max-h-[500px] overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Peça / Descrição</TableHead>
-                    <TableHead className="text-center">Estoque Atual</TableHead>
-                    <TableHead className="hidden md:table-cell text-right">Preço de Custo</TableHead>
-                    <TableHead className="text-right">Preço de Venda</TableHead>
+                    <SortableHeader column="name" label="Peça / Descrição" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="currentQuantity" label="Estoque Atual" sortConfig={sortConfig} onSort={cycleSort} className="text-center" align="center" />
+                    <SortableHeader column="costPrice" label="Preço de Custo" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
+                    <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -450,11 +508,11 @@ export function Inventory() {
                       </TableCell>
                     </TableRow>
                   )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
 
         <Card>
           <CardHeader>
@@ -464,13 +522,13 @@ export function Inventory() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="max-h-[500px] overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Serviço / Mão de Obra</TableHead>
-                    <TableHead className="hidden md:table-cell text-right">Custo Estimado</TableHead>
-                    <TableHead className="text-right">Preço de Venda</TableHead>
+                    <SortableHeader column="name" label="Serviço / Mão de Obra" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="costPrice" label="Custo Estimado" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
+                    <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -530,12 +588,12 @@ export function Inventory() {
                       </TableCell>
                     </TableRow>
                   )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
       {/* Restock Dialog */}
       <Dialog open={!!restockItem} onOpenChange={(open) => { if (!open) setRestockItem(null); }}>

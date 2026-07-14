@@ -50,6 +50,8 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { useSort } from "@/hooks/useSort";
+import { SortableHeader } from "@/components/shared/SortableHeader";
 import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
 
 const fetchUsers = async (): Promise<UserType[]> => {
@@ -62,6 +64,7 @@ export function Users() {
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const queryClient = useQueryClient();
+  const { sortConfig, cycleSort } = useSort();
   
   const [formData, setFormData] = useState({
     name: "",
@@ -114,12 +117,39 @@ export function Users() {
     },
   });
 
+  const getUserSortValue = (user: UserType, column: string): string | number => {
+    switch (column) {
+      case "name": return user.name;
+      case "phone": return user.phone || "";
+      case "joinDate": return user.joinDate || "";
+      default: return "";
+    }
+  };
+
   const filteredUsers = useMemo(() => {
-    return users.filter(user => 
+    let result = users.filter(user => 
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [users, searchTerm]);
+
+    if (sortConfig.direction && sortConfig.column) {
+      const dir = sortConfig.direction;
+      const col = sortConfig.column;
+      result = [...result].sort((a, b) => {
+        const valA = getUserSortValue(a, col);
+        const valB = getUserSortValue(b, col);
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+        if (typeof valA === "string" && typeof valB === "string") {
+          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
+        }
+        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    }
+
+    return result;
+  }, [users, searchTerm, sortConfig]);
 
   const handleAddUser = () => {
     setSelectedUser(null);
@@ -206,16 +236,16 @@ export function Users() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead className="hidden md:table-cell">Telefone</TableHead>
-                  <TableHead className="hidden md:table-cell">Data Entrada</TableHead>
-                  <TableHead className="text-right w-[100px]">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="max-h-[500px] overflow-y-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHeader column="name" label="Nome" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="phone" label="Telefone" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <SortableHeader column="joinDate" label="Data Entrada" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <TableHead className="text-right w-[100px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 3 }).map((_, i) => (
@@ -279,12 +309,12 @@ export function Users() {
                   </TableRow>
                 )}
               </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>{selectedUser ? "Editar Funcionário" : "Novo Funcionário"}</SheetTitle>

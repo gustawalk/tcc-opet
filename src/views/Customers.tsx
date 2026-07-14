@@ -263,7 +263,7 @@ export function Customers() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Clientes</h2>
@@ -295,7 +295,7 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent>
-            <div className="max-h-[500px] overflow-y-auto rounded-md border">
+            <div className="max-h-[500px] overflow-y-auto rounded-md border" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
               <Table>
                 <TableHeader>
                   <TableRow>

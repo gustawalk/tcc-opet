@@ -294,7 +294,7 @@ export function ServiceOrders() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Ordens de Serviço</h2>
@@ -332,7 +332,7 @@ export function ServiceOrders() {
 
         <Card>
           <CardContent className="p-0">
-            <div className="max-h-[500px] overflow-y-auto">
+            <div className="max-h-[500px] overflow-y-auto" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
               <Table>
               <TableHeader>
                 <TableRow>

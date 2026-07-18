@@ -1,10 +1,15 @@
+use crate::error::AppError;
 use crate::models::service_order::ServiceOrder;
 use crate::repositories::service_order_repo::{ServiceOrderRepository, ServiceOrderPart};
 use tauri::command;
 
+fn require_existing_service_order(order: Option<ServiceOrder>) -> Result<ServiceOrder, AppError> {
+    order.ok_or_else(|| crate::error::not_found("Service order", "Ordem de serviço"))
+}
+
 #[command]
-pub fn get_service_order_parts(service_order_id: String) -> Result<Vec<ServiceOrderPart>, String> {
-    ServiceOrderRepository::get_service_order_parts(&service_order_id).map_err(|e| e.to_string())
+pub fn get_service_order_parts(service_order_id: String) -> Result<Vec<ServiceOrderPart>, AppError> {
+    Ok(ServiceOrderRepository::get_service_order_parts(&service_order_id)?)
 }
 
 #[command]
@@ -16,30 +21,30 @@ pub fn create_service_order(
     imei: Option<String>,
     description: String,
     discount_percent: Option<f64>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let mut order = ServiceOrder::new(customer_id, equipment, description);
     order.customer_name = customer_name;
     order.user_id = user_id;
     order.imei = imei;
     order.discount_percent = discount_percent.unwrap_or(0.0);
-    
-    ServiceOrderRepository::create(&mut order).map_err(|e: rusqlite::Error| e.to_string())?;
+
+    ServiceOrderRepository::create(&mut order)?;
     Ok(order.id)
 }
 
 #[command]
-pub fn get_service_order(id: String) -> Result<Option<ServiceOrder>, String> {
-    ServiceOrderRepository::get_by_id(&id).map_err(|e: rusqlite::Error| e.to_string())
+pub fn get_service_order(id: String) -> Result<Option<ServiceOrder>, AppError> {
+    Ok(ServiceOrderRepository::get_by_id(&id)?)
 }
 
 #[command]
-pub fn get_service_orders() -> Result<Vec<ServiceOrder>, String> {
-    ServiceOrderRepository::get_all().map_err(|e: rusqlite::Error| e.to_string())
+pub fn get_service_orders() -> Result<Vec<ServiceOrder>, AppError> {
+    Ok(ServiceOrderRepository::get_all()?)
 }
 
 #[command]
-pub fn get_service_orders_by_customer_id(customer_id: String) -> Result<Vec<ServiceOrder>, String> {
-    ServiceOrderRepository::get_by_customer_id(&customer_id).map_err(|e: rusqlite::Error| e.to_string())
+pub fn get_service_orders_by_customer_id(customer_id: String) -> Result<Vec<ServiceOrder>, AppError> {
+    Ok(ServiceOrderRepository::get_by_customer_id(&customer_id)?)
 }
 
 #[command]
@@ -57,10 +62,8 @@ pub fn update_service_order(
     signature_path: Option<String>,
     closed_at: Option<String>,
     discount_percent: Option<f64>,
-) -> Result<(), String> {
-    let mut order = ServiceOrderRepository::get_by_id(&id)
-        .map_err(|e: rusqlite::Error| e.to_string())?
-        .ok_or_else(|| "Service order not found".to_string())?;
+) -> Result<(), AppError> {
+    let mut order = require_existing_service_order(ServiceOrderRepository::get_by_id(&id)?)?;
 
     order.customer_id = customer_id;
     order.customer_name = customer_name;
@@ -75,12 +78,12 @@ pub fn update_service_order(
     order.discount_percent = discount_percent.unwrap_or(0.0);
     order.updated_at = Some(chrono::Utc::now().to_rfc3339());
 
-    ServiceOrderRepository::update(&order).map_err(|e: rusqlite::Error| e.to_string())
+    Ok(ServiceOrderRepository::update(&order)?)
 }
 
 #[command]
-pub fn delete_service_order(id: String) -> Result<(), String> {
-    ServiceOrderRepository::delete(&id).map_err(|e: rusqlite::Error| e.to_string())
+pub fn delete_service_order(id: String) -> Result<(), AppError> {
+    Ok(ServiceOrderRepository::delete(&id)?)
 }
 
 #[command]
@@ -88,17 +91,28 @@ pub fn add_part_to_service_order(
     service_order_id: String,
     inventory_item_id: String,
     quantity: i32,
-) -> Result<(), String> {
-    ServiceOrderRepository::add_part_to_service_order(
+) -> Result<(), AppError> {
+    Ok(ServiceOrderRepository::add_part_to_service_order(
         &service_order_id,
         &inventory_item_id,
         quantity,
-    )
-    .map_err(|e: rusqlite::Error| e.to_string())
+    )?)
 }
 
 #[command]
-pub fn remove_part_from_service_order(part_id: String) -> Result<(), String> {
-    ServiceOrderRepository::remove_part_from_service_order(&part_id)
-        .map_err(|e: rusqlite::Error| e.to_string())
+pub fn remove_part_from_service_order(part_id: String) -> Result<(), AppError> {
+    Ok(ServiceOrderRepository::remove_part_from_service_order(&part_id)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn require_existing_service_order_returns_not_found_error() {
+        let err = require_existing_service_order(None).unwrap_err();
+
+        assert_eq!(err.en, "Service order not found.");
+        assert_eq!(err.pt, "Ordem de serviço não encontrado(a).");
+    }
 }

@@ -5,9 +5,12 @@
 
 mod commands;
 mod database;
+mod error;
 mod models;
 mod repositories;
 mod seeds;
+#[cfg(test)]
+mod test_helpers;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 

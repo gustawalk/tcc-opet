@@ -1,5 +1,5 @@
 use crate::database::get_db;
-use rusqlite::Result;
+use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +72,10 @@ pub struct DashboardRepository;
 impl DashboardRepository {
     pub fn get_dashboard_data() -> Result<DashboardData, rusqlite::Error> {
         let conn = get_db()?;
+        Self::get_dashboard_data_with_conn(&conn)
+    }
+
+    pub(crate) fn get_dashboard_data_with_conn(conn: &Connection) -> Result<DashboardData, rusqlite::Error> {
 
         // 1. Calculate Summary
         // total_revenue: SUM(total_price) of 'Finalizada'
@@ -189,5 +193,121 @@ impl DashboardRepository {
             inventory_alerts,
             status_counts,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::customer::Customer;
+    use crate::models::inventory_item::InventoryItem;
+    use crate::models::service_order::ServiceOrder;
+    use crate::repositories::customer_repo::CustomerRepository;
+    use crate::repositories::inventory_repo::InventoryRepository;
+    use crate::repositories::service_order_repo::ServiceOrderRepository;
+    use crate::test_helpers::setup_db;
+    use rusqlite::params;
+
+    fn seed_order(conn: &Connection, status: &str, total_price: f64, discount_percent: f64) -> ServiceOrder {
+        let customer = Customer::new(
+            format!("Cliente {status}"),
+            "41911112222".to_string(),
+            format!("{status}@example.com"),
+            "Rua X".to_string(),
+        );
+        CustomerRepository::create_with_conn(conn, &customer).unwrap();
+
+        let mut order = ServiceOrder::new(
+            customer.id,
+            format!("Equip {status}"),
+            "Descrição".to_string(),
+        );
+        order.status = status.to_string();
+        order.total_price = Some(total_price);
+        order.discount_percent = discount_percent;
+        ServiceOrderRepository::create_with_conn(conn, &mut order).unwrap();
+        order
+    }
+
+    #[test]
+    fn summary_uses_only_finalized_orders_and_applies_discount() {
+        let conn = setup_db();
+        let finalized = seed_order(&conn, "Finalizada", 200.0, 10.0);
+        seed_order(&conn, "Em Manutenção", 500.0, 0.0);
+        let inventory_item = InventoryItem::new(
+            "Bateria".to_string(),
+            "Peça".to_string(),
+            "part".to_string(),
+            1,
+            10,
+            30.0,
+            80.0,
+        );
+        InventoryRepository::create_with_conn(&conn, &inventory_item).unwrap();
+
+        conn.execute(
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params!["part-1", finalized.id, inventory_item.id, 2, 30.0, 80.0],
+        )
+        .unwrap();
+
+        let data = DashboardRepository::get_dashboard_data_with_conn(&conn).unwrap();
+
+        assert_eq!(data.summary.total_revenue, 180.0);
+        assert_eq!(data.summary.net_profit, 120.0);
+        assert_eq!(data.summary.active_orders_count, 1);
+    }
+
+    #[test]
+    fn inventory_alerts_only_include_items_below_minimum() {
+        let conn = setup_db();
+        let low = InventoryItem::new(
+            "Conector".to_string(),
+            "Peça".to_string(),
+            "part".to_string(),
+            3,
+            1,
+            10.0,
+            20.0,
+        );
+        let ok = InventoryItem::new(
+            "Capa".to_string(),
+            "Acessório".to_string(),
+            "part".to_string(),
+            3,
+            5,
+            10.0,
+            20.0,
+        );
+        InventoryRepository::create_with_conn(&conn, &low).unwrap();
+        InventoryRepository::create_with_conn(&conn, &ok).unwrap();
+
+        let data = DashboardRepository::get_dashboard_data_with_conn(&conn).unwrap();
+
+        assert_eq!(data.inventory_alerts.len(), 1);
+        assert_eq!(data.inventory_alerts[0].id, low.id);
+    }
+
+    #[test]
+    fn status_counts_group_orders_by_status() {
+        let conn = setup_db();
+        seed_order(&conn, "Finalizada", 100.0, 0.0);
+        seed_order(&conn, "Finalizada", 200.0, 0.0);
+        seed_order(&conn, "Cancelada", 0.0, 0.0);
+
+        let data = DashboardRepository::get_dashboard_data_with_conn(&conn).unwrap();
+        let finalized = data
+            .status_counts
+            .iter()
+            .find(|status| status.status == "Finalizada")
+            .unwrap();
+        let canceled = data
+            .status_counts
+            .iter()
+            .find(|status| status.status == "Cancelada")
+            .unwrap();
+
+        assert_eq!(finalized.count, 2);
+        assert_eq!(canceled.count, 1);
     }
 }

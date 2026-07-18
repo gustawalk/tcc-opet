@@ -37,3 +37,18 @@ impl ChecklistTemplate {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_constructor_sets_defaults() {
+        let template = ChecklistTemplate::new("Inspeção Inicial".to_string());
+
+        assert!(Uuid::parse_str(&template.id).is_ok());
+        assert_eq!(template.title, "Inspeção Inicial");
+        assert!(template.items.is_none());
+        assert!(template.created_at.is_some());
+    }
+}

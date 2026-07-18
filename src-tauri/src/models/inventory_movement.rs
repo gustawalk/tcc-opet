@@ -32,3 +32,25 @@ impl InventoryMovement {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_sets_reference_and_defaults() {
+        let movement = InventoryMovement::new(
+            "item-1".to_string(),
+            "saida".to_string(),
+            3,
+            Some("os-1".to_string()),
+        );
+
+        assert!(Uuid::parse_str(&movement.id).is_ok());
+        assert_eq!(movement.inventory_item_id, "item-1");
+        assert_eq!(movement.quantity, 3);
+        assert_eq!(movement.reference_os_id.as_deref(), Some("os-1"));
+        assert!(movement.os_display_id.is_none());
+        assert!(movement.created_at.is_some());
+    }
+}

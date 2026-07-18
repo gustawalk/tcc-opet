@@ -29,3 +29,21 @@ impl User {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_sets_optional_fields_to_none() {
+        let user = User::new("João".to_string(), "joao@example.com".to_string());
+
+        assert!(Uuid::parse_str(&user.id).is_ok());
+        assert_eq!(user.name, "João");
+        assert!(user.phone.is_none());
+        assert!(user.cpf.is_none());
+        assert!(user.join_date.is_none());
+        assert!(user.created_at.is_some());
+        assert!(user.deleted_at.is_none());
+    }
+}

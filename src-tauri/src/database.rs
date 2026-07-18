@@ -56,7 +56,7 @@ fn get_database_path() -> Result<PathBuf> {
 }
 
 // Run database migrations
-fn run_migrations(conn: &Connection) -> Result<()> {
+pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     // Create tables if they don't exist
     conn.execute_batch(
         "
@@ -278,4 +278,111 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 // Get database connection - returns a new connection using the stored path
 pub fn get_db() -> Result<Connection> {
     Connection::open(&*DB_PATH)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{setup_db, setup_legacy_users_db};
+
+    #[test]
+    fn migrations_create_core_tables_and_indexes() {
+        let conn = setup_db();
+
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (
+                    'settings', 'customers', 'users', 'inventory_items', 'service_orders',
+                    'checklist_templates', 'template_items', 'service_order_checklists',
+                    'service_order_parts', 'financial_snapshots', 'inventory_movements'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (
+                    'idx_financial_snapshots_date', 'idx_inventory_movements_item'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(table_count, 11);
+        assert_eq!(index_count, 2);
+    }
+
+    #[test]
+    fn migrations_insert_default_settings_row() {
+        let conn = setup_db();
+
+        let company_name: String = conn
+            .query_row("SELECT company_name FROM settings WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(company_name, "Minha Empresa");
+    }
+
+    #[test]
+    fn migrations_insert_initial_financial_snapshot() {
+        let conn = setup_db();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migrations_are_idempotent() {
+        let conn = setup_db();
+
+        run_migrations(&conn).unwrap();
+
+        let settings_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM settings WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        let snapshot_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(settings_count, 1);
+        assert_eq!(snapshot_count, 1);
+    }
+
+    #[test]
+    fn migrations_upgrade_legacy_users_schema() {
+        let conn = setup_legacy_users_db();
+
+        conn.execute(
+            "INSERT INTO users (id, name, email, role, created_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+            params!["user-1", "Maria", "maria@example.com", "admin"],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let has_role: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'role'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let migrated_row: (String, String, String) = conn
+            .query_row(
+                "SELECT name, phone, cpf FROM users WHERE id = 'user-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(has_role, 0);
+        assert_eq!(migrated_row.0, "Maria");
+        assert_eq!(migrated_row.1, "");
+        assert_eq!(migrated_row.2, "");
+    }
 }

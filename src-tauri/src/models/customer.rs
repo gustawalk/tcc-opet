@@ -26,3 +26,23 @@ impl Customer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_sets_defaults_and_generates_uuid() {
+        let customer = Customer::new(
+            "Maria".to_string(),
+            "41999999999".to_string(),
+            "maria@example.com".to_string(),
+            "Rua A, 123".to_string(),
+        );
+
+        assert!(Uuid::parse_str(&customer.id).is_ok());
+        assert_eq!(customer.name, "Maria");
+        assert!(customer.created_at.is_some());
+        assert!(customer.deleted_at.is_none());
+    }
+}

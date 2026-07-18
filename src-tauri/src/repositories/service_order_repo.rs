@@ -22,6 +22,10 @@ pub struct ServiceOrderRepository;
 impl ServiceOrderRepository {
     pub fn get_service_order_parts(service_order_id: &str) -> Result<Vec<ServiceOrderPart>> {
         let conn = get_db()?;
+        Self::get_service_order_parts_with_conn(&conn, service_order_id)
+    }
+
+    pub(crate) fn get_service_order_parts_with_conn(conn: &Connection, service_order_id: &str) -> Result<Vec<ServiceOrderPart>> {
         
         let mut stmt = conn.prepare(
             "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, ii.name as inventory_item_name, sop.quantity, sop.unit_cost, sop.unit_price 
@@ -56,6 +60,15 @@ impl ServiceOrderRepository {
         quantity: i32,
     ) -> Result<()> {
         let mut conn = get_db()?;
+        Self::add_part_to_service_order_with_conn(&mut conn, service_order_id, inventory_item_id, quantity)
+    }
+
+    pub(crate) fn add_part_to_service_order_with_conn(
+        conn: &mut Connection,
+        service_order_id: &str,
+        inventory_item_id: &str,
+        quantity: i32,
+    ) -> Result<()> {
 
         // Start a transaction to ensure consistency
         let transaction = conn.transaction()?;
@@ -133,6 +146,10 @@ impl ServiceOrderRepository {
 
     pub fn remove_part_from_service_order(part_id: &str) -> Result<()> {
         let mut conn = get_db()?;
+        Self::remove_part_from_service_order_with_conn(&mut conn, part_id)
+    }
+
+    pub(crate) fn remove_part_from_service_order_with_conn(conn: &mut Connection, part_id: &str) -> Result<()> {
         let transaction = conn.transaction()?;
 
         let (os_id, inventory_item_id, quantity) = {
@@ -189,7 +206,11 @@ impl ServiceOrderRepository {
 
     pub fn create(order: &mut ServiceOrder) -> Result<()> {
         let conn = get_db()?;
-        order.display_id = Self::next_display_id(&conn)?;
+        Self::create_with_conn(&conn, order)
+    }
+
+    pub(crate) fn create_with_conn(conn: &Connection, order: &mut ServiceOrder) -> Result<()> {
+        order.display_id = Self::next_display_id(conn)?;
 
         conn.execute(
             "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at, display_id, discount_percent) 
@@ -217,6 +238,10 @@ impl ServiceOrderRepository {
 
     pub fn get_by_id(id: &str) -> Result<Option<ServiceOrder>> {
         let conn = get_db()?;
+        Self::get_by_id_with_conn(&conn, id)
+    }
+
+    pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<ServiceOrder>> {
 
         let mut stmt = conn.prepare(
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
@@ -252,6 +277,10 @@ impl ServiceOrderRepository {
 
     pub fn get_all() -> Result<Vec<ServiceOrder>> {
         let conn = get_db()?;
+        Self::get_all_with_conn(&conn)
+    }
+
+    pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<ServiceOrder>> {
 
         let mut stmt = conn.prepare(
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
@@ -291,6 +320,10 @@ impl ServiceOrderRepository {
 
     pub fn get_by_customer_id(customer_id: &str) -> Result<Vec<ServiceOrder>> {
         let conn = get_db()?;
+        Self::get_by_customer_id_with_conn(&conn, customer_id)
+    }
+
+    pub(crate) fn get_by_customer_id_with_conn(conn: &Connection, customer_id: &str) -> Result<Vec<ServiceOrder>> {
 
         let mut stmt = conn.prepare(
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.signature_path, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
@@ -329,6 +362,10 @@ impl ServiceOrderRepository {
 
     pub fn update(order: &ServiceOrder) -> Result<()> {
         let conn = get_db()?;
+        Self::update_with_conn(&conn, order)
+    }
+
+    pub(crate) fn update_with_conn(conn: &Connection, order: &ServiceOrder) -> Result<()> {
 
         conn.execute(
             "UPDATE service_orders 
@@ -355,11 +392,205 @@ impl ServiceOrderRepository {
 
     pub fn delete(id: &str) -> Result<()> {
         let conn = get_db()?;
+        Self::delete_with_conn(&conn, id)
+    }
+
+    pub(crate) fn delete_with_conn(conn: &Connection, id: &str) -> Result<()> {
 
         conn.execute(
             "UPDATE service_orders SET deleted_at = ?1 WHERE id = ?2",
             params![Utc::now().to_rfc3339(), id],
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::customer::Customer;
+    use crate::models::inventory_item::InventoryItem;
+    use crate::models::user::User;
+    use crate::repositories::customer_repo::CustomerRepository;
+    use crate::repositories::inventory_repo::InventoryRepository;
+    use crate::repositories::user_repo::UserRepository;
+    use crate::test_helpers::setup_db;
+
+    fn seed_customer(conn: &Connection) -> Customer {
+        let customer = Customer::new(
+            "Ana".to_string(),
+            "41999990000".to_string(),
+            "ana@example.com".to_string(),
+            "Rua das Flores".to_string(),
+        );
+        CustomerRepository::create_with_conn(conn, &customer).unwrap();
+        customer
+    }
+
+    fn seed_user(conn: &Connection) -> User {
+        let user = User::new("Técnico 1".to_string(), "tecnico@example.com".to_string());
+        UserRepository::create_with_conn(conn, &user).unwrap();
+        user
+    }
+
+    fn seed_part(conn: &Connection, stock: i32) -> InventoryItem {
+        let part = InventoryItem::new(
+            "Bateria".to_string(),
+            "Bateria iPhone".to_string(),
+            "part".to_string(),
+            1,
+            stock,
+            30.0,
+            80.0,
+        );
+        InventoryRepository::create_with_conn(conn, &part).unwrap();
+        part
+    }
+
+    fn build_order(customer_id: &str) -> ServiceOrder {
+        ServiceOrder::new(
+            customer_id.to_string(),
+            "iPhone 14".to_string(),
+            "Troca de bateria".to_string(),
+        )
+    }
+
+    #[test]
+    fn create_assigns_incrementing_display_ids() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let mut first = build_order(&customer.id);
+        let mut second = build_order(&customer.id);
+
+        ServiceOrderRepository::create_with_conn(&conn, &mut first).unwrap();
+        ServiceOrderRepository::create_with_conn(&conn, &mut second).unwrap();
+
+        assert_eq!(first.display_id, "OS-000001");
+        assert_eq!(second.display_id, "OS-000002");
+    }
+
+    #[test]
+    fn get_by_id_returns_joined_customer_and_user_names() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let user = seed_user(&conn);
+        let mut order = build_order(&customer.id);
+        order.user_id = Some(user.id.clone());
+
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+
+        let fetched = ServiceOrderRepository::get_by_id_with_conn(&conn, &order.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(fetched.customer_name.as_deref(), Some("Ana"));
+        assert_eq!(fetched.user_name.as_deref(), Some("Técnico 1"));
+    }
+
+    #[test]
+    fn update_persists_discount_status_and_description() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+
+        order.status = "Finalizada".to_string();
+        order.description = "Troca de bateria e limpeza".to_string();
+        order.discount_percent = 15.0;
+        ServiceOrderRepository::update_with_conn(&conn, &order).unwrap();
+
+        let fetched = ServiceOrderRepository::get_by_id_with_conn(&conn, &order.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.status, "Finalizada");
+        assert_eq!(fetched.description, "Troca de bateria e limpeza");
+        assert_eq!(fetched.discount_percent, 15.0);
+    }
+
+    #[test]
+    fn add_part_updates_inventory_movements_and_order_total() {
+        let mut conn = setup_db();
+        let customer = seed_customer(&conn);
+        let part = seed_part(&conn, 5);
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+
+        ServiceOrderRepository::add_part_to_service_order_with_conn(&mut conn, &order.id, &part.id, 2)
+            .unwrap();
+
+        let updated_part = InventoryRepository::get_by_id_with_conn(&conn, &part.id)
+            .unwrap()
+            .unwrap();
+        let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
+        let parts = ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id).unwrap();
+        let total_price: f64 = conn
+            .query_row(
+                "SELECT COALESCE(total_price, 0.0) FROM service_orders WHERE id = ?1",
+                params![order.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(updated_part.current_quantity, 3);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].quantity, 2);
+        assert_eq!(total_price, 160.0);
+        assert_eq!(movements.len(), 1);
+        assert_eq!(movements[0].r#type, "saida");
+        assert_eq!(movements[0].reference_os_id.as_deref(), Some(order.id.as_str()));
+    }
+
+    #[test]
+    fn add_part_rejects_insufficient_stock() {
+        let mut conn = setup_db();
+        let customer = seed_customer(&conn);
+        let part = seed_part(&conn, 1);
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+
+        let result = ServiceOrderRepository::add_part_to_service_order_with_conn(&mut conn, &order.id, &part.id, 2);
+
+        assert!(result.is_err());
+        assert!(ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn remove_part_restores_inventory_and_recalculates_total() {
+        let mut conn = setup_db();
+        let customer = seed_customer(&conn);
+        let part = seed_part(&conn, 5);
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        ServiceOrderRepository::add_part_to_service_order_with_conn(&mut conn, &order.id, &part.id, 2)
+            .unwrap();
+
+        let part_row = ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id)
+            .unwrap()
+            .remove(0);
+
+        ServiceOrderRepository::remove_part_from_service_order_with_conn(&mut conn, &part_row.id)
+            .unwrap();
+
+        let updated_part = InventoryRepository::get_by_id_with_conn(&conn, &part.id)
+            .unwrap()
+            .unwrap();
+        let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
+        let remaining_parts = ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id).unwrap();
+        let total_price: f64 = conn
+            .query_row(
+                "SELECT COALESCE(total_price, 0.0) FROM service_orders WHERE id = ?1",
+                params![order.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(updated_part.current_quantity, 5);
+        assert!(remaining_parts.is_empty());
+        assert_eq!(total_price, 0.0);
+        assert_eq!(movements.len(), 2);
+        assert_eq!(movements[0].r#type, "entrada");
+        assert_eq!(movements[1].r#type, "saida");
     }
 }

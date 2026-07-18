@@ -21,3 +21,19 @@ impl Settings {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_returns_singleton_settings() {
+        let settings = Settings::default();
+
+        assert_eq!(settings.id, 1);
+        assert_eq!(settings.company_name, "Minha Empresa");
+        assert!(settings.cnpj.is_none());
+        assert!(settings.logo_path.is_none());
+        assert!(settings.address.is_none());
+    }
+}

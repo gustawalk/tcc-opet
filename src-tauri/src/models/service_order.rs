@@ -45,3 +45,25 @@ impl ServiceOrder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_sets_service_order_defaults() {
+        let order = ServiceOrder::new(
+            "customer-1".to_string(),
+            "iPhone 14".to_string(),
+            "Troca de bateria".to_string(),
+        );
+
+        assert!(Uuid::parse_str(&order.id).is_ok());
+        assert_eq!(order.status, "Orçamento");
+        assert!(order.total_price.is_none());
+        assert!(order.signature_path.is_none());
+        assert!(order.display_id.is_empty());
+        assert_eq!(order.discount_percent, 0.0);
+        assert!(order.closed_at.is_none());
+    }
+}

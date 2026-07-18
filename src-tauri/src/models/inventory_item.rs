@@ -14,6 +14,7 @@ pub struct InventoryItem {
     pub cost_price: f64,
     pub sale_price: f64,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
     pub deleted_at: Option<String>,
 }
 
@@ -37,7 +38,35 @@ impl InventoryItem {
             cost_price,
             sale_price,
             created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: None,
             deleted_at: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_preserves_inventory_fields() {
+        let item = InventoryItem::new(
+            "Tela".to_string(),
+            "Tela OLED".to_string(),
+            "part".to_string(),
+            2,
+            10,
+            50.0,
+            120.0,
+        );
+
+        assert!(Uuid::parse_str(&item.id).is_ok());
+        assert_eq!(item.r#type, "part");
+        assert_eq!(item.min_quantity, 2);
+        assert_eq!(item.current_quantity, 10);
+        assert_eq!(item.cost_price, 50.0);
+        assert_eq!(item.sale_price, 120.0);
+        assert!(item.created_at.is_some());
+        assert!(item.deleted_at.is_none());
     }
 }

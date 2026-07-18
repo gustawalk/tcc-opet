@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Settings as SettingsType } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
+import { toastSuccess, toastError } from "@/lib/errors";
 
 const fetchSettings = async (): Promise<SettingsType> => {
   return await invoke<SettingsType>("get_settings");
@@ -58,9 +59,9 @@ export function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
-      alert("Configurações salvas com sucesso!");
+      toastSuccess("Configurações salvas com sucesso.");
     },
-    onError: (err) => alert(`Erro ao salvar configurações: ${err}`),
+    onError: (err) => toastError(err, "Erro ao salvar configurações."),
   });
 
   const handleSave = () => {
@@ -115,18 +116,12 @@ export function Settings() {
           <CardContent className="space-y-4">
             <div className="flex flex-col md:flex-row gap-6">
               <div className="flex flex-col items-center gap-4">
-                <div className="w-32 h-32 rounded-lg border-2 border-dashed flex items-center justify-center bg-muted/50 overflow-hidden group relative">
+                <div className="w-32 h-32 rounded-lg border-2 border-dashed flex items-center justify-center bg-muted/50 overflow-hidden relative">
                   {localSettings.logoPath ? (
                     <img src={localSettings.logoPath} alt="Logo" className="w-full h-full object-contain" />
                   ) : (
                     <Building2 className="h-10 w-10 text-muted-foreground" />
                   )}
-                  <div 
-                    className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    onClick={handleLogoUpload}
-                  >
-                    <Upload className="h-6 w-6 text-white" />
-                  </div>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleLogoUpload}>Alterar Logo</Button>
               </div>

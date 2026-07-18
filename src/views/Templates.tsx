@@ -43,6 +43,17 @@ import { Badge } from "@/components/ui/badge";
 import { templateSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
+import { toastSuccess, toastError } from "@/lib/errors";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Sheet,
   SheetContent,
@@ -63,13 +74,12 @@ const fetchTemplateItems = async (templateId: string): Promise<string[]> => {
 };
 
 export function Templates() {
-  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
-  
-  // Form State
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
@@ -164,30 +174,37 @@ export function Templates() {
           title,
           items
         });
-        alert("Template atualizado!");
+        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+        setIsSheetOpen(false);
+        toastSuccess("Template atualizado com sucesso.");
       } else {
         await invoke("create_checklist_template", {
           title,
           items
         });
-        alert("Template criado!");
+        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+        setIsSheetOpen(false);
+        toastSuccess("Template criado com sucesso.");
       }
-      await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
-      setIsSheetOpen(false);
     } catch (error) {
-      alert(`Erro ao salvar template: ${error}`);
+      toastError(error, "Erro ao salvar template.");
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (window.confirm("Deseja realmente excluir este template?")) {
-      try {
-        await invoke("delete_checklist_template", { id });
-        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
-        alert("Template removido!");
-      } catch (error) {
-        alert(`Erro ao excluir template: ${error}`);
-      }
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await invoke("delete_checklist_template", { id: confirmDeleteId });
+      await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+      toastSuccess("Template removido com sucesso.");
+    } catch (error) {
+      toastError(error, "Erro ao excluir template.");
+    } finally {
+      setConfirmDeleteId(null);
     }
   };
 
@@ -371,6 +388,21 @@ export function Templates() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir template</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Deseja realmente excluir este template?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteTemplate}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

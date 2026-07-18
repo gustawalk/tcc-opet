@@ -32,6 +32,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,6 +49,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import { toastSuccess, toastError, copyToClipboard } from "@/lib/errors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,15 +89,15 @@ const initialFormData = {
 
 export function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
-  const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [isInternational, setIsInternational] = useState<boolean>(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isInternational, setIsInternational] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<ValidationErrors>({});
-
   const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
 
   const { data: customers = [], isLoading } = useQuery({
@@ -104,8 +115,9 @@ export function Customers() {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setIsSheetOpen(false);
       setFormData(initialFormData);
+      toastSuccess("Cliente criado com sucesso.");
     },
-    onError: (err) => alert(`Erro ao criar cliente: ${err}`),
+    onError: (err) => toastError(err, "Erro ao criar cliente."),
   });
 
   const updateCustomerMutation = useMutation({
@@ -116,8 +128,9 @@ export function Customers() {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setIsSheetOpen(false);
       setFormData(initialFormData);
+      toastSuccess("Cliente atualizado com sucesso.");
     },
-    onError: (err) => alert(`Erro ao atualizar cliente: ${err}`),
+    onError: (err) => toastError(err, "Erro ao atualizar cliente."),
   });
 
   const deleteCustomerMutation = useMutation({
@@ -126,8 +139,9 @@ export function Customers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      toastSuccess("Cliente excluído com sucesso.");
     },
-    onError: (err) => alert(`Erro ao excluir cliente: ${err}`),
+    onError: (err) => toastError(err, "Erro ao excluir cliente."),
   });
 
   const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
@@ -240,9 +254,13 @@ export function Customers() {
   };
 
   const handleDeleteCustomer = (id: string) => {
-    const customer = customers.find(c => c.id === id);
-    if (confirm(`Deseja realmente excluir o cliente ${customer?.name}?`)) {
-      deleteCustomerMutation.mutate(id);
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeleteCustomer = () => {
+    if (confirmDeleteId) {
+      deleteCustomerMutation.mutate(confirmDeleteId);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -530,7 +548,12 @@ export function Customers() {
                       </CardContent>
                       <div className="px-4 py-2 bg-primary/5 flex items-center justify-between border-t">
                         <span className="text-sm font-bold">{formatCurrency(os.totalPrice || 0)}</span>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={() => alert(`ID copiado: ${os.displayId || os.id.slice(0, 8)}`)}>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1.5" onClick={async () => {
+                          const text = os.displayId || os.id.slice(0, 8);
+                          const ok = await copyToClipboard(text);
+                          if (ok) toastSuccess(`ID ${text} copiado.`);
+                          else toastError("Erro ao copiar ID.");
+                        }}>
                           Copiar ID<Copy className="h-3 w-3" />
                         </Button>
                       </div>
@@ -553,6 +576,21 @@ export function Customers() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir cliente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Deseja realmente excluir este cliente?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCustomer}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -31,6 +31,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { cn } from "@/lib/utils";
 import { serviceOrderCreateSchema, newCustomerSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { toastSuccess, toastError } from "@/lib/errors";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -293,11 +294,11 @@ export function ServiceOrderCreate() {
       }
 
       const selectedTech = users.find((u: UserType) => u.id === formData.techId);
-      alert(`Ordem de serviço criada com sucesso! Responsável: ${selectedTech?.name || 'Não atribuído'}.`);
+      toastSuccess(`Ordem de serviço criada! Responsável: ${selectedTech?.name || 'Não atribuído'}.`);
       navigate("/os");
     } catch (error) {
       console.error("Erro ao criar OS:", error);
-      alert(`Erro ao criar ordem de serviço: ${error}`);
+      toastError(error, "Erro ao criar ordem de serviço.");
     }
   };
 

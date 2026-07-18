@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Toaster } from "sonner";
 import { MainLayout } from "./layouts/MainLayout";
 import { Dashboard } from "./views/Dashboard";
 import { ServiceOrderCreate } from "./views/ServiceOrderCreate";
@@ -38,6 +39,12 @@ function App() {
           </Routes>
         </MainLayout>
       </BrowserRouter>
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+        duration={4000}
+      />
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );

@@ -53,6 +53,17 @@ import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/li
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
+import { toastSuccess, toastError } from "@/lib/errors";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const fetchUsers = async (): Promise<UserType[]> => {
   return await invoke<UserType[]>("get_users");
@@ -63,9 +74,9 @@ export function Users() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
-  const queryClient = useQueryClient();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
-  
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -86,9 +97,10 @@ export function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsSheetOpen(false);
+      toastSuccess("Usuário criado com sucesso.");
     },
     onError: (err) => {
-      alert(`Erro ao criar usuário: ${err}`);
+      toastError(err, "Erro ao criar usuário.");
     },
   });
 
@@ -99,9 +111,10 @@ export function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsSheetOpen(false);
+      toastSuccess("Usuário atualizado com sucesso.");
     },
     onError: (err) => {
-      alert(`Erro ao atualizar usuário: ${err}`);
+      toastError(err, "Erro ao atualizar usuário.");
     },
   });
 
@@ -111,9 +124,10 @@ export function Users() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      toastSuccess("Usuário excluído com sucesso.");
     },
     onError: (err) => {
-      alert(`Erro ao excluir usuário: ${err}`);
+      toastError(err, "Erro ao excluir usuário.");
     },
   });
 
@@ -193,8 +207,13 @@ export function Users() {
   };
 
   const handleDeleteUser = (id: string) => {
-    if (window.confirm("Deseja realmente excluir este usuário?")) {
-      deleteMutation.mutate(id);
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeleteUser = () => {
+    if (confirmDeleteId) {
+      deleteMutation.mutate(confirmDeleteId);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -329,7 +348,8 @@ export function Users() {
               <Input 
                 id="name" 
                 value={formData.name}
-                onChange={(e) => updateField("name", formatName(e.target.value))}
+                onChange={(e) => updateField("name", e.target.value)}
+                  onBlur={(e) => updateField("name", formatName(e.target.value))}
               />
               {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
             </div>
@@ -394,6 +414,21 @@ export function Users() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Deseja realmente excluir este usuário?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteUser}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

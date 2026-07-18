@@ -62,6 +62,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { editServiceOrderSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
+import { toastSuccess, toastError } from "@/lib/errors";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Estendendo o tipo ServiceOrder para incluir checklist opcional para os mocks
 interface ServiceOrderWithChecklist extends ServiceOrder {
@@ -96,16 +107,15 @@ const fetchServiceOrders = async (): Promise<ServiceOrderWithChecklist[]> => {
 
 export function ServiceOrders() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const { sortConfig, cycleSort } = useSort();
-
-  // Estados para Controle de Sheet
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOS, setSelectedOS] = useState<ServiceOrderWithChecklist | null>(null);
-  const [osItems, setOsItems] = useState<ServiceOrderPart[]>([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { sortConfig, cycleSort } = useSort();
+  const [osItems, setOsItems] = useState<ServiceOrderPart[]>([]);
 
   // Estados de Edição Temporários
   const [editStatus, setEditStatus] = useState<OSStatus>("Orçamento");
@@ -214,16 +224,20 @@ export function ServiceOrders() {
     setIsDetailOpen(true);
   };
 
-  const handleDeleteOS = async (id: string) => {
-    const confirmDelete = window.confirm(`Deseja realmente excluir a OS ${id}? Esta ação não pode ser desfeita.`);
-    if (confirmDelete) {
-      try {
-        await invoke("delete_service_order", { id });
-        await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
-        alert("Ordem de serviço excluída!");
-      } catch (error) {
-        alert(`Erro ao excluir: ${error}`);
-      }
+  const handleDeleteOS = (id: string) => {
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeleteOS = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await invoke("delete_service_order", { id: confirmDeleteId });
+      await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
+      toastSuccess("Ordem de serviço excluída.");
+    } catch (error) {
+      toastError(error, "Erro ao excluir ordem de serviço.");
+    } finally {
+      setConfirmDeleteId(null);
     }
   };
 
@@ -256,10 +270,10 @@ export function ServiceOrders() {
       await queryClient.invalidateQueries({ queryKey: ["service-orders"] });
       await queryClient.invalidateQueries({ queryKey: ["service-order"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
-      alert("Alterações salvas com sucesso!");
+      toastSuccess("Alterações salvas com sucesso.");
       setIsEditOpen(false);
     } catch (error) {
-      alert(`Erro ao salvar: ${error}`);
+      toastError(error, "Erro ao salvar alterações.");
     }
   };
 
@@ -277,7 +291,7 @@ export function ServiceOrders() {
       setInventorySearch("");
       setShowInventoryResults(false);
     } catch (error) {
-      alert(`Erro ao adicionar item: ${error}`);
+      toastError(error, "Erro ao adicionar item.");
     }
   };
 
@@ -289,7 +303,7 @@ export function ServiceOrders() {
       const items = await fetchOSItems(selectedOS.id);
       setOsItems(items);
     } catch (error) {
-      alert(`Erro ao remover item: ${error}`);
+      toastError(error, "Erro ao remover item.");
     }
   };
 
@@ -600,6 +614,21 @@ export function ServiceOrders() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir ordem de serviço</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Deseja realmente excluir esta ordem de serviço?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteOS}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

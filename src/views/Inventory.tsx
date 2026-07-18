@@ -66,6 +66,17 @@ import { Separator } from "@/components/ui/separator";
 import { inventoryItemSchema, quantitySchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
+import { toastSuccess, toastError } from "@/lib/errors";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
@@ -108,6 +119,7 @@ export function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -160,7 +172,9 @@ export function Inventory() {
     mutationFn: deleteInventoryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      toastSuccess("Item excluído com sucesso.");
     },
+    onError: (err) => toastError(err, "Erro ao excluir item."),
   });
 
   const restockMutation = useMutation({
@@ -237,9 +251,19 @@ export function Inventory() {
       });
     } else {
       result = [...result].sort((a, b) => {
-        if (a.currentQuantity === 0 && b.currentQuantity !== 0) return -1;
-        if (a.currentQuantity !== 0 && b.currentQuantity === 0) return 1;
-        return 0;
+        const priA = a.currentQuantity === 0 ? 0
+          : a.currentQuantity <= a.minQuantity ? 1 : 2;
+        const priB = b.currentQuantity === 0 ? 0
+          : b.currentQuantity <= b.minQuantity ? 1 : 2;
+        if (priA !== priB) return priA - priB;
+
+        const tA = a.updatedAt
+          ? new Date(a.updatedAt).getTime()
+          : new Date(a.createdAt ?? 0).getTime();
+        const tB = b.updatedAt
+          ? new Date(b.updatedAt).getTime()
+          : new Date(b.createdAt ?? 0).getTime();
+        return tB - tA;
       });
     }
 
@@ -265,6 +289,16 @@ export function Inventory() {
           return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
         }
         return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+      });
+    } else {
+      result = [...result].sort((a, b) => {
+        const tA = a.updatedAt
+          ? new Date(a.updatedAt).getTime()
+          : new Date(a.createdAt ?? 0).getTime();
+        const tB = b.updatedAt
+          ? new Date(b.updatedAt).getTime()
+          : new Date(b.createdAt ?? 0).getTime();
+        return tB - tA;
       });
     }
 
@@ -330,9 +364,14 @@ export function Inventory() {
     });
   };
 
-  const handleDeleteItem = async (id: string) => {
-    if (window.confirm("Deseja realmente excluir este item?")) {
-      await deleteMutation.mutateAsync(id);
+  const handleDeleteItem = (id: string) => {
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (confirmDeleteId) {
+      await deleteMutation.mutateAsync(confirmDeleteId);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -828,6 +867,21 @@ export function Inventory() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Deseja realmente excluir este item?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteItem}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

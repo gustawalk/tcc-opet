@@ -31,6 +31,7 @@ export interface InventoryItem {
   costPrice: number;
   salePrice: number;
   createdAt?: string;
+  updatedAt?: string;
   deletedAt?: string | null;
 }
 

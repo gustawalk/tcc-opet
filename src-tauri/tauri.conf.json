@@ -13,7 +13,8 @@
     "windows": [
       {
         "title": "OpetS",
-        "maximized": true
+        "maximized": true,
+        "generalAutofillEnabled": false
       }
     ],
     "security": {
@@ -24,6 +25,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -42,7 +42,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-background w-full">
-        <Sidebar>
+        <Sidebar collapsible="icon">
           <SidebarHeader className="h-16 flex items-center px-6 border-b">
             <div className="flex items-center gap-3">
               <div className="rounded-lg flex items-center justify-center">

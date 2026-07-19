@@ -36,7 +36,7 @@ import {
   ServiceOrderItemLine,
   ServiceOrderItemsEditor,
 } from "@/components/shared/ServiceOrderItemsEditor";
-import { formatBRPhone, formatCurrency } from "@/lib/formatters";
+import { formatBRPhone, formatCurrency, formatName } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   clearFieldError,
@@ -359,6 +359,7 @@ export function ServiceOrderCreate() {
                     setShowCustomers(true);
                     setErrors(clearFieldError(errors, "name"));
                   }}
+                  onBlur={() => setCustomerSearch(formatName(customerSearch))}
                 />
               </div>
               {errors.name && !selectedCustomer && (

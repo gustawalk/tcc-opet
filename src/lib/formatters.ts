@@ -38,7 +38,7 @@ export const formatName = (value: string) => {
   return trimmed
     .split(" ")
     .map((word) =>
-      word.length > 2
+      word.length > 3
         ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
         : word.toLowerCase()
     )

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tcc-opet",
+  "productName": "OpetS",
   "version": "0.1.0",
   "identifier": "com.walk.tcc-opet",
   "build": {

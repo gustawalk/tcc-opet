@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -197,7 +197,7 @@ function AttachmentItem({
   onDelete,
 }: {
   attachment: ServiceOrderAttachment;
-  onDelete: (attachment: ServiceOrderAttachment) => void;
+  onDelete?: (attachment: ServiceOrderAttachment) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const isImage = attachment.mimeType.startsWith("image/");
@@ -281,14 +281,16 @@ function AttachmentItem({
         >
           <Download className="h-3.5 w-3.5" /> Baixar
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 text-destructive hover:text-destructive"
-          onClick={() => onDelete(attachment)}
-        >
-          <Trash2 className="h-3.5 w-3.5" /> Excluir
-        </Button>
+        {onDelete && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-destructive hover:text-destructive"
+            onClick={() => onDelete(attachment)}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Excluir
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -328,9 +330,6 @@ export function ServiceOrderDetailSheet({
   open,
   onClose,
 }: ServiceOrderDetailSheetProps) {
-  const queryClient = useQueryClient();
-  const [attachmentToDelete, setAttachmentToDelete] =
-    useState<ServiceOrderAttachment | null>(null);
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const {
     data: order,
@@ -380,22 +379,6 @@ export function ServiceOrderDetailSheet({
     queryKey: ["service-order-attachments", orderId],
     queryFn: () => fetchAttachments(orderId!),
     enabled: !!orderId && open,
-  });
-
-  const deleteAttachmentMutation = useMutation({
-    mutationFn: (id: string) =>
-      invoke("delete_service_order_attachment", { id }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["service-order-attachments", orderId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["service-order-events", orderId],
-      });
-      setAttachmentToDelete(null);
-      toastSuccess("Anexo excluído com sucesso.");
-    },
-    onError: (error) => toastError(error, "Erro ao excluir anexo."),
   });
 
   const [pdfPreview, setPdfPreview] = useState<PdfPreview | null>(null);
@@ -688,7 +671,6 @@ export function ServiceOrderDetailSheet({
                 <AttachmentItem
                   key={attachment.id}
                   attachment={attachment}
-                  onDelete={setAttachmentToDelete}
                 />
               ))}
             </div>
@@ -757,38 +739,6 @@ export function ServiceOrderDetailSheet({
           </Button>
         </SheetFooter>
       </SheetContent>
-      {attachmentToDelete && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
-          onClick={() => !deleteAttachmentMutation.isPending && setAttachmentToDelete(null)}
-        >
-          <div
-            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold">Excluir anexo</h3>
-            <p className="text-sm text-muted-foreground">
-              Deseja excluir permanentemente o anexo &quot;
-              {attachmentToDelete?.fileName}&quot;?
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAttachmentToDelete(null)} disabled={deleteAttachmentMutation.isPending}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() =>
-                  attachmentToDelete &&
-                  deleteAttachmentMutation.mutate(attachmentToDelete.id)
-                }
-                disabled={deleteAttachmentMutation.isPending}
-              >
-                {deleteAttachmentMutation.isPending ? "Excluindo..." : "Excluir"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
       {pdfPreview && (
         <Suspense fallback={null}>
           <PdfPreviewDialog preview={pdfPreview} onClose={() => setPdfPreview(null)} />

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import {
@@ -117,6 +117,8 @@ export function ServiceOrders() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [attachmentToDelete, setAttachmentToDelete] =
+    useState<ServiceOrderAttachment | null>(null);
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const ordersQuery = useQuery({
@@ -146,6 +148,21 @@ export function ServiceOrders() {
     queryKey: ["service-order-attachments", selectedOS?.id],
     queryFn: () => fetchAttachments(selectedOS!.id),
     enabled: editOpen && !!selectedOS,
+  });
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (id: string) =>
+      invoke("delete_service_order_attachment", { id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["service-order-attachments", selectedOS?.id],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["service-order-events", selectedOS?.id],
+      });
+      setAttachmentToDelete(null);
+      toastSuccess("Anexo excluído com sucesso.");
+    },
+    onError: (error) => toastError(error, "Erro ao excluir anexo."),
   });
   const orders = ordersQuery.data ?? EMPTY_ORDERS;
   const inventory = inventoryQuery.data ?? EMPTY_INVENTORY;
@@ -546,7 +563,11 @@ export function ServiceOrders() {
                 </TableRow>
               ) : filteredOrders.length ? (
                 filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
+                  <TableRow
+                    key={order.id}
+                    className="cursor-pointer"
+                    onClick={() => viewOrder(order)}
+                  >
                     <TableCell className="font-mono text-xs font-bold">
                       {order.displayId}
                     </TableCell>
@@ -587,7 +608,10 @@ export function ServiceOrders() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell
+                      className="text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
@@ -787,7 +811,7 @@ export function ServiceOrders() {
                   key={attachment.id}
                 >
                   <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
                       {attachment.fileName}
                     </p>
@@ -795,6 +819,14 @@ export function ServiceOrders() {
                       {attachment.mimeType} · {formatFileSize(attachment.sizeBytes)}
                     </p>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                    onClick={() => setAttachmentToDelete(attachment)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -911,6 +943,42 @@ export function ServiceOrders() {
                 disabled={isSaving}
               >
                 {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {attachmentToDelete && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !deleteAttachmentMutation.isPending && setAttachmentToDelete(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir anexo</h3>
+            <p className="text-sm text-muted-foreground">
+              Deseja excluir permanentemente o anexo &quot;
+              {attachmentToDelete?.fileName}&quot;?
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setAttachmentToDelete(null)}
+                disabled={deleteAttachmentMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() =>
+                  attachmentToDelete &&
+                  deleteAttachmentMutation.mutate(attachmentToDelete.id)
+                }
+                disabled={deleteAttachmentMutation.isPending}
+              >
+                {deleteAttachmentMutation.isPending ? "Excluindo..." : "Excluir"}
               </Button>
             </div>
           </div>

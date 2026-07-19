@@ -10,9 +10,9 @@ import {
   Mail,
   User,
   Save,
-  Calendar,
   Phone,
   IdCard,
+  AlertTriangle,
 } from "lucide-react";
 import { 
   Card, 
@@ -52,6 +52,7 @@ import {
 import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
 import { toastSuccess, toastError } from "@/lib/errors";
 import {
@@ -85,7 +86,7 @@ export function Users() {
     joinDate: new Date().toISOString().split("T")[0],
   });
 
-  const { data: users = [], isLoading } = useQuery({
+  const { data: users = [], isLoading, error, refetch } = useQuery({
     queryKey: ["users"],
     queryFn: fetchUsers,
   });
@@ -192,6 +193,7 @@ export function Users() {
   };
 
   const handleSave = () => {
+    if (createMutation.isPending || updateMutation.isPending) return;
     const result = userSchema.safeParse(formData);
     const fieldErrors = parseErrors(result);
     if (fieldErrors) {
@@ -211,7 +213,7 @@ export function Users() {
   };
 
   const confirmDeleteUser = () => {
-    if (confirmDeleteId) {
+    if (confirmDeleteId && !deleteMutation.isPending) {
       deleteMutation.mutate(confirmDeleteId);
       setConfirmDeleteId(null);
     }
@@ -221,6 +223,17 @@ export function Users() {
     setFormData({ ...formData, [field]: value });
     setErrors(clearFieldError(errors, field));
   };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+        <AlertTriangle className="h-12 w-12 text-destructive" />
+        <h3 className="text-xl font-bold">Erro ao carregar funcionários</h3>
+        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar os funcionários. Tente novamente.</p>
+        <Button onClick={() => refetch()}>Tentar Novamente</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
@@ -391,16 +404,8 @@ export function Users() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="joinDate">Data de Entrada</Label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="joinDate"
-                  type="date"
-                  className="pl-9"
-                  value={formData.joinDate}
-                  onChange={(e) => updateField("joinDate", e.target.value)}
-                />
-              </div>
+              <DatePicker id="joinDate" value={formData.joinDate} onChange={(value) => updateField("joinDate", value)} />
+              {errors.joinDate && <p className="text-xs text-destructive">{errors.joinDate}</p>}
             </div>
           </div>
 
@@ -425,7 +430,7 @@ export function Users() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteUser}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeleteUser} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? "Excluindo..." : "Excluir"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

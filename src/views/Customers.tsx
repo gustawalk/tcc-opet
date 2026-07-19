@@ -71,6 +71,7 @@ import { formatCurrency, formatBRPhone } from "@/lib/formatters";
 import { customerSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
+import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
@@ -98,9 +99,10 @@ export function Customers() {
   const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
 
-  const { data: customers = [], isLoading } = useQuery({
+  const { data: customers = [], isLoading, error, refetch } = useQuery({
     queryKey: ["customers"],
     queryFn: fetchCustomers,
   });
@@ -233,6 +235,7 @@ export function Customers() {
   };
 
   const handleSaveCustomer = () => {
+    if (createCustomerMutation.isPending || updateCustomerMutation.isPending) return;
     const result = customerSchema.safeParse(formData);
     const fieldErrors = parseErrors(result);
     if (fieldErrors) {
@@ -258,7 +261,7 @@ export function Customers() {
   };
 
   const confirmDeleteCustomer = () => {
-    if (confirmDeleteId) {
+    if (confirmDeleteId && !deleteCustomerMutation.isPending) {
       deleteCustomerMutation.mutate(confirmDeleteId);
       setConfirmDeleteId(null);
     }
@@ -279,6 +282,17 @@ export function Customers() {
     };
     return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
   };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+        <History className="h-12 w-12 text-destructive" />
+        <h3 className="text-xl font-bold">Erro ao carregar clientes</h3>
+        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar os clientes. Tente novamente.</p>
+        <Button onClick={() => refetch()}>Tentar Novamente</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200">
@@ -491,9 +505,9 @@ export function Customers() {
             <Button variant="outline" onClick={() => setIsSheetOpen(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleSaveCustomer} className="w-full sm:w-auto gap-2">
+            <Button onClick={handleSaveCustomer} disabled={createCustomerMutation.isPending || updateCustomerMutation.isPending} className="w-full sm:w-auto gap-2">
               <Save className="h-4 w-4" />
-              {isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
+              {createCustomerMutation.isPending || updateCustomerMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -556,6 +570,12 @@ export function Customers() {
                         }}>
                           Copiar ID<Copy className="h-3 w-3" />
                         </Button>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
+                          setIsHistorySheetOpen(false);
+                          window.setTimeout(() => setSelectedOrderId(os.id), 0);
+                        }}>
+                          Ver detalhes
+                        </Button>
                       </div>
                     </Card>
                   ))}
@@ -587,10 +607,11 @@ export function Customers() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteCustomer}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeleteCustomer} disabled={deleteCustomerMutation.isPending}>{deleteCustomerMutation.isPending ? "Excluindo..." : "Excluir"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ServiceOrderDetailSheet orderId={selectedOrderId} open={!!selectedOrderId} onClose={() => setSelectedOrderId(null)} />
     </div>
   );
 }

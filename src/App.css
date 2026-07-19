@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
@@ -39,6 +40,7 @@
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
   .dark {
+    color-scheme: dark;
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
     --card: 0 0% 3.9%;
@@ -71,6 +73,43 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@media print {
+  body > * {
+    visibility: hidden !important;
+  }
+
+  .pdf-preview-print-root,
+  .pdf-preview-print-root * {
+    visibility: visible !important;
+  }
+
+  .pdf-preview-print-root {
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 100%;
+  }
+
+  .pdf-preview-toolbar,
+  [data-radix-dialog-overlay] {
+    display: none !important;
+  }
+
+  .pdf-preview-page {
+    break-after: page;
+    box-shadow: none !important;
+    display: block;
+    height: auto !important;
+    margin: 0 auto;
+    max-width: 100%;
+    width: 100% !important;
+  }
+
+  .pdf-preview-page:last-child {
+    break-after: auto;
   }
 }
 

@@ -10,7 +10,9 @@ import {
   Trash2, 
   Save, 
   X,
-  GripVertical,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
 } from "lucide-react";
 import { 
   Card, 
@@ -84,8 +86,10 @@ export function Templates() {
   const [items, setItems] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
   const [errors, setErrors] = useState<ValidationErrors>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading, error, refetch } = useQuery({
     queryKey: ["checklist-templates"],
     queryFn: fetchTemplates,
   });
@@ -158,7 +162,16 @@ export function Templates() {
     setItems(items.filter((_, i) => i !== index));
   };
 
+  const handleMoveItem = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= items.length) return;
+    const nextItems = [...items];
+    [nextItems[index], nextItems[nextIndex]] = [nextItems[nextIndex], nextItems[index]];
+    setItems(nextItems);
+  };
+
   const handleSave = async () => {
+    if (isSaving) return;
     const result = templateSchema.safeParse({ title, items });
     const fieldErrors = parseErrors(result);
     if (fieldErrors) {
@@ -168,6 +181,7 @@ export function Templates() {
     setErrors({});
 
     try {
+      setIsSaving(true);
       if (selectedTemplate) {
         await invoke("update_checklist_template", {
           id: selectedTemplate.id,
@@ -188,6 +202,8 @@ export function Templates() {
       }
     } catch (error) {
       toastError(error, "Erro ao salvar template.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -196,17 +212,30 @@ export function Templates() {
   };
 
   const confirmDeleteTemplate = async () => {
-    if (!confirmDeleteId) return;
+    if (!confirmDeleteId || isDeleting) return;
     try {
+      setIsDeleting(true);
       await invoke("delete_checklist_template", { id: confirmDeleteId });
       await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
       toastSuccess("Template removido com sucesso.");
     } catch (error) {
       toastError(error, "Erro ao excluir template.");
     } finally {
+      setIsDeleting(false);
       setConfirmDeleteId(null);
     }
   };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+        <AlertTriangle className="h-12 w-12 text-destructive" />
+        <h3 className="text-xl font-bold">Erro ao carregar templates</h3>
+        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar os templates. Tente novamente.</p>
+        <Button onClick={() => refetch()}>Tentar Novamente</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
@@ -356,9 +385,17 @@ export function Templates() {
                 <div className="space-y-2">
                   {items.map((item, index) => (
                     <div key={index} className="flex items-center gap-2 group bg-muted/50 p-2 rounded-sm border border-transparent hover:border-primary/20 transition-colors">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-sm flex-1">{item}</span>
-                      <Button 
+                       <span className="text-sm flex-1">{item}</span>
+                       <div className="flex items-center">
+                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label={`Mover ${item} para cima`} onClick={() => handleMoveItem(index, -1)} disabled={index === 0}>
+                           <ChevronUp className="h-3 w-3" />
+                         </Button>
+                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label={`Mover ${item} para baixo`} onClick={() => handleMoveItem(index, 1)} disabled={index === items.length - 1}>
+                           <ChevronDown className="h-3 w-3" />
+                         </Button>
+                       </div>
+                       <Button
+                         type="button"
                         variant="ghost" 
                         size="icon" 
                         className="h-6 w-6 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
@@ -382,8 +419,8 @@ export function Templates() {
             <Button variant="outline" className="w-full" onClick={() => setIsSheetOpen(false)}>
               Cancelar
             </Button>
-            <Button className="w-full gap-2" onClick={handleSave}>
-              <Save className="h-4 w-4" /> {selectedTemplate ? "Salvar Alterações" : "Criar Template"}
+            <Button className="w-full gap-2" onClick={handleSave} disabled={isSaving}>
+              <Save className="h-4 w-4" /> {isSaving ? "Salvando..." : selectedTemplate ? "Salvar Alterações" : "Criar Template"}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -399,7 +436,7 @@ export function Templates() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteTemplate}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeleteTemplate} disabled={isDeleting}>{isDeleting ? "Excluindo..." : "Excluir"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

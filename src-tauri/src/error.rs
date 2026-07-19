@@ -9,7 +9,10 @@ pub struct AppError {
 
 impl AppError {
     pub fn new(en: impl Into<String>, pt: impl Into<String>) -> Self {
-        Self { en: en.into(), pt: pt.into() }
+        Self {
+            en: en.into(),
+            pt: pt.into(),
+        }
     }
 }
 
@@ -22,22 +25,18 @@ impl fmt::Display for AppError {
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
         match &e {
-            rusqlite::Error::QueryReturnedNoRows => AppError::new(
-                "Record not found.",
-                "Registro não encontrado.",
-            ),
-            rusqlite::Error::ToSqlConversionFailure(_) => AppError::new(
-                "Invalid data format.",
-                "Formato de dados inválido.",
-            ),
-            rusqlite::Error::InvalidParameterName(_) => AppError::new(
-                "Invalid parameter name.",
-                "Parâmetro inválido.",
-            ),
-            rusqlite::Error::InvalidColumnType(..) => AppError::new(
-                "Invalid column type.",
-                "Tipo de coluna inválido.",
-            ),
+            rusqlite::Error::QueryReturnedNoRows => {
+                AppError::new("Record not found.", "Registro não encontrado.")
+            }
+            rusqlite::Error::ToSqlConversionFailure(_) => {
+                AppError::new("Invalid data format.", "Formato de dados inválido.")
+            }
+            rusqlite::Error::InvalidParameterName(_) => {
+                AppError::new("Invalid parameter name.", "Parâmetro inválido.")
+            }
+            rusqlite::Error::InvalidColumnType(..) => {
+                AppError::new("Invalid column type.", "Tipo de coluna inválido.")
+            }
             _ => AppError::new(
                 format!("Database error: {}", e),
                 format!("Erro no banco de dados: {}", e),

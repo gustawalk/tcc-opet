@@ -5,6 +5,7 @@ import {
   Wrench,
   Settings,
   ClipboardList,
+  ChartNoAxesCombined,
   Plus,
   User
 } from "lucide-react";
@@ -29,6 +30,7 @@ const menuItems = [
   { icon: Users, label: "Clientes", path: "/customers" },
   { icon: Package, label: "Estoque", path: "/inventory" },
   { icon: ClipboardList, label: "Templates", path: "/templates" },
+  { icon: ChartNoAxesCombined, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
   { icon: User, label: "Usuarios", path: "/users" }
 ];

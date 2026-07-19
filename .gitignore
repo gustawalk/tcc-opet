@@ -25,3 +25,18 @@ dist-ssr
 *.md
 
 database.db
+
+# Environment config
+.env
+
+# Runtime data
+src-tauri/database.attachments/
+src-tauri/database.pdf-previews/
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+*.AppImage
+*.deb
+*.rpm
+*.msi
+*.exe

@@ -1,0 +1,232 @@
+name: Release desktop application
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Yarn
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            pkg-config
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Verify version consistency
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tauri_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          cargo_version="$(node -e 'const source = require("fs").readFileSync("src-tauri/Cargo.toml", "utf8"); const match = source.match(/^version = "([^"]+)"$/m); if (!match) process.exit(1); process.stdout.write(match[1]);')"
+
+          test "$package_version" = "$tauri_version"
+          test "$package_version" = "$cargo_version"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" != "v${package_version}" ]]; then
+            printf 'A tag %s deve corresponder a v%s.\n' "${GITHUB_REF_NAME}" "$package_version" >&2
+            exit 1
+          fi
+
+      - name: Lint frontend
+        run: yarn lint
+
+      - name: Check TypeScript
+        run: yarn typecheck
+
+      - name: Build frontend
+        run: yarn build
+
+      - name: Test Rust backend
+        working-directory: src-tauri
+        run: cargo test
+
+  build-windows:
+    name: Build Windows installers
+    needs: verify
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Yarn
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build NSIS and MSI installers
+        run: yarn tauri build --bundles nsis msi --ci
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux-deb:
+    name: Build Linux DEB
+    needs: verify
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Yarn
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build DEB package
+        run: yarn tauri build --bundles deb --ci
+
+      - name: Upload DEB package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux-appimage:
+    name: Build Linux AppImage
+    needs: verify
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Yarn
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+
+      - name: Build AppImage in Debian 12
+        run: yarn build:appimage
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, build-windows, build-linux-deb, build-linux-appimage]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-assets/* --generate-notes --title "OpetS Manager ${GITHUB_REF_NAME}"
+          fi

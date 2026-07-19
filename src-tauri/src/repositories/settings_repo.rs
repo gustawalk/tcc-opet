@@ -11,11 +11,10 @@ impl SettingsRepository {
     }
 
     pub(crate) fn get_settings_with_conn(conn: &Connection) -> Result<Settings> {
-        
         let mut stmt = conn.prepare(
-            "SELECT id, company_name, cnpj, logo_path, address FROM settings WHERE id = 1"
+            "SELECT id, company_name, cnpj, logo_path, address FROM settings WHERE id = 1",
         )?;
-        
+
         let result = stmt.query_row([], |row| {
             Ok(Settings {
                 id: row.get(0)?,
@@ -38,7 +37,6 @@ impl SettingsRepository {
     }
 
     pub(crate) fn update_settings_with_conn(conn: &Connection, settings: &Settings) -> Result<()> {
-        
         conn.execute(
             "UPDATE settings SET company_name = ?1, cnpj = ?2, logo_path = ?3, address = ?4 WHERE id = 1",
             params![
@@ -70,7 +68,8 @@ mod tests {
     #[test]
     fn get_settings_falls_back_to_default_when_row_is_missing() {
         let conn = setup_db();
-        conn.execute("DELETE FROM settings WHERE id = 1", []).unwrap();
+        conn.execute("DELETE FROM settings WHERE id = 1", [])
+            .unwrap();
 
         let settings = SettingsRepository::get_settings_with_conn(&conn).unwrap();
 
@@ -94,7 +93,10 @@ mod tests {
 
         assert_eq!(fetched.company_name, "Assistência Pro");
         assert_eq!(fetched.cnpj.as_deref(), Some("12345678000199"));
-        assert_eq!(fetched.logo_path.as_deref(), Some("data:image/png;base64,abc"));
+        assert_eq!(
+            fetched.logo_path.as_deref(),
+            Some("data:image/png;base64,abc")
+        );
         assert_eq!(fetched.address.as_deref(), Some("Rua Central, 100"));
     }
 }

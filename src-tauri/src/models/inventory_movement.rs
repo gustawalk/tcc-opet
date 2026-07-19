@@ -11,6 +11,8 @@ pub struct InventoryMovement {
     pub quantity: i32,
     pub reference_os_id: Option<String>,
     pub os_display_id: Option<String>,
+    pub reason: String,
+    pub unit_cost: Option<f64>,
     pub created_at: Option<String>,
 }
 
@@ -28,6 +30,8 @@ impl InventoryMovement {
             quantity,
             reference_os_id,
             os_display_id: None,
+            reason: String::new(),
+            unit_cost: None,
             created_at: Some(Utc::now().to_rfc3339()),
         }
     }
@@ -51,6 +55,8 @@ mod tests {
         assert_eq!(movement.quantity, 3);
         assert_eq!(movement.reference_os_id.as_deref(), Some("os-1"));
         assert!(movement.os_display_id.is_none());
+        assert!(movement.reason.is_empty());
+        assert!(movement.unit_cost.is_none());
         assert!(movement.created_at.is_some());
     }
 }

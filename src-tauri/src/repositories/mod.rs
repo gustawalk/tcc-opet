@@ -1,7 +1,10 @@
+pub mod checklist_repo;
 pub mod customer_repo;
 pub mod dashboard_repo;
+pub mod financial_report_repo;
 pub mod inventory_repo;
+pub mod service_order_attachment_repo;
+pub mod service_order_event_repo;
 pub mod service_order_repo;
-pub mod user_repo;
 pub mod settings_repo;
-pub mod checklist_repo;
+pub mod user_repo;

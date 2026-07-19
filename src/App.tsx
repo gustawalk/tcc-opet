@@ -11,6 +11,7 @@ import { ServiceOrders } from "./views/ServiceOrders";
 import { Users } from "./views/Users";
 import { Settings } from "./views/Settings";
 import { Templates } from "./views/Templates";
+import { Reports } from "./views/Reports";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -34,6 +35,7 @@ function App() {
             <Route path="/customers" element={<Customers />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/templates" element={<Templates />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>

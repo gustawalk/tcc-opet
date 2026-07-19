@@ -43,7 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { InventoryItem, InventoryMovement } from "@/lib/types";
+import { InventoryInsights, InventoryItem, InventoryMovement } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
 import {
@@ -95,6 +95,7 @@ const createInventoryItem = async (item: Omit<InventoryItem, "id" | "createdAt" 
     currentQuantity: item.type === "part" ? 0 : 999,
     costPrice: item.costPrice,
     salePrice: item.salePrice,
+    supplierName: item.supplierName,
   });
 };
 
@@ -105,9 +106,9 @@ const updateInventoryItem = async (item: InventoryItem) => {
     description: item.description,
     type: item.type,
     minQuantity: item.minQuantity,
-    currentQuantity: item.currentQuantity,
     costPrice: item.costPrice,
     salePrice: item.salePrice,
+    supplierName: item.supplierName,
   });
 };
 
@@ -128,7 +129,8 @@ export function Inventory() {
     type: "part" as "part" | "service",
     minQuantity: 0,
     costPrice: 0,
-    salePrice: 0
+    salePrice: 0,
+    supplierName: ""
   });
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [restockErrors, setRestockErrors] = useState<ValidationErrors>({});
@@ -137,6 +139,9 @@ export function Inventory() {
   // Restock state
   const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
   const [restockQuantity, setRestockQuantity] = useState(1);
+  const [restockUnitCost, setRestockUnitCost] = useState("");
+  const [restockReason, setRestockReason] = useState("");
+  const [inactiveDays, setInactiveDays] = useState(90);
 
   // Remove state
   const [removeItem, setRemoveItem] = useState<InventoryItem | null>(null);
@@ -146,7 +151,7 @@ export function Inventory() {
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, error, refetch } = useQuery({
     queryKey: ["inventory"],
     queryFn: fetchInventory,
   });
@@ -158,35 +163,44 @@ export function Inventory() {
     mutationFn: createInventoryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
     },
+    onError: (err) => toastError(err, "Erro ao criar item."),
   });
 
   const updateMutation = useMutation({
     mutationFn: updateInventoryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
     },
+    onError: (err) => toastError(err, "Erro ao atualizar item."),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteInventoryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       toastSuccess("Item excluído com sucesso.");
     },
     onError: (err) => toastError(err, "Erro ao excluir item."),
   });
 
   const restockMutation = useMutation({
-    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
-      return await invoke("restock_inventory_item", { id, quantity });
+    mutationFn: async ({ id, quantity, unitCost, reason }: { id: string; quantity: number; unitCost?: number; reason?: string }) => {
+      return await invoke("restock_inventory_item", { id, quantity, unitCost, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRestockItem(null);
       setRestockQuantity(1);
+      setRestockUnitCost("");
+      setRestockReason("");
     },
+    onError: (err) => toastError(err, "Erro ao adicionar estoque."),
   });
 
   const removeStockMutation = useMutation({
@@ -196,15 +210,22 @@ export function Inventory() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRemoveItem(null);
       setRemoveQuantity(1);
     },
+    onError: (err) => toastError(err, "Erro ao remover estoque."),
   });
 
   const { data: movements = [] } = useQuery({
     queryKey: ["inventory-movements", historyItem?.id],
     queryFn: () => fetchMovements(historyItem!.id),
     enabled: isHistoryOpen && !!historyItem,
+  });
+
+  const { data: insights, isLoading: isInsightsLoading, error: insightsError } = useQuery({
+    queryKey: ["inventory-insights", inactiveDays],
+    queryFn: () => invoke<InventoryInsights>("get_inventory_insights", { inactiveDays }),
   });
 
   const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
@@ -314,7 +335,8 @@ export function Inventory() {
       type: type,
       minQuantity: type === "part" ? 5 : 0,
       costPrice: 0,
-      salePrice: 0
+      salePrice: 0,
+      supplierName: ""
     });
     setIsSheetOpen(true);
   };
@@ -328,12 +350,14 @@ export function Inventory() {
       type: item.type,
       minQuantity: item.minQuantity,
       costPrice: item.costPrice,
-      salePrice: item.salePrice
+      salePrice: item.salePrice,
+      supplierName: item.supplierName ?? ""
     });
     setIsSheetOpen(true);
   };
 
   const handleSave = async () => {
+    if (createMutation.isPending || updateMutation.isPending) return;
     const result = inventoryItemSchema.safeParse(formData);
     const fieldErrors = parseErrors(result);
     if (fieldErrors) {
@@ -341,16 +365,20 @@ export function Inventory() {
       return;
     }
     setErrors({});
-    if (selectedItem) {
-      await updateMutation.mutateAsync({
-        ...selectedItem,
-        ...formData,
-      });
-    } else {
-      await createMutation.mutateAsync({
-        ...formData,
-        currentQuantity: formData.type === "part" ? 0 : 999,
-      } as Omit<InventoryItem, "id" | "createdAt" | "deletedAt">);
+    try {
+      if (selectedItem) {
+        await updateMutation.mutateAsync({
+          ...selectedItem,
+          ...formData,
+        });
+      } else {
+        await createMutation.mutateAsync({
+          ...formData,
+          currentQuantity: formData.type === "part" ? 0 : 999,
+        } as Omit<InventoryItem, "id" | "createdAt" | "deletedAt">);
+      }
+    } catch {
+      return;
     }
     setIsSheetOpen(false);
     setSelectedItem(null);
@@ -360,7 +388,8 @@ export function Inventory() {
       type: "part",
       minQuantity: 0,
       costPrice: 0,
-      salePrice: 0
+      salePrice: 0,
+      supplierName: ""
     });
   };
 
@@ -369,11 +398,44 @@ export function Inventory() {
   };
 
   const confirmDeleteItem = async () => {
-    if (confirmDeleteId) {
+    if (!confirmDeleteId || deleteMutation.isPending) return;
+    try {
       await deleteMutation.mutateAsync(confirmDeleteId);
       setConfirmDeleteId(null);
+    } catch {
+      // The mutation displays the error and keeps the confirmation dialog open.
     }
   };
+
+  const getMovementReasonLabel = (reason: string) => {
+    const labels: Record<string, string> = {
+      manual_restock: "Reposição manual",
+      manual_removal: "Retirada manual",
+      service_order_add: "Peça adicionada à OS",
+      service_order_remove: "Peça removida da OS",
+    };
+    return (labels[reason] ?? reason) || "Movimentação do sistema";
+  };
+
+  const getAbcDescription = (classification: string) => {
+    const descriptions: Record<string, string> = {
+      A: "até 80% do valor em estoque",
+      B: "de 80% a 95% do valor em estoque",
+      C: "restante do valor em estoque",
+    };
+    return descriptions[classification] ?? "valor em estoque";
+  };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+        <AlertTriangle className="h-12 w-12 text-destructive" />
+        <h3 className="text-xl font-bold">Erro ao carregar inventário</h3>
+        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar o inventário. Tente novamente.</p>
+        <Button onClick={() => refetch()}>Tentar Novamente</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200">
@@ -431,13 +493,30 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <div className="text-2xl font-bold">
-                {formatCurrency(parts.reduce((acc, i) => acc + (i.costPrice * i.currentQuantity), 0))}
+                {formatCurrency(parts.reduce((acc, i) => acc + ((i.averageCost || i.costPrice) * i.currentQuantity), 0))}
               </div>
-              <span className="text-xs text-muted-foreground mt-1">preço de custo</span>
+              <span className="text-xs text-muted-foreground mt-1">custo médio</span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><CardTitle className="text-base">Insights de Estoque</CardTitle><CardDescription>Inatividade e curva ABC pelo valor em estoque: quantidade atual × custo médio.</CardDescription></div>
+            <div className="flex items-center gap-2"><Label htmlFor="inactive-days" className="text-xs whitespace-nowrap">Sem movimento há</Label><Input id="inactive-days" type="number" min="0" className="h-8 w-20" value={inactiveDays} onChange={(event) => setInactiveDays(Math.max(0, parseInt(event.target.value) || 0))} /><span className="text-xs text-muted-foreground">dias</span></div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isInsightsLoading ? <div className="h-16 animate-pulse rounded bg-muted" /> : insightsError ? <p className="text-sm text-destructive">Não foi possível carregar os insights de estoque.</p> : insights ? (
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Itens inativos</p><p className="mt-1 text-2xl font-bold">{insights.inactiveItems.length}</p><p className="mt-1 text-xs text-muted-foreground line-clamp-1">{insights.inactiveItems.length ? insights.inactiveItems.map((item) => item.name).join(", ") : "Nenhum item no período."}</p></div>
+              {insights.abcGroups.map((group) => <div key={group.classification} className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Classe {group.classification}</p><p className="mt-1 text-2xl font-bold">{group.itemCount} itens</p><p className="mt-1 text-xs text-muted-foreground">{formatCurrency(group.inventoryValue)}</p><p className="mt-1 text-xs text-muted-foreground">{getAbcDescription(group.classification)}</p></div>)}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <div className="space-y-6">
         <Card>
@@ -465,7 +544,7 @@ export function Inventory() {
                   <TableRow>
                     <SortableHeader column="name" label="Peça / Descrição" sortConfig={sortConfig} onSort={cycleSort} />
                     <SortableHeader column="currentQuantity" label="Estoque Atual" sortConfig={sortConfig} onSort={cycleSort} className="text-center" align="center" />
-                    <SortableHeader column="costPrice" label="Preço de Custo" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
+                    <SortableHeader column="costPrice" label="Custo Médio" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
                     <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
@@ -488,6 +567,7 @@ export function Inventory() {
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{item.name}</span>
                             <span className="text-xs text-muted-foreground line-clamp-1">{item.description}</span>
+                            {item.supplierName && <span className="text-xs text-muted-foreground">Fornecedor: {item.supplierName}</span>}
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -502,7 +582,7 @@ export function Inventory() {
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right font-medium text-muted-foreground">
-                          {formatCurrency(item.costPrice)}
+                          {formatCurrency(item.averageCost || item.costPrice)}
                         </TableCell>
                         <TableCell className="text-right font-bold text-primary">
                           {formatCurrency(item.salePrice)}
@@ -643,7 +723,7 @@ export function Inventory() {
               Adicione unidades ao estoque de <strong>{restockItem?.name}</strong>.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="grid gap-4 py-4">
             <Label htmlFor="restock-qty">Quantidade a adicionar</Label>
             <Input
               id="restock-qty"
@@ -653,17 +733,22 @@ export function Inventory() {
               value={restockQuantity}
               onChange={(e) => setRestockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
             />
+            <div className="grid gap-2"><Label htmlFor="restock-cost">Custo unitário (opcional)</Label><Input id="restock-cost" type="number" min="0.01" step="0.01" value={restockUnitCost} placeholder={`Atual: ${formatCurrency(restockItem?.costPrice ?? 0)}`} onChange={(event) => setRestockUnitCost(event.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="restock-reason">Motivo (opcional)</Label><Input id="restock-reason" value={restockReason} placeholder="Ex.: Nota fiscal 123" onChange={(event) => setRestockReason(event.target.value)} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRestockItem(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setRestockItem(null)} disabled={restockMutation.isPending}>Cancelar</Button>
             {restockErrors.quantity && <p className="text-xs text-destructive">{restockErrors.quantity}</p>}
+            {restockErrors.unitCost && <p className="text-xs text-destructive">{restockErrors.unitCost}</p>}
             <Button
               onClick={() => {
                 const r = quantitySchema.safeParse({ quantity: restockQuantity });
                 const fe = parseErrors(r);
                 if (fe) { setRestockErrors(fe); return; }
+                const unitCost = restockUnitCost.trim() ? Number(restockUnitCost) : undefined;
+                if (unitCost !== undefined && (!Number.isFinite(unitCost) || unitCost <= 0)) { setRestockErrors({ unitCost: "Informe um custo unitário maior que zero." }); return; }
                 setRestockErrors({});
-                restockItem && restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity });
+                if (restockItem) restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity, unitCost, reason: restockReason.trim() || undefined });
               }}
               disabled={restockMutation.isPending}
               className="gap-2"
@@ -696,7 +781,7 @@ export function Inventory() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveItem(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setRemoveItem(null)} disabled={removeStockMutation.isPending}>Cancelar</Button>
             {removeErrors.quantity && <p className="text-xs text-destructive">{removeErrors.quantity}</p>}
             <Button
               onClick={() => {
@@ -704,7 +789,7 @@ export function Inventory() {
                 const fe = parseErrors(r);
                 if (fe) { setRemoveErrors(fe); return; }
                 setRemoveErrors({});
-                removeItem && removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity });
+                if (removeItem) removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity });
               }}
               disabled={removeStockMutation.isPending}
               variant="destructive"
@@ -734,7 +819,9 @@ export function Inventory() {
                   <TableHeader>
                     <TableRow>
                     <TableHead>Tipo</TableHead>
+                    <TableHead>Motivo</TableHead>
                     <TableHead className="text-center">Quantidade</TableHead>
+                     <TableHead className="text-right">Custo un.</TableHead>
                     <TableHead>OS</TableHead>
                     <TableHead className="text-right">Data</TableHead>
                     </TableRow>
@@ -747,7 +834,9 @@ export function Inventory() {
                             {mov.type === "entrada" ? "Entrada" : "Saída"}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{getMovementReasonLabel(mov.reason)}</TableCell>
                         <TableCell className="text-center font-medium">{mov.quantity} un.</TableCell>
+                        <TableCell className="text-right text-xs">{mov.unitCost == null ? "-" : formatCurrency(mov.unitCost)}</TableCell>
                         <TableCell className="font-mono text-xs">
                           {mov.osDisplayId ?? "-"}
                         </TableCell>
@@ -804,6 +893,7 @@ export function Inventory() {
               />
               {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
             </div>
+            <div className="grid gap-2"><Label htmlFor="supplier">Fornecedor (opcional)</Label><Input id="supplier" value={formData.supplierName} placeholder="Ex.: Distribuidora ABC" onChange={(event) => setFormData({ ...formData, supplierName: event.target.value })} /></div>
 
             <Separator />
 
@@ -861,8 +951,8 @@ export function Inventory() {
             <Button variant="outline" className="w-full" onClick={() => setIsSheetOpen(false)}>
               Cancelar
             </Button>
-            <Button className="w-full gap-2" onClick={handleSave}>
-              <Save className="h-4 w-4" /> {selectedItem ? "Salvar Alterações" : "Cadastrar"}
+            <Button className="w-full gap-2" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+              <Save className="h-4 w-4" /> {createMutation.isPending || updateMutation.isPending ? "Salvando..." : selectedItem ? "Salvar Alterações" : "Cadastrar"}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -878,7 +968,7 @@ export function Inventory() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteItem}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeleteItem} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? "Excluindo..." : "Excluir"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -8,7 +8,13 @@ fn require_existing_user(user: Option<User>) -> Result<User, AppError> {
 }
 
 #[command]
-pub fn create_user(name: String, email: String, phone: Option<String>, cpf: Option<String>, join_date: Option<String>) -> Result<String, AppError> {
+pub fn create_user(
+    name: String,
+    email: String,
+    phone: Option<String>,
+    cpf: Option<String>,
+    join_date: Option<String>,
+) -> Result<String, AppError> {
     let mut user = User::new(name, email);
     user.phone = phone;
     user.cpf = cpf;
@@ -33,7 +39,14 @@ pub fn get_users() -> Result<Vec<User>, AppError> {
 }
 
 #[command]
-pub fn update_user(id: String, name: String, email: String, phone: Option<String>, cpf: Option<String>, join_date: Option<String>) -> Result<(), AppError> {
+pub fn update_user(
+    id: String,
+    name: String,
+    email: String,
+    phone: Option<String>,
+    cpf: Option<String>,
+    join_date: Option<String>,
+) -> Result<(), AppError> {
     let mut user = require_existing_user(UserRepository::get_by_id(&id)?)?;
 
     user.name = name;

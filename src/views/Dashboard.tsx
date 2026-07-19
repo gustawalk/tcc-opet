@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   TrendingUp,
   Wallet,
@@ -30,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardData } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
 import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
+import { toastError, toastSuccess } from "@/lib/errors";
 
 const fetchDashboardData = async (): Promise<DashboardData> => {
   return await invoke<DashboardData>("get_dashboard_data");
@@ -38,10 +40,29 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
 export function Dashboard() {
   const navigate = useNavigate();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [isExportingReport, setIsExportingReport] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard-data"],
     queryFn: fetchDashboardData,
   });
+
+  const handleExportReport = async () => {
+    try {
+      const destination = await save({
+        defaultPath: "relatorio-financeiro.csv",
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!destination) return;
+
+      setIsExportingReport(true);
+      await invoke("export_financial_report_csv", { destination });
+      toastSuccess("Relatório financeiro exportado.");
+    } catch (err) {
+      toastError(err, "Erro ao exportar o relatório financeiro.");
+    } finally {
+      setIsExportingReport(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -82,11 +103,13 @@ export function Dashboard() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Visão Geral</h2>
           <p className="text-muted-foreground mt-1">
-            Olá, administrador. Veja o desempenho da sua assistência técnica hoje.
+            Veja o desempenho da sua assistência hoje.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => console.log("Ação: Exportar Relatório Geral")}>Exportar Relatório</Button>
+          <Button variant="outline" size="sm" onClick={handleExportReport} disabled={isExportingReport}>
+            {isExportingReport ? "Exportando..." : "Exportar Relatório"}
+          </Button>
           <Button size="sm" className="gap-2" onClick={() => navigate("/os/new")} >
             <Plus className="h-4 w-4" /> Nova Ordem
           </Button>
@@ -198,7 +221,7 @@ export function Dashboard() {
               ))}
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full text-xs h-8" onClick={() => console.log("Ação: Abrir Relatórios Financeiros Detalhados")}>Ver Dashboard Financeiro Completo</Button>
+              <Button variant="outline" className="w-full text-xs h-8" onClick={() => navigate("/reports")}>Ver Dashboard Financeiro Completo</Button>
             </CardFooter>
           </Card>
 

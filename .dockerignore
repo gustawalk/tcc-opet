@@ -1,0 +1,8 @@
+.git
+.vscode
+node_modules
+dist
+src-tauri/target
+database.db
+*.attachments
+*.osbkp

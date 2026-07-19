@@ -12,7 +12,6 @@ impl CustomerRepository {
     }
 
     pub(crate) fn create_with_conn(conn: &Connection, customer: &Customer) -> Result<()> {
-
         conn.execute(
             "INSERT INTO customers (id, name, phone, email, address, created_at, deleted_at) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -35,7 +34,6 @@ impl CustomerRepository {
     }
 
     pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<Customer>> {
-
         let mut stmt = conn.prepare(
             "SELECT id, name, phone, email, address, created_at, deleted_at 
              FROM customers WHERE id = ?1 AND deleted_at IS NULL",
@@ -62,7 +60,6 @@ impl CustomerRepository {
     }
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<Customer>> {
-
         let mut stmt = conn.prepare(
             "SELECT id, name, phone, email, address, created_at, deleted_at 
              FROM customers WHERE deleted_at IS NULL",
@@ -92,11 +89,10 @@ impl CustomerRepository {
     }
 
     pub(crate) fn update_with_conn(conn: &Connection, customer: &Customer) -> Result<()> {
-
-        conn.execute(
+        let updated = conn.execute(
             "UPDATE customers 
              SET name = ?1, phone = ?2, email = ?3, address = ?4, updated_at = ?5
-             WHERE id = ?6",
+              WHERE id = ?6 AND deleted_at IS NULL",
             params![
                 customer.name,
                 customer.phone,
@@ -106,6 +102,9 @@ impl CustomerRepository {
                 customer.id
             ],
         )?;
+        if updated == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 
@@ -115,11 +114,13 @@ impl CustomerRepository {
     }
 
     pub(crate) fn delete_with_conn(conn: &Connection, id: &str) -> Result<()> {
-
-        conn.execute(
-            "UPDATE customers SET deleted_at = ?1 WHERE id = ?2",
+        let updated = conn.execute(
+            "UPDATE customers SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             params![Utc::now().to_rfc3339(), id],
         )?;
+        if updated == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 }
@@ -177,6 +178,8 @@ mod tests {
         assert!(CustomerRepository::get_by_id_with_conn(&conn, &customer.id)
             .unwrap()
             .is_none());
-        assert!(CustomerRepository::get_all_with_conn(&conn).unwrap().is_empty());
+        assert!(CustomerRepository::get_all_with_conn(&conn)
+            .unwrap()
+            .is_empty());
     }
 }

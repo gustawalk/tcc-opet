@@ -12,9 +12,8 @@
   "app": {
     "windows": [
       {
-        "title": "tcc-opet",
-        "width": 800,
-        "height": 600
+        "title": "OpetS",
+        "maximized": true
       }
     ],
     "security": {

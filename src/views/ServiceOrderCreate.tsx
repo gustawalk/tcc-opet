@@ -250,7 +250,7 @@ export function ServiceOrderCreate() {
         request: {
           customerAction: selectedCustomer
             ? {
-                type: "Existing",
+                type: "existing",
                 id: selectedCustomer.id,
                 update: fieldsChanged
                   ? {
@@ -261,7 +261,7 @@ export function ServiceOrderCreate() {
                   : null,
               }
             : {
-                type: "New",
+                type: "new",
                 name: customerSearch.trim(),
                 phone: formData.phone.trim(),
                 email: formData.email.trim(),
@@ -300,7 +300,7 @@ export function ServiceOrderCreate() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
+    <form className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -684,6 +684,6 @@ export function ServiceOrderCreate() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </form>
   );
 }

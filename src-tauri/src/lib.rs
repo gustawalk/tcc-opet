@@ -15,6 +15,8 @@ mod seeds;
 #[cfg(test)]
 mod test_helpers;
 
+use dotenv::dotenv;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,6 +46,7 @@ pub fn run() {
             commands::inventory_commands::get_inventory_movements,
             commands::inventory_commands::get_inventory_insights,
             commands::service_order_commands::create_service_order,
+            commands::service_order_commands::create_full_service_order,
             commands::service_order_commands::get_service_order,
             commands::service_order_commands::get_service_orders,
             commands::service_order_commands::get_service_orders_by_customer_id,
@@ -88,6 +91,7 @@ pub fn run() {
             commands::report_commands::preview_financial_report_pdf,
         ])
         .setup(|app| {
+            let _ = dotenv();
             // Startup must fail visibly when the local data store cannot initialize.
             database::init_db(app)?;
             Ok(())

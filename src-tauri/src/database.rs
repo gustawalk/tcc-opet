@@ -1,4 +1,3 @@
-use dotenv::dotenv;
 use once_cell::sync::OnceCell;
 use rusqlite::{params, Connection, Result};
 use std::env;
@@ -15,7 +14,6 @@ static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 
 // Initialize the database connection
 pub fn init_db(app: &tauri::App) -> Result<()> {
-    let _ = dotenv();
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
     })?;
@@ -103,8 +101,14 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
     }
 }
 
-// Run database migrations
+// Run full migrations: schema + core defaults
 pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
+    run_schema_migrations(conn)?;
+    ensure_core_defaults(conn)?;
+    Ok(())
+}
+
+pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
     // Create tables if they don't exist
     conn.execute_batch(
         "
@@ -323,11 +327,6 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
         }
     }
 
-    conn.execute(
-        "UPDATE inventory_items SET average_cost = cost_price WHERE average_cost = 0.0 AND cost_price > 0.0",
-        [],
-    )?;
-
     // Migration: add columns to users if missing from intermediate schema
     for migration in &[
         "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT '';",
@@ -381,6 +380,15 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             eprintln!("[MIGRATION] Users table migrated successfully.");
         }
     }
+
+    Ok(())
+}
+
+pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "UPDATE inventory_items SET average_cost = cost_price WHERE average_cost = 0.0 AND cost_price > 0.0",
+        [],
+    )?;
 
     // Insert default settings if not exists
     conn.execute(
@@ -469,6 +477,28 @@ mod tests {
             0o600
         );
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn schema_migrations_run_without_inserting_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        run_schema_migrations(&conn).unwrap();
+
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let settings_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .unwrap();
+
+        assert!(table_count >= 14);
+        assert_eq!(settings_count, 0);
     }
 
     #[test]

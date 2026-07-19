@@ -22,16 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -409,8 +400,50 @@ export function ServiceOrders() {
       setDeleteId(null);
     } catch (error) {
       toastError(error, "Erro ao excluir ordem de serviço.");
+      setDeleteId(null);
     } finally {
       setIsDeleting(false);
+    }
+  };
+  const handleStatusClick = async (newStatus: OSStatus) => {
+    if (!selectedOS || newStatus === editStatus || isSaving) return;
+    if (newStatus === "Cancelada" && selectedOS.status !== "Cancelada") {
+      setCancelConfirmationOpen(true);
+      return;
+    }
+    try {
+      await invoke("transition_service_order_status", {
+        id: selectedOS.id,
+        status: newStatus,
+        restoreStock: false,
+      });
+      setEditStatus(newStatus);
+      setSelectedOS((prev) => (prev ? { ...prev, status: newStatus } : null));
+      await invalidateOrder();
+      toastSuccess(`Status alterado para "${newStatus}".`);
+    } catch (error) {
+      toastError(error, "Erro ao alterar status.");
+    }
+  };
+  const handleCancelConfirm = async () => {
+    if (!selectedOS || isSaving) return;
+    setIsSaving(true);
+    try {
+      await invoke("transition_service_order_status", {
+        id: selectedOS.id,
+        status: "Cancelada",
+        restoreStock: true,
+      });
+      setEditStatus("Cancelada");
+      setSelectedOS((prev) => (prev ? { ...prev, status: "Cancelada" } : null));
+      await invalidateOrder();
+      toastSuccess("Ordem de serviço cancelada.");
+      setCancelConfirmationOpen(false);
+    } catch (error) {
+      toastError(error, "Erro ao cancelar ordem de serviço.");
+      setCancelConfirmationOpen(false);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -603,7 +636,10 @@ export function ServiceOrders() {
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
       />
-      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+      <Sheet open={editOpen} onOpenChange={(open) => {
+        if (!open && cancelConfirmationOpen) return;
+        setEditOpen(open);
+      }}>
         <SheetContent className="sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar - {selectedOS?.displayId}</SheetTitle>
@@ -630,7 +666,7 @@ export function ServiceOrders() {
                     key={status}
                     variant={editStatus === status ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setEditStatus(status)}
+                    onClick={() => handleStatusClick(status)}
                     disabled={isSaving}
                   >
                     {status}
@@ -814,53 +850,72 @@ export function ServiceOrders() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
-      <AlertDialog
-        open={!!deleteId}
-        onOpenChange={(isOpen) => !isOpen && !isDeleting && setDeleteId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir ordem de serviço</AlertDialogTitle>
-            <AlertDialogDescription>
+      {deleteId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !isDeleting && setDeleteId(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir ordem de serviço</h3>
+            <p className="text-sm text-muted-foreground">
               Esta ação não pode ser desfeita. Deseja realmente excluir esta
               ordem de serviço?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={deleteOrder} disabled={isDeleting}>
-              {isDeleting ? "Excluindo..." : "Excluir"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={cancelConfirmationOpen}
-        onOpenChange={(isOpen) =>
-          !isOpen && !isSaving && setCancelConfirmationOpen(false)
-        }
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar ordem de serviço</AlertDialogTitle>
-            <AlertDialogDescription>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteId(null)}
+                disabled={isDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={deleteOrder}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {cancelConfirmationOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !isSaving && setCancelConfirmationOpen(false)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Cancelar ordem de serviço</h3>
+            <p className="text-sm text-muted-foreground">
               Ao cancelar esta OS, o estoque das peças físicas será restaurado e
               as linhas de peças serão removidas. Deseja continuar?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSaving}>Voltar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => saveEdit(true)}
-              disabled={isSaving}
-            >
-              {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCancelConfirmationOpen(false)}
+                disabled={isSaving}
+              >
+                Voltar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleCancelConfirm}
+                disabled={isSaving}
+              >
+                {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

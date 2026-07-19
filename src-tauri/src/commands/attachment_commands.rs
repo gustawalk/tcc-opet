@@ -11,7 +11,7 @@ use tauri::{command, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
-static PENDING_ATTACHMENT_SELECTIONS: Lazy<Mutex<HashMap<String, Vec<PathBuf>>>> =
+pub(crate) static PENDING_ATTACHMENT_SELECTIONS: Lazy<Mutex<HashMap<String, Vec<PathBuf>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Serialize)]

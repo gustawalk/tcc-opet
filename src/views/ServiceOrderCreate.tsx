@@ -241,63 +241,45 @@ export function ServiceOrderCreate() {
     setErrors({});
     setIsSubmitting(true);
     try {
-      let customerId: string;
-      let customerName: string;
-      if (selectedCustomer) {
-        customerId = selectedCustomer.id;
-        customerName = selectedCustomer.name;
-        if (
-          originalCustomer &&
-          (formData.phone !== originalCustomer.phone ||
-            formData.email !== originalCustomer.email ||
-            formData.address !== originalCustomer.address)
-        ) {
-          await invoke("update_customer", {
-            id: customerId,
-            name: customerName,
-            phone: formData.phone.trim(),
-            email: formData.email.trim(),
-            address: formData.address.trim(),
-          });
-        }
-      } else {
-        customerName = customerSearch.trim();
-        customerId = await invoke<string>("create_customer", {
-          name: customerName,
-          phone: formData.phone.trim(),
-          email: formData.email.trim(),
-          address: formData.address.trim(),
-        });
-      }
-      const orderId = await invoke<string>("create_service_order", {
-        customerId,
-        customerName,
-        userId: formData.techId || null,
-        equipment: formData.equipment,
-        imei: formData.imei || null,
-        description: formData.description,
-      });
-      for (const line of lines)
-        await invoke("add_part_to_service_order", {
-          serviceOrderId: orderId,
-          inventoryItemId: line.inventoryItemId,
-          quantity: line.quantity,
-        });
-      if (checklistItems.length)
-        await invoke("save_service_order_checklist", {
-          osId: orderId,
-          items: checklistItems.map((item) => ({
-            ...item,
-            id: crypto.randomUUID(),
+      const fieldsChanged =
+        originalCustomer &&
+        (formData.phone !== originalCustomer.phone ||
+          formData.email !== originalCustomer.email ||
+          formData.address !== originalCustomer.address);
+      await invoke("create_full_service_order", {
+        request: {
+          customerAction: selectedCustomer
+            ? {
+                type: "Existing",
+                id: selectedCustomer.id,
+                update: fieldsChanged
+                  ? {
+                      phone: formData.phone.trim(),
+                      email: formData.email.trim(),
+                      address: formData.address.trim(),
+                    }
+                  : null,
+              }
+            : {
+                type: "New",
+                name: customerSearch.trim(),
+                phone: formData.phone.trim(),
+                email: formData.email.trim(),
+                address: formData.address.trim(),
+              },
+          userId: formData.techId || null,
+          equipment: formData.equipment,
+          imei: formData.imei || null,
+          description: formData.description,
+          parts: lines.map((l) => ({
+            inventoryItemId: l.inventoryItemId,
+            quantity: l.quantity,
           })),
-        });
-      if (pendingAttachments) {
-        await invoke("attach_pending_service_order_attachments", {
-          serviceOrderId: orderId,
-          token: pendingAttachments.token,
-        });
-        setPendingAttachments(null);
-      }
+          checklistItems: checklistItems.map((item) => ({ label: item.label })),
+          attachmentToken: pendingAttachments?.token ?? null,
+        },
+      });
+      if (pendingAttachments) setPendingAttachments(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["customers-list"] }),
         queryClient.invalidateQueries({ queryKey: ["service-orders"] }),

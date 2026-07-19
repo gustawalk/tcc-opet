@@ -13,8 +13,7 @@
     "windows": [
       {
         "title": "OpetS",
-        "maximized": true,
-        "generalAutofillEnabled": false
+        "maximized": true
       }
     ],
     "security": {

@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::checklist::{ChecklistTemplate, ChecklistItem};
+use crate::models::checklist::{ChecklistItem, ChecklistTemplate};
 use crate::repositories::checklist_repo::ChecklistRepository;
 use tauri::command;
 
@@ -24,12 +24,19 @@ pub fn delete_checklist_template(id: String) -> Result<(), AppError> {
 }
 
 #[command]
-pub fn update_checklist_template(id: String, title: String, items: Vec<String>) -> Result<(), AppError> {
+pub fn update_checklist_template(
+    id: String,
+    title: String,
+    items: Vec<String>,
+) -> Result<(), AppError> {
     Ok(ChecklistRepository::update_template(&id, &title, items)?)
 }
 
 #[command]
-pub fn save_service_order_checklist(os_id: String, items: Vec<ChecklistItem>) -> Result<(), AppError> {
+pub fn save_service_order_checklist(
+    os_id: String,
+    items: Vec<ChecklistItem>,
+) -> Result<(), AppError> {
     Ok(ChecklistRepository::save_os_checklist(&os_id, items)?)
 }
 

@@ -1,6 +1,8 @@
 use crate::database::get_db;
-use crate::models::checklist::{ChecklistTemplate, ChecklistItem};
-use rusqlite::{params, Connection, Result};
+use crate::models::checklist::{ChecklistItem, ChecklistTemplate};
+use crate::models::service_order_event::ServiceOrderEvent;
+use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
+use rusqlite::{params, Connection, Result, Transaction};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -12,11 +14,15 @@ impl ChecklistRepository {
         Self::create_template_with_conn(&mut conn, title, items)
     }
 
-    pub(crate) fn create_template_with_conn(conn: &mut Connection, title: &str, items: Vec<String>) -> Result<String> {
+    pub(crate) fn create_template_with_conn(
+        conn: &mut Connection,
+        title: &str,
+        items: Vec<String>,
+    ) -> Result<String> {
         let tx = conn.transaction()?;
 
         let template = ChecklistTemplate::new(title.to_string());
-        
+
         tx.execute(
             "INSERT INTO checklist_templates (id, title, created_at) VALUES (?1, ?2, ?3)",
             params![template.id, template.title, template.created_at],
@@ -39,30 +45,30 @@ impl ChecklistRepository {
     }
 
     pub(crate) fn get_templates_with_conn(conn: &Connection) -> Result<Vec<ChecklistTemplate>> {
-
         let mut stmt = conn.prepare("SELECT id, title, created_at FROM checklist_templates")?;
-        let templates_raw: Vec<(String, String, Option<String>)> = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?.collect::<Result<Vec<_>, _>>()?;
+        let templates_raw: Vec<(String, String, Option<String>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut item_stmt = conn.prepare("SELECT template_id, label FROM template_items")?;
-        let all_items: Vec<(String, String)> = item_stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?.collect::<Result<Vec<_>, _>>()?;
+        let all_items: Vec<(String, String)> = item_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut items_map: HashMap<String, Vec<String>> = HashMap::new();
         for (tid, label) in all_items {
             items_map.entry(tid).or_default().push(label);
         }
 
-        let templates = templates_raw.into_iter().map(|(id, title, created_at)| {
-            ChecklistTemplate {
+        let templates = templates_raw
+            .into_iter()
+            .map(|(id, title, created_at)| ChecklistTemplate {
                 items: items_map.remove(&id),
                 id,
                 title,
                 created_at,
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(templates)
     }
@@ -72,12 +78,13 @@ impl ChecklistRepository {
         Self::get_template_items_with_conn(&conn, template_id)
     }
 
-    pub(crate) fn get_template_items_with_conn(conn: &Connection, template_id: &str) -> Result<Vec<String>> {
+    pub(crate) fn get_template_items_with_conn(
+        conn: &Connection,
+        template_id: &str,
+    ) -> Result<Vec<String>> {
         let mut stmt = conn.prepare("SELECT label FROM template_items WHERE template_id = ?1")?;
-        
-        let rows = stmt.query_map(params![template_id], |row| {
-            row.get::<_, String>(0)
-        })?;
+
+        let rows = stmt.query_map(params![template_id], |row| row.get::<_, String>(0))?;
 
         let mut items = Vec::new();
         for row in rows {
@@ -102,7 +109,12 @@ impl ChecklistRepository {
         Self::update_template_with_conn(&mut conn, id, title, items)
     }
 
-    pub(crate) fn update_template_with_conn(conn: &mut Connection, id: &str, title: &str, items: Vec<String>) -> Result<()> {
+    pub(crate) fn update_template_with_conn(
+        conn: &mut Connection,
+        id: &str,
+        title: &str,
+        items: Vec<String>,
+    ) -> Result<()> {
         let tx = conn.transaction()?;
 
         tx.execute(
@@ -111,7 +123,10 @@ impl ChecklistRepository {
         )?;
 
         // Delete old items and insert new ones
-        tx.execute("DELETE FROM template_items WHERE template_id = ?1", params![id])?;
+        tx.execute(
+            "DELETE FROM template_items WHERE template_id = ?1",
+            params![id],
+        )?;
 
         for item_label in items {
             tx.execute(
@@ -129,11 +144,29 @@ impl ChecklistRepository {
         Self::save_os_checklist_with_conn(&mut conn, os_id, items)
     }
 
-    pub(crate) fn save_os_checklist_with_conn(conn: &mut Connection, os_id: &str, items: Vec<ChecklistItem>) -> Result<()> {
+    pub(crate) fn save_os_checklist_with_conn(
+        conn: &mut Connection,
+        os_id: &str,
+        items: Vec<ChecklistItem>,
+    ) -> Result<()> {
         let tx = conn.transaction()?;
+        Self::replace_os_checklist_in_transaction(&tx, os_id, items)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn replace_os_checklist_in_transaction(
+        tx: &Transaction<'_>,
+        os_id: &str,
+        items: Vec<ChecklistItem>,
+    ) -> Result<()> {
+        let item_count = items.len();
 
         // Clean existing checklist for this OS first
-        tx.execute("DELETE FROM service_order_checklists WHERE service_order_id = ?1", params![os_id])?;
+        tx.execute(
+            "DELETE FROM service_order_checklists WHERE service_order_id = ?1",
+            params![os_id],
+        )?;
 
         for item in items {
             tx.execute(
@@ -142,7 +175,13 @@ impl ChecklistRepository {
             )?;
         }
 
-        tx.commit()?;
+        let event = ServiceOrderEvent::new(
+            os_id.to_string(),
+            "checklist_updated".to_string(),
+            serde_json::json!({ "itemCount": item_count }).to_string(),
+        );
+        ServiceOrderEventRepository::create_with_conn(&tx, &event)?;
+
         Ok(())
     }
 
@@ -151,11 +190,14 @@ impl ChecklistRepository {
         Self::get_os_checklist_with_conn(&conn, os_id)
     }
 
-    pub(crate) fn get_os_checklist_with_conn(conn: &Connection, os_id: &str) -> Result<Vec<ChecklistItem>> {
+    pub(crate) fn get_os_checklist_with_conn(
+        conn: &Connection,
+        os_id: &str,
+    ) -> Result<Vec<ChecklistItem>> {
         let mut stmt = conn.prepare(
-            "SELECT id, label, checked FROM service_order_checklists WHERE service_order_id = ?1"
+            "SELECT id, label, checked FROM service_order_checklists WHERE service_order_id = ?1",
         )?;
-        
+
         let rows = stmt.query_map(params![os_id], |row| {
             Ok(ChecklistItem {
                 id: row.get(0)?,
@@ -211,7 +253,10 @@ mod tests {
         .unwrap();
 
         let templates = ChecklistRepository::get_templates_with_conn(&conn).unwrap();
-        let template = templates.into_iter().find(|item| item.id == template_id).unwrap();
+        let template = templates
+            .into_iter()
+            .find(|item| item.id == template_id)
+            .unwrap();
 
         assert_eq!(template.title, "Recepção");
         assert_eq!(template.items.unwrap(), vec!["Tela", "Carcaça"]);

@@ -1,7 +1,9 @@
+pub mod checklist;
 pub mod customer;
 pub mod inventory_item;
 pub mod inventory_movement;
 pub mod service_order;
-pub mod user;
+pub mod service_order_attachment;
+pub mod service_order_event;
 pub mod settings;
-pub mod checklist;
+pub mod user;

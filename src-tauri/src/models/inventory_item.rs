@@ -12,7 +12,9 @@ pub struct InventoryItem {
     pub min_quantity: i32,
     pub current_quantity: i32,
     pub cost_price: f64,
+    pub average_cost: f64,
     pub sale_price: f64,
+    pub supplier_name: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub deleted_at: Option<String>,
@@ -36,7 +38,9 @@ impl InventoryItem {
             min_quantity,
             current_quantity,
             cost_price,
+            average_cost: cost_price,
             sale_price,
+            supplier_name: None,
             created_at: Some(Utc::now().to_rfc3339()),
             updated_at: None,
             deleted_at: None,
@@ -65,6 +69,8 @@ mod tests {
         assert_eq!(item.min_quantity, 2);
         assert_eq!(item.current_quantity, 10);
         assert_eq!(item.cost_price, 50.0);
+        assert_eq!(item.average_cost, 50.0);
+        assert!(item.supplier_name.is_none());
         assert_eq!(item.sale_price, 120.0);
         assert!(item.created_at.is_some());
         assert!(item.deleted_at.is_none());

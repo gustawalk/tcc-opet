@@ -56,10 +56,12 @@ pub fn initialize_seed_data() -> Result<(), String> {
     if order_count == 0 {
         println!("[SEED] About to seed service_orders...");
         seed_service_orders(&conn)?;
-        
+
         // Seed financial snapshots only if empty (migration might have inserted one for today)
         let financial_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| {
+                row.get(0)
+            })
             .unwrap_or(0);
         println!("[SEED] Financial snapshots count: {}", financial_count);
         if financial_count == 0 {
@@ -68,7 +70,7 @@ pub fn initialize_seed_data() -> Result<(), String> {
         } else {
             println!("[SEED] Financial snapshots already exist, skipping");
         }
-        
+
         println!("[SEED] Service orders seeded successfully");
     } else {
         println!("[SEED] Service orders already exist, skipping");
@@ -76,7 +78,9 @@ pub fn initialize_seed_data() -> Result<(), String> {
 
     // Always seed checklist templates (in case they were added after initial seed)
     let template_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM checklist_templates", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM checklist_templates", [], |row| {
+            row.get(0)
+        })
         .unwrap_or(0);
     println!("[SEED] Checklist templates count: {}", template_count);
     if template_count == 0 {
@@ -382,7 +386,10 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<String>, _>>()
         .map_err(|e| e.to_string())?;
-    println!("[SEED] seed_service_orders: Found {} customers", customers.len());
+    println!(
+        "[SEED] seed_service_orders: Found {} customers",
+        customers.len()
+    );
 
     println!("[SEED] seed_service_orders: Fetching users...");
     let mut user_stmt = conn
@@ -404,7 +411,10 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    println!("[SEED] seed_service_orders: Found {} inventory items", inventory_items.len());
+    println!(
+        "[SEED] seed_service_orders: Found {} inventory items",
+        inventory_items.len()
+    );
 
     let equipment_types = vec![
         "iPhone 13 Pro",
@@ -463,11 +473,18 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
     let now = Utc::now();
 
-    println!("[SEED] seed_service_orders: Creating {} service orders...", statuses.len());
+    println!(
+        "[SEED] seed_service_orders: Creating {} service orders...",
+        statuses.len()
+    );
 
     for (idx, (status, is_finished)) in statuses.iter().enumerate() {
-        println!("[SEED] seed_service_orders: Creating order {}/{}", idx + 1, statuses.len());
-        
+        println!(
+            "[SEED] seed_service_orders: Creating order {}/{}",
+            idx + 1,
+            statuses.len()
+        );
+
         let customer_id = &customers[idx % customers.len()];
         let user_id = &users[idx % users.len()];
         let equipment = equipment_types[idx % equipment_types.len()];
@@ -495,8 +512,8 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Insert service order
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, signature_path, created_at, updated_at, closed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, ?12)",
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, created_at, updated_at, closed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 order_id,
                 customer_id,
@@ -595,7 +612,11 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
     ];
 
     for (order_id, equipment) in orders_with_checklist {
-        let items = if equipment.contains("iPhone") || equipment.contains("Galaxy") || equipment.contains("iPad") || equipment.contains("Samsung") {
+        let items = if equipment.contains("iPhone")
+            || equipment.contains("Galaxy")
+            || equipment.contains("iPad")
+            || equipment.contains("Samsung")
+        {
             &smartphone_items
         } else if equipment.contains("Notebook") || equipment.contains("Monitor") {
             &notebook_items
@@ -609,12 +630,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
             conn.execute(
                 "INSERT INTO service_order_checklists (id, service_order_id, label, checked)
                  VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    Uuid::new_v4().to_string(),
-                    order_id,
-                    label,
-                    checked
-                ],
+                params![Uuid::new_v4().to_string(), order_id, label, checked],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -630,7 +646,10 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // Create 30 daily snapshots
     for day_offset in 0..30 {
-        println!("[SEED] seed_financial_snapshots: Processing day {}", day_offset);
+        println!(
+            "[SEED] seed_financial_snapshots: Processing day {}",
+            day_offset
+        );
         let snapshot_date = (now - Duration::days(day_offset as i64))
             .format("%Y-%m-%d")
             .to_string();
@@ -646,8 +665,11 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             WHERE DATE(so.closed_at) = ?1 OR (DATE(so.created_at) <= ?1 AND so.status NOT IN ('Finalizada', 'Cancelada'))
         ";
 
-        println!("[SEED] seed_financial_snapshots: Running query for date {}", snapshot_date);
-        
+        println!(
+            "[SEED] seed_financial_snapshots: Running query for date {}",
+            snapshot_date
+        );
+
         let (total_revenue, total_cost, active_orders): (f64, f64, i64) = conn
             .query_row(query, [&snapshot_date], |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -655,9 +677,9 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             .unwrap_or((0.0, 0.0, 0));
 
         let net_profit = total_revenue - total_cost;
-        
+
         println!("[SEED] seed_financial_snapshots: Query done, getting parts cost...");
-        
+
         let parts_in_use_cost: f64 = conn
             .query_row(
                 "SELECT COALESCE(SUM(sop.unit_cost * sop.quantity), 0)
@@ -669,8 +691,11 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             )
             .unwrap_or(0.0);
 
-        println!("[SEED] seed_financial_snapshots: Inserting snapshot for {}", snapshot_date);
-        
+        println!(
+            "[SEED] seed_financial_snapshots: Inserting snapshot for {}",
+            snapshot_date
+        );
+
         conn.execute(
             "INSERT INTO financial_snapshots (id, snapshot_date, total_revenue, total_cost, net_profit, parts_in_use_cost, active_orders_count, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)",
@@ -685,8 +710,11 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             ],
         )
         .map_err(|e| e.to_string())?;
-        
-        println!("[SEED] seed_financial_snapshots: Inserted {}", snapshot_date);
+
+        println!(
+            "[SEED] seed_financial_snapshots: Inserted {}",
+            snapshot_date
+        );
     }
 
     println!("[SEED] seed_financial_snapshots: All done!");
@@ -695,7 +723,7 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
 
 fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
     println!("[SEED] seed_checklist_templates: Starting...");
-    
+
     let templates = vec![
         (
             "Checklist Smartphone",

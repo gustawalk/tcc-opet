@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 12mm 16mm 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body { color: #1f2937; font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
+    header { align-items: center; border-bottom: 2px solid #2563eb; display: flex; gap: 16px; margin-bottom: 20px; padding-bottom: 12px; }
+    .logo { max-height: 58px; max-width: 130px; object-fit: contain; }
+    .company { flex: 1; }
+    h1, h2, p { margin: 0; }
+    h1 { color: #1d4ed8; font-size: 22px; }
+    h2 { font-size: 13px; margin-bottom: 8px; text-transform: uppercase; }
+    .muted { color: #6b7280; }
+    .order-id { font-size: 18px; font-weight: 700; text-align: right; }
+    .status { background: #dbeafe; border-radius: 999px; color: #1d4ed8; display: inline-block; font-weight: 700; margin-top: 4px; padding: 4px 9px; }
+    .grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-bottom: 18px; }
+    .panel { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; }
+    .panel p { line-height: 1.5; overflow-wrap: anywhere; }
+    table { border-collapse: collapse; margin-bottom: 18px; max-width: 100%; width: 100%; }
+    th { background: #eff6ff; color: #1e3a8a; font-size: 11px; text-align: left; }
+    th, td { border: 1px solid #d1d5db; overflow-wrap: anywhere; padding: 8px; }
+    .right { text-align: right; }
+    .center { text-align: center; }
+    .settlement { align-items: flex-end; display: flex; gap: 40px; margin-top: 12px; }
+    .signature { flex: 1; padding-bottom: 4px; text-align: center; }
+    .signature-line { border-top: 1px solid #4b5563; margin: 48px auto 6px; max-width: 280px; }
+    .signature-label { color: #4b5563; font-size: 11px; }
+    .totals { margin-left: auto; width: 260px; }
+    .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+    .totals .grand { border-top: 2px solid #2563eb; color: #1d4ed8; font-size: 15px; font-weight: 700; margin-top: 4px; padding-top: 8px; }
+    .checklist { columns: 2; list-style: none; margin: 0; padding: 0; }
+    .checklist li { break-inside: avoid; margin-bottom: 5px; }
+    footer { border-top: 1px solid #d1d5db; color: #6b7280; font-size: 10px; margin-top: 24px; padding-top: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    {% if settings.logoPath %}<img class="logo" src="{{ settings.logoPath | safe }}" alt="Logo da empresa">{% endif %}
+    <div class="company">
+      <h1>{{ settings.companyName }}</h1>
+      {% if settings.cnpj %}<p class="muted">CNPJ: {{ settings.cnpj }}</p>{% endif %}
+      {% if settings.address %}<p class="muted">{{ settings.address }}</p>{% endif %}
+    </div>
+    <div>
+      <p class="order-id">{{ display_id }}</p>
+      <span class="status">{{ status }}</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Cliente</h2>
+      <p><strong>{{ customer.name }}</strong></p>
+      <p>{{ customer.phone }}</p>
+      <p>{{ customer.email }}</p>
+      <p>{{ customer.address }}</p>
+    </section>
+    <section class="panel">
+      <h2>Aparelho</h2>
+      <p><strong>{{ equipment }}</strong></p>
+      {% if imei %}<p>IMEI / Serial: {{ imei }}</p>{% endif %}
+      <p>Responsável: {{ technician }}</p>
+      <p>Abertura: {{ created_at }}</p>
+      {% if closed_at %}<p>Encerramento: {{ closed_at }}</p>{% endif %}
+    </section>
+  </div>
+
+  <section class="panel" style="margin-bottom:18px">
+    <h2>Relato / diagnóstico</h2>
+    <p>{{ description }}</p>
+  </section>
+
+  {% if checklist | length > 0 %}
+  <section class="panel" style="margin-bottom:18px">
+    <h2>Checklist de entrada</h2>
+    <ul class="checklist">
+      {% for item in checklist %}<li>{% if item.checked %}&#9745;{% else %}&#9744;{% endif %} {{ item.label }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <h2>Peças e serviços</h2>
+  <table>
+    <thead><tr><th>Item</th><th class="center">Qtd.</th><th class="right">Unitário</th><th class="right">Total</th></tr></thead>
+    <tbody>
+      {% for item in parts %}<tr><td>{{ item.name }}</td><td class="center">{{ item.quantity }}</td><td class="right">{{ item.unit_price }}</td><td class="right">{{ item.total_price }}</td></tr>{% endfor %}
+      {% if parts | length == 0 %}<tr><td colspan="4" class="center muted">Nenhuma peça ou serviço adicionado.</td></tr>{% endif %}
+    </tbody>
+  </table>
+   <div class="settlement">
+     <div class="signature">
+       <div class="signature-line"></div>
+       <p class="signature-label">Assinatura do cliente</p>
+     </div>
+     <div class="totals">
+       <div><span>Subtotal</span><span>{{ gross_total }}</span></div>
+       {% if discount_percent > 0 %}<div><span>Desconto ({{ discount_percent }}%)</span><span>- aplicado</span></div>{% endif %}
+       <div class="grand"><span>Total previsto</span><span>{{ total }}</span></div>
+     </div>
+   </div>
+  <footer>Documento gerado em {{ generated_at }} pelo OpetS Manager.</footer>
+</body>
+</html>

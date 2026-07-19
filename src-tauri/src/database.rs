@@ -1,57 +1,105 @@
 use dotenv::dotenv;
-use rusqlite::{Connection, Result, params};
+use once_cell::sync::OnceCell;
+use rusqlite::{params, Connection, Result};
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::io;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use tauri::Manager;
 use uuid::Uuid;
-use once_cell::sync::Lazy;
 
 // Static connection pool for simple desktop usage
-static DB_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    let _ = dotenv();
-    get_database_path().expect("Failed to determine database path")
-});
+static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 
 // Initialize the database connection
-pub fn init_db() -> Result<()> {
-    // Open the connection once to run migrations
-    let conn = Connection::open(&*DB_PATH)?;
-    run_migrations(&conn)?;
-    
-    // Initialize seed data if database is empty
-    drop(conn); // Close the connection before seeding
-    if let Err(e) = crate::seeds::initialize_seed_data() {
-        eprintln!("[SEED ERROR] Seed initialization failed: {}", e);
+pub fn init_db(app: &tauri::App) -> Result<()> {
+    let _ = dotenv();
+    let app_data_dir = app.path().app_data_dir().map_err(|error| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
+    })?;
+    let resolved_database_path = get_database_path(&app_data_dir)?;
+    DB_PATH.set(resolved_database_path).map_err(|_| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
+            "Database path was already initialized.",
+        )))
+    })?;
+
+    if let Some(parent) = database_path().parent() {
+        ensure_private_dir(parent).map_err(io_error)?;
     }
-    
+
+    // Open the connection once to run migrations with foreign keys enabled.
+    let conn = get_db()?;
+    run_migrations(&conn)?;
+    secure_private_file(&database_path()).map_err(io_error)?;
+
+    drop(conn);
+    if should_seed_demo_data() {
+        crate::seeds::initialize_seed_data().map_err(|error| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error)))
+        })?;
+    } else if cfg!(debug_assertions) {
+        println!("[SEED] Demo seed data skipped by SKIP_DB_SEED.");
+    } else {
+        println!("[SEED] Demo seed data skipped in production.");
+    }
+
     Ok(())
 }
 
+fn io_error(error: io::Error) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(error))
+}
+
+pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
+    fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+pub(crate) fn secure_private_file(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+fn should_seed_demo_data() -> bool {
+    should_seed_demo_data_for(
+        cfg!(debug_assertions),
+        is_skip_db_seed_enabled(std::env::var("SKIP_DB_SEED").ok().as_deref()),
+    )
+}
+
+fn should_seed_demo_data_for(is_debug_build: bool, skip_db_seed: bool) -> bool {
+    is_debug_build && !skip_db_seed
+}
+
+fn is_skip_db_seed_enabled(value: Option<&str>) -> bool {
+    matches!(
+        value.map(|value| value.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true")
+    )
+}
+
 // Get database path from environment or fallback
-fn get_database_path() -> Result<PathBuf> {
-    // Check for DATABASE_PATH environment variable first
-    if let Ok(db_path) = env::var("DATABASE_PATH") {
-        let path = PathBuf::from(db_path);
-        if !path.is_absolute() {
-            let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            Ok(current_dir.join(path))
-        } else {
-            Ok(path)
-        }
-    } else {
-        if let Ok(db_path) = env::var("DB_PATH") {
-            let path = PathBuf::from(db_path);
-            if !path.is_absolute() {
-                let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                Ok(current_dir.join(path))
-            } else {
-                Ok(path)
-            }
-        } else {
-            // Default path in the current directory for dev
-            let mut path = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            path.push("database.db");
-            Ok(path)
-        }
+fn get_database_path(app_data_dir: &Path) -> Result<PathBuf> {
+    let configured_path = env::var("DATABASE_PATH")
+        .ok()
+        .or_else(|| env::var("DB_PATH").ok())
+        .map(PathBuf::from);
+    Ok(resolve_database_path(configured_path, app_data_dir))
+}
+
+fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) -> PathBuf {
+    match configured_path {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path),
+        None => app_data_dir.join("database.db"),
     }
 }
 
@@ -103,7 +151,9 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             min_quantity INTEGER NOT NULL DEFAULT 0,
             current_quantity INTEGER NOT NULL DEFAULT 0,
             cost_price REAL NOT NULL DEFAULT 0.0,
+            average_cost REAL NOT NULL DEFAULT 0.0,
             sale_price REAL NOT NULL DEFAULT 0.0,
+            supplier_name TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             deleted_at TEXT
@@ -120,7 +170,6 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             description TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'Orçamento' CHECK (status IN ('Orçamento', 'Em Manutenção', 'Aguardando Peça', 'Finalizada', 'Cancelada')),
             total_price REAL DEFAULT 0.0,
-            signature_path TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
@@ -167,6 +216,34 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
 
+        -- Monotonic sequence used to generate collision-free OS display IDs.
+        CREATE TABLE IF NOT EXISTS service_order_sequences (
+            name TEXT PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- Immutable operational timeline for service orders.
+        CREATE TABLE IF NOT EXISTS service_order_events (
+            id TEXT PRIMARY KEY,
+            service_order_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            details TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE
+        );
+
+        -- Metadata for files managed by the application storage directory.
+        CREATE TABLE IF NOT EXISTS service_order_attachments (
+            id TEXT PRIMARY KEY,
+            service_order_id TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            storage_name TEXT NOT NULL UNIQUE,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE
+        );
+
         -- Financial snapshots table for trend calculations
         CREATE TABLE IF NOT EXISTS financial_snapshots (
             id TEXT PRIMARY KEY,
@@ -186,6 +263,8 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             type TEXT NOT NULL CHECK (type IN ('entrada', 'saida')),
             quantity INTEGER NOT NULL,
             reference_os_id TEXT,
+            reason TEXT NOT NULL DEFAULT '',
+            unit_cost REAL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
@@ -195,6 +274,9 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
 
         -- Index for inventory movements lookup
         CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(inventory_item_id);
+        CREATE INDEX IF NOT EXISTS idx_service_order_events_order ON service_order_events(service_order_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_service_order_attachments_order ON service_order_attachments(service_order_id, created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_service_orders_display_id ON service_orders(display_id) WHERE display_id <> '';
         ",
     )?;
 
@@ -207,10 +289,44 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
         if let Err(e) = conn.execute_batch(migration) {
             let err_msg = e.to_string();
             if !err_msg.contains("duplicate column") {
-                eprintln!("[MIGRATION WARNING] Could not run migration '{}': {}", migration.trim(), err_msg);
+                eprintln!(
+                    "[MIGRATION WARNING] Could not run migration '{}': {}",
+                    migration.trim(),
+                    err_msg
+                );
             }
         }
     }
+
+    // Migration: add reason to legacy inventory movement records.
+    if let Err(error) = conn.execute_batch(
+        "ALTER TABLE inventory_movements ADD COLUMN reason TEXT NOT NULL DEFAULT '';",
+    ) {
+        if !error.to_string().contains("duplicate column") {
+            eprintln!("[MIGRATION WARNING] Could not add inventory movement reason: {error}");
+        }
+    }
+
+    // Additive inventory migrations preserve existing catalog and audit data.
+    for migration in &[
+        "ALTER TABLE inventory_items ADD COLUMN average_cost REAL NOT NULL DEFAULT 0.0;",
+        "ALTER TABLE inventory_items ADD COLUMN supplier_name TEXT;",
+        "ALTER TABLE inventory_movements ADD COLUMN unit_cost REAL;",
+    ] {
+        if let Err(error) = conn.execute_batch(migration) {
+            if !error.to_string().contains("duplicate column") {
+                eprintln!(
+                    "[MIGRATION WARNING] Could not run inventory migration '{}': {error}",
+                    migration.trim()
+                );
+            }
+        }
+    }
+
+    conn.execute(
+        "UPDATE inventory_items SET average_cost = cost_price WHERE average_cost = 0.0 AND cost_price > 0.0",
+        [],
+    )?;
 
     // Migration: add columns to users if missing from intermediate schema
     for migration in &[
@@ -221,7 +337,11 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
         if let Err(e) = conn.execute_batch(migration) {
             let err_msg = e.to_string();
             if !err_msg.contains("duplicate column") {
-                eprintln!("[MIGRATION WARNING] Could not run migration '{}': {}", migration.trim(), err_msg);
+                eprintln!(
+                    "[MIGRATION WARNING] Could not run migration '{}': {}",
+                    migration.trim(),
+                    err_msg
+                );
             }
         }
     }
@@ -254,8 +374,10 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
                     SELECT id, name, email, created_at, updated_at, deleted_at FROM users;
                 DROP TABLE users;
                 ALTER TABLE users_new RENAME TO users;
-                PRAGMA foreign_keys = ON;"
-            ).map_err(|e| eprintln!("[MIGRATION ERROR] Failed to migrate users table: {}", e)).ok();
+                PRAGMA foreign_keys = ON;",
+            )
+            .map_err(|e| eprintln!("[MIGRATION ERROR] Failed to migrate users table: {}", e))
+            .ok();
             eprintln!("[MIGRATION] Users table migrated successfully.");
         }
     }
@@ -272,18 +394,82 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
         params![Uuid::new_v4().to_string()],
     )?;
 
+    conn.execute(
+        "INSERT OR IGNORE INTO service_order_sequences (name, value)
+         SELECT 'service_order', COALESCE(MAX(CAST(SUBSTR(display_id, 4) AS INTEGER)), 0)
+         FROM service_orders",
+        [],
+    )?;
+
     Ok(())
 }
 
 // Get database connection - returns a new connection using the stored path
 pub fn get_db() -> Result<Connection> {
-    Connection::open(&*DB_PATH)
+    let conn = Connection::open(database_path())?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    Ok(conn)
+}
+
+pub fn database_path() -> PathBuf {
+    DB_PATH
+        .get()
+        .cloned()
+        .expect("Database path must be initialized before use")
+}
+
+pub fn attachments_dir() -> PathBuf {
+    let mut path = database_path();
+    path.set_extension("attachments");
+    path
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::{setup_db, setup_legacy_users_db};
+
+    #[test]
+    fn default_database_path_uses_the_application_data_directory() {
+        let app_data_dir = PathBuf::from("/tmp/opets-data");
+
+        assert_eq!(
+            resolve_database_path(None, &app_data_dir),
+            app_data_dir.join("database.db")
+        );
+    }
+
+    #[test]
+    fn configured_absolute_database_path_overrides_application_data_directory() {
+        let app_data_dir = PathBuf::from("/tmp/opets-data");
+        let configured_path = PathBuf::from("/tmp/custom/database.db");
+
+        assert_eq!(
+            resolve_database_path(Some(configured_path.clone()), &app_data_dir),
+            configured_path
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_storage_permissions_are_restricted_to_the_current_user() {
+        let temp_dir = std::env::temp_dir().join(format!("opets-private-{}", Uuid::new_v4()));
+        let database_file = temp_dir.join("database.db");
+
+        ensure_private_dir(&temp_dir).unwrap();
+        fs::write(&database_file, b"database").unwrap();
+        secure_private_file(&database_file).unwrap();
+
+        assert_eq!(
+            fs::metadata(&temp_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&database_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 
     #[test]
     fn migrations_create_core_tables_and_indexes() {
@@ -294,7 +480,8 @@ mod tests {
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (
                     'settings', 'customers', 'users', 'inventory_items', 'service_orders',
                     'checklist_templates', 'template_items', 'service_order_checklists',
-                    'service_order_parts', 'financial_snapshots', 'inventory_movements'
+                    'service_order_parts', 'financial_snapshots', 'inventory_movements',
+                    'service_order_sequences', 'service_order_events', 'service_order_attachments'
                 )",
                 [],
                 |row| row.get(0),
@@ -310,7 +497,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(table_count, 11);
+        assert_eq!(table_count, 14);
         assert_eq!(index_count, 2);
     }
 
@@ -319,7 +506,11 @@ mod tests {
         let conn = setup_db();
 
         let company_name: String = conn
-            .query_row("SELECT company_name FROM settings WHERE id = 1", [], |row| row.get(0))
+            .query_row(
+                "SELECT company_name FROM settings WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
 
         assert_eq!(company_name, "Minha Empresa");
@@ -330,10 +521,28 @@ mod tests {
         let conn = setup_db();
 
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| {
+                row.get(0)
+            })
             .unwrap();
 
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn demo_seeds_only_run_in_debug_without_skip_flag() {
+        assert!(should_seed_demo_data_for(true, false));
+        assert!(!should_seed_demo_data_for(true, true));
+        assert!(!should_seed_demo_data_for(false, false));
+        assert!(!should_seed_demo_data_for(false, true));
+    }
+
+    #[test]
+    fn skip_db_seed_accepts_true_and_one() {
+        assert!(is_skip_db_seed_enabled(Some("true")));
+        assert!(is_skip_db_seed_enabled(Some(" 1 ")));
+        assert!(!is_skip_db_seed_enabled(Some("false")));
+        assert!(!is_skip_db_seed_enabled(None));
     }
 
     #[test]
@@ -343,10 +552,14 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let settings_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM settings WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM settings WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let snapshot_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| {
+                row.get(0)
+            })
             .unwrap();
 
         assert_eq!(settings_count, 1);
@@ -384,5 +597,31 @@ mod tests {
         assert_eq!(migrated_row.0, "Maria");
         assert_eq!(migrated_row.1, "");
         assert_eq!(migrated_row.2, "");
+    }
+
+    #[test]
+    fn migrations_upgrade_legacy_inventory_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE inventory_items (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', type TEXT NOT NULL, min_quantity INTEGER NOT NULL DEFAULT 0, current_quantity INTEGER NOT NULL DEFAULT 0, cost_price REAL NOT NULL DEFAULT 0.0, sale_price REAL NOT NULL DEFAULT 0.0, created_at TEXT, updated_at TEXT, deleted_at TEXT);
+             CREATE TABLE inventory_movements (id TEXT PRIMARY KEY, inventory_item_id TEXT NOT NULL, type TEXT NOT NULL, quantity INTEGER NOT NULL, reference_os_id TEXT, reason TEXT NOT NULL DEFAULT '', created_at TEXT);"
+        ).unwrap();
+        conn.execute("INSERT INTO inventory_items (id, name, type, cost_price) VALUES ('part-1', 'Tela', 'part', 42.5)", []).unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let item: (f64, Option<String>) = conn
+            .query_row(
+                "SELECT average_cost, supplier_name FROM inventory_items WHERE id = 'part-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let has_unit_cost: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('inventory_movements') WHERE name = 'unit_cost'", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(item.0, 42.5);
+        assert!(item.1.is_none());
+        assert_eq!(has_unit_cost, 1);
     }
 }

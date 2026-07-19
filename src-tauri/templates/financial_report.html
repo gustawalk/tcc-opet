@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 12mm 16mm 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body { color: #1f2937; font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
+    header { border-bottom: 2px solid #2563eb; margin-bottom: 20px; padding-bottom: 12px; }
+    h1 { color: #1d4ed8; font-size: 22px; margin: 0 0 4px; }
+    h2 { font-size: 13px; margin: 22px 0 8px; text-transform: uppercase; }
+    p { margin: 0; }
+    .muted { color: #6b7280; }
+    .cards { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); }
+    .card { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; }
+    .card span { color: #6b7280; display: block; font-size: 10px; text-transform: uppercase; }
+    .card strong { display: block; font-size: 16px; margin-top: 4px; }
+    table { border-collapse: collapse; max-width: 100%; width: 100%; }
+    th, td { border: 1px solid #d1d5db; overflow-wrap: anywhere; padding: 7px; }
+    th { background: #eff6ff; color: #1e3a8a; font-size: 10px; text-align: left; }
+    .right { text-align: right; }
+    footer { border-top: 1px solid #d1d5db; color: #6b7280; font-size: 10px; margin-top: 24px; padding-top: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header><h1>Relatório Financeiro</h1><p class="muted">Período: {{ start_date }} até {{ end_date }}</p></header>
+  <section class="cards">
+    <div class="card"><span>Faturamento</span><strong>{{ total_revenue }}</strong></div>
+    <div class="card"><span>Lucro líquido</span><strong>{{ net_profit }}</strong></div>
+    <div class="card"><span>Ticket médio</span><strong>{{ average_ticket }}</strong></div>
+    <div class="card"><span>Custos</span><strong>{{ total_cost }}</strong></div>
+    <div class="card"><span>OS finalizadas</span><strong>{{ finalized_orders }}</strong></div>
+  </section>
+  <h2>Resultado por técnico</h2>
+  <table><thead><tr><th>Técnico</th><th class="right">Faturamento</th><th class="right">Custo</th><th class="right">Lucro</th><th class="right">OS</th></tr></thead><tbody>{% for item in by_technician %}<tr><td>{{ item.label }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.cost }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_technician | length == 0 %}<tr><td colspan="5" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
+  <h2>Resultado por categoria</h2>
+  <table><thead><tr><th>Categoria</th><th class="right">Faturamento</th><th class="right">Custo</th><th class="right">Lucro</th><th class="right">Quantidade</th></tr></thead><tbody>{% for item in by_item_type %}<tr><td>{{ item.label }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.cost }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_item_type | length == 0 %}<tr><td colspan="5" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
+  <h2>Evolução mensal</h2>
+  <table><thead><tr><th>Mês</th><th class="right">Faturamento</th><th class="right">Lucro</th><th class="right">OS</th></tr></thead><tbody>{% for item in by_month %}<tr><td>{{ item.month }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_month | length == 0 %}<tr><td colspan="4" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
+  <footer>Relatório gerado em {{ generated_at }} pelo OpetS Manager.</footer>
+</body>
+</html>

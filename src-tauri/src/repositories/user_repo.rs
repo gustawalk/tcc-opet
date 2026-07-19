@@ -12,7 +12,6 @@ impl UserRepository {
     }
 
     pub(crate) fn create_with_conn(conn: &Connection, user: &User) -> Result<()> {
-
         conn.execute(
             "INSERT INTO users (id, name, email, phone, cpf, join_date, created_at, deleted_at) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -36,7 +35,6 @@ impl UserRepository {
     }
 
     pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<User>> {
-
         let mut stmt = conn.prepare(
             "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE id = ?1 AND deleted_at IS NULL",
@@ -64,7 +62,6 @@ impl UserRepository {
     }
 
     pub(crate) fn get_by_email_with_conn(conn: &Connection, email: &str) -> Result<Option<User>> {
-
         let mut stmt = conn.prepare(
             "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE email = ?1 AND deleted_at IS NULL",
@@ -92,7 +89,6 @@ impl UserRepository {
     }
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<User>> {
-
         let mut stmt = conn.prepare(
             "SELECT id, name, email, phone, cpf, join_date, created_at, deleted_at 
              FROM users WHERE deleted_at IS NULL",
@@ -123,11 +119,10 @@ impl UserRepository {
     }
 
     pub(crate) fn update_with_conn(conn: &Connection, user: &User) -> Result<()> {
-
-        conn.execute(
+        let updated = conn.execute(
             "UPDATE users 
              SET name = ?1, email = ?2, phone = ?3, cpf = ?4, join_date = ?5, updated_at = ?6
-             WHERE id = ?7",
+              WHERE id = ?7 AND deleted_at IS NULL",
             params![
                 user.name,
                 user.email,
@@ -138,6 +133,9 @@ impl UserRepository {
                 user.id
             ],
         )?;
+        if updated == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 
@@ -147,11 +145,13 @@ impl UserRepository {
     }
 
     pub(crate) fn delete_with_conn(conn: &Connection, id: &str) -> Result<()> {
-
-        conn.execute(
-            "UPDATE users SET deleted_at = ?1 WHERE id = ?2",
+        let updated = conn.execute(
+            "UPDATE users SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             params![Utc::now().to_rfc3339(), id],
         )?;
+        if updated == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 }

@@ -15,7 +15,6 @@ pub struct ServiceOrder {
     pub description: String,
     pub status: String, // OSStatus enum
     pub total_price: Option<f64>,
-    pub signature_path: Option<String>,
     pub created_at: String,
     pub updated_at: Option<String>,
     pub closed_at: Option<String>,
@@ -36,7 +35,6 @@ impl ServiceOrder {
             description,
             status: "Orçamento".to_string(),
             total_price: None,
-            signature_path: None,
             created_at: Utc::now().to_rfc3339(),
             updated_at: None,
             closed_at: None,
@@ -61,7 +59,6 @@ mod tests {
         assert!(Uuid::parse_str(&order.id).is_ok());
         assert_eq!(order.status, "Orçamento");
         assert!(order.total_price.is_none());
-        assert!(order.signature_path.is_none());
         assert!(order.display_id.is_empty());
         assert_eq!(order.discount_percent, 0.0);
         assert!(order.closed_at.is_none());

@@ -227,8 +227,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          assets=$(find release-assets -type f)
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
+            gh release upload "${GITHUB_REF_NAME}" $assets --clobber
           else
-            gh release create "${GITHUB_REF_NAME}" release-assets/* --generate-notes --title "OpetS Manager ${GITHUB_REF_NAME}"
+            gh release create "${GITHUB_REF_NAME}" $assets --generate-notes --title "OpetS Manager ${GITHUB_REF_NAME}"
           fi

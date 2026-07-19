@@ -23,7 +23,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -623,16 +622,6 @@ export function ServiceOrderCreate() {
               <p className="text-xs text-destructive">{errors.description}</p>
             )}
           </CardContent>
-          <CardFooter className="justify-end">
-            <Button
-              onClick={handleSave}
-              disabled={isSubmitting || lookupLoading || lookupError}
-              className="gap-2"
-            >
-              <Save className="h-4 w-4" />
-              {isSubmitting ? "Criando..." : "Criar OS"}
-            </Button>
-          </CardFooter>
         </Card>
         </div>
         <Card className="md:col-span-3">
@@ -684,6 +673,16 @@ export function ServiceOrderCreate() {
             )}
           </CardContent>
         </Card>
+        <div className="md:col-span-3 flex justify-end">
+          <Button
+            onClick={handleSave}
+            disabled={isSubmitting || lookupLoading || lookupError}
+            className="gap-2"
+          >
+            <Save className="h-4 w-4" />
+            {isSubmitting ? "Criando..." : "Criar OS"}
+          </Button>
+        </div>
       </div>
     </form>
   );

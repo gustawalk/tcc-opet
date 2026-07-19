@@ -24,16 +24,6 @@ import {
   setThemePreference,
   Theme,
 } from "@/lib/theme";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const fetchSettings = async (): Promise<Settings> => {
   return await invoke<Settings>("get_settings");
@@ -400,49 +390,65 @@ export function Settings() {
         </Card>
       )}
 
-      <AlertDialog open={!!restoreSource} onOpenChange={(open) => !open && !restoreMutation.isPending && setRestoreSource(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Restaurar backup</AlertDialogTitle>
-            <AlertDialogDescription>Os dados atuais serão substituídos pelo conteúdo deste backup. Esta ação não pode ser desfeita.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={restoreMutation.isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={restoreMutation.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                if (restoreSource) restoreMutation.mutate(restoreSource);
-              }}
-            >
-              {restoreMutation.isPending ? "Restaurando..." : "Restaurar backup"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {restoreSource && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !restoreMutation.isPending && setRestoreSource(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Restaurar backup</h3>
+            <p className="text-sm text-muted-foreground">
+              Os dados atuais serão substituídos pelo conteúdo deste backup. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRestoreSource(null)} disabled={restoreMutation.isPending}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={restoreMutation.isPending}
+                onClick={() => {
+                  if (restoreSource) restoreMutation.mutate(restoreSource);
+                }}
+              >
+                {restoreMutation.isPending ? "Restaurando..." : "Restaurar backup"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <AlertDialog open={isResetConfirmOpen} onOpenChange={(open) => !open && !isResetting && setIsResetConfirmOpen(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Resetar todos os dados</AlertDialogTitle>
-            <AlertDialogDescription>Todos os dados e anexos serão excluídos permanentemente. Esta ação não pode ser desfeita.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isResetting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isResetting}
-              onClick={(event) => {
-                event.preventDefault();
-                startReset();
-              }}
-            >
-              {isResetting ? "Resetando..." : "Resetar dados"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isResetConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !isResetting && setIsResetConfirmOpen(false)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Resetar todos os dados</h3>
+            <p className="text-sm text-muted-foreground">
+              Todos os dados e anexos serão excluídos permanentemente. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsResetConfirmOpen(false)} disabled={isResetting}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isResetting}
+                onClick={() => startReset()}
+              >
+                {isResetting ? "Resetando..." : "Resetar dados"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {isResetting && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"

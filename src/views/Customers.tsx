@@ -32,16 +32,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Table,
   TableBody,
   TableCell,
@@ -597,20 +587,30 @@ export function Customers() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir cliente</AlertDialogTitle>
-            <AlertDialogDescription>
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !deleteCustomerMutation.isPending && setConfirmDeleteId(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir cliente</h3>
+            <p className="text-sm text-muted-foreground">
               Esta ação não pode ser desfeita. Deseja realmente excluir este cliente?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteCustomer} disabled={deleteCustomerMutation.isPending}>{deleteCustomerMutation.isPending ? "Excluindo..." : "Excluir"}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={confirmDeleteCustomer} disabled={deleteCustomerMutation.isPending}>
+                {deleteCustomerMutation.isPending ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <ServiceOrderDetailSheet orderId={selectedOrderId} open={!!selectedOrderId} onClose={() => setSelectedOrderId(null)} />
     </div>
   );

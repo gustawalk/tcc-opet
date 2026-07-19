@@ -32,16 +32,6 @@ import {
 import { formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   User,
   Smartphone,
   Calendar,
@@ -767,37 +757,38 @@ export function ServiceOrderDetailSheet({
           </Button>
         </SheetFooter>
       </SheetContent>
-      <AlertDialog
-        open={!!attachmentToDelete}
-        onOpenChange={(isOpen) => {
-          if (!isOpen && !deleteAttachmentMutation.isPending)
-            setAttachmentToDelete(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir anexo</AlertDialogTitle>
-            <AlertDialogDescription>
+      {attachmentToDelete && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !deleteAttachmentMutation.isPending && setAttachmentToDelete(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir anexo</h3>
+            <p className="text-sm text-muted-foreground">
               Deseja excluir permanentemente o anexo &quot;
               {attachmentToDelete?.fileName}&quot;?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteAttachmentMutation.isPending}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                attachmentToDelete &&
-                deleteAttachmentMutation.mutate(attachmentToDelete.id)
-              }
-              disabled={deleteAttachmentMutation.isPending}
-            >
-              {deleteAttachmentMutation.isPending ? "Excluindo..." : "Excluir"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAttachmentToDelete(null)} disabled={deleteAttachmentMutation.isPending}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() =>
+                  attachmentToDelete &&
+                  deleteAttachmentMutation.mutate(attachmentToDelete.id)
+                }
+                disabled={deleteAttachmentMutation.isPending}
+              >
+                {deleteAttachmentMutation.isPending ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {pdfPreview && (
         <Suspense fallback={null}>
           <PdfPreviewDialog preview={pdfPreview} onClose={() => setPdfPreview(null)} />

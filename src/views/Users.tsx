@@ -55,16 +55,6 @@ import { SortableHeader } from "@/components/shared/SortableHeader";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
 import { toastSuccess, toastError } from "@/lib/errors";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const fetchUsers = async (): Promise<UserType[]> => {
   return await invoke<UserType[]>("get_users");
@@ -420,20 +410,30 @@ export function Users() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
-            <AlertDialogDescription>
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !deleteMutation.isPending && setConfirmDeleteId(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir usuário</h3>
+            <p className="text-sm text-muted-foreground">
               Esta ação não pode ser desfeita. Deseja realmente excluir este usuário?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteUser} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? "Excluindo..." : "Excluir"}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={confirmDeleteUser} disabled={deleteMutation.isPending}>
+                {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

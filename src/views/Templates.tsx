@@ -47,16 +47,6 @@ import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -426,20 +416,30 @@ export function Templates() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!confirmDeleteId} onOpenChange={() => setConfirmDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir template</AlertDialogTitle>
-            <AlertDialogDescription>
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
+          onClick={() => !isDeleting && setConfirmDeleteId(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Excluir template</h3>
+            <p className="text-sm text-muted-foreground">
               Esta ação não pode ser desfeita. Deseja realmente excluir este template?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteTemplate} disabled={isDeleting}>{isDeleting ? "Excluindo..." : "Excluir"}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={confirmDeleteTemplate} disabled={isDeleting}>
+                {isDeleting ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

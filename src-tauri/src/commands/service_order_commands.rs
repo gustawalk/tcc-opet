@@ -66,6 +66,8 @@ pub struct CustomerUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct ChecklistItemInput {
     pub label: String,
+    #[serde(default)]
+    pub checked: bool,
 }
 
 #[derive(Deserialize)]
@@ -266,10 +268,10 @@ pub(crate) fn create_full_service_order_with_conn(
         let items: Vec<ChecklistItem> = request
             .checklist_items
             .iter()
-            .map(|input| ChecklistItem {
+            .map(|input|             ChecklistItem {
                 id: uuid::Uuid::new_v4().to_string(),
                 label: input.label.clone(),
-                checked: false,
+                checked: input.checked,
             })
             .collect();
         ChecklistRepository::replace_os_checklist_in_transaction(&tx, &order_id, items)?;
@@ -511,9 +513,11 @@ mod tests {
             checklist_items: vec![
                 ChecklistItemInput {
                     label: "Testar câmera".to_string(),
+                    checked: false,
                 },
                 ChecklistItemInput {
                     label: "Testar touch".to_string(),
+                    checked: false,
                 },
             ],
             attachment_token: None,

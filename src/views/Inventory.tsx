@@ -65,6 +65,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { inventoryItemSchema, quantitySchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
+import { Copyable } from "@/components/shared/Copyable";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
 import {
@@ -838,7 +839,7 @@ export function Inventory() {
                         <TableCell className="text-center font-medium">{mov.quantity} un.</TableCell>
                         <TableCell className="text-right text-xs">{mov.unitCost == null ? "-" : formatCurrency(mov.unitCost)}</TableCell>
                         <TableCell className="font-mono text-xs">
-                          {mov.osDisplayId ?? "-"}
+                          <Copyable label={mov.osDisplayId ?? ""} />
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
                           {mov.createdAt ? new Date(mov.createdAt).toLocaleString("pt-BR") : "-"}

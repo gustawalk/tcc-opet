@@ -1,37 +1,20 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useNavigate } from "react-router-dom";
-import { 
-  Building2, 
-  Save, 
-  Upload, 
-  MapPin, 
-  Database, 
-   Info,
-   LoaderCircle,
-   Moon,
-   RefreshCw,
-   Sun,
-} from "lucide-react";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle,
-} from "@/components/ui/card";
+import { check } from "@tauri-apps/plugin-updater";
+import { Building2, Database, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import {
-  BackupSummary,
-  Settings as SettingsType,
-  SystemInfo,
-  UpdateCheck,
+  type Settings,
+  type SystemInfo,
+  type BackupSummary,
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
@@ -52,8 +35,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const fetchSettings = async (): Promise<SettingsType> => {
-  return await invoke<SettingsType>("get_settings");
+const fetchSettings = async (): Promise<Settings> => {
+  return await invoke<Settings>("get_settings");
 };
 
 const fetchSystemInfo = async (): Promise<SystemInfo> => {
@@ -68,7 +51,7 @@ export function Settings() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetStarting, setIsResetStarting] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ available: boolean; version?: string } | null>(null);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
@@ -81,7 +64,7 @@ export function Settings() {
     queryFn: fetchSystemInfo,
   });
 
-  const [localSettings, setLocalSettings] = useState<SettingsType>({
+  const [localSettings, setLocalSettings] = useState<Settings>({
     companyName: "",
     cnpj: "",
     address: "",
@@ -95,7 +78,7 @@ export function Settings() {
   }, [settingsData]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: SettingsType) => {
+    mutationFn: async (data: Settings) => {
       return await invoke("update_settings", { settings: data });
     },
     onSuccess: () => {
@@ -135,21 +118,20 @@ export function Settings() {
   const isResetting = isResetStarting || resetMutation.isPending;
 
   const updateCheckMutation = useMutation({
-    mutationFn: () => invoke<UpdateCheck>("check_for_updates"),
-    onSuccess: (result) => {
-      setUpdateResult(result);
-      if (!result.configured) {
-        toastError(
-          "UPDATE_MANIFEST_URL não está configurada.",
-          "Atualizações automáticas ainda não estão configuradas.",
-        );
-      } else if (result.updateAvailable) {
-        toastSuccess(`Nova versão disponível: ${result.latestVersion}.`);
+    mutationFn: async () => {
+      const update = await check();
+      if (update) {
+        setUpdateInfo({ available: true, version: update.version });
+        toastSuccess(`Nova versão disponível: ${update.version}.`);
       } else {
+        setUpdateInfo({ available: false });
         toastSuccess("Você já está usando a versão mais recente.");
       }
     },
-    onError: (err) => toastError(err, "Erro ao verificar atualizações."),
+    onError: (err) => {
+      setUpdateInfo({ available: false });
+      toastError(err, "Erro ao verificar atualizações.");
+    },
   });
 
   const handleSave = () => {
@@ -383,11 +365,11 @@ export function Settings() {
                   {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
                 </Button>
                 <p className="mt-2 text-center text-xs text-muted-foreground">
-                  {updateResult?.configured
-                    ? updateResult.updateAvailable
-                      ? `Versão ${updateResult.latestVersion} disponível.`
-                      : "Seu aplicativo está atualizado."
-                    : "Configure UPDATE_MANIFEST_URL para ativar atualizações remotas."}
+                  {updateInfo === null
+                    ? "Clique em Verificar Atualizações para buscar novas versões."
+                    : updateInfo.available
+                      ? `Versão ${updateInfo.version} disponível.`
+                      : "Seu aplicativo está atualizado."}
                 </p>
               </div>
             </CardContent>

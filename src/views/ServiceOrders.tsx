@@ -13,7 +13,7 @@ import {
   Search,
   Smartphone,
   Trash2,
-  User,
+  User as UserIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ import {
   ServiceOrderItemLine,
   ServiceOrderItemsEditor,
 } from "@/components/shared/ServiceOrderItemsEditor";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { useSort } from "@/hooks/useSort";
 import {
@@ -80,6 +81,7 @@ import {
   ServiceOrder,
   ServiceOrderAttachment,
   ServiceOrderPart,
+  User as UserType,
 } from "@/lib/types";
 
 const fetchOrders = () => invoke<ServiceOrder[]>("get_service_orders");
@@ -92,11 +94,13 @@ const fetchAttachments = (id: string) =>
   invoke<ServiceOrderAttachment[]>("get_service_order_attachments", {
     serviceOrderId: id,
   });
+const fetchUsers = () => invoke<UserType[]>("get_users");
 const EMPTY_ORDERS: ServiceOrder[] = [];
 const EMPTY_INVENTORY: InventoryItem[] = [];
 const EMPTY_PARTS: ServiceOrderPart[] = [];
 const EMPTY_CHECKLIST: ChecklistItem[] = [];
 const EMPTY_ATTACHMENTS: ServiceOrderAttachment[] = [];
+const EMPTY_USERS: UserType[] = [];
 
 const formatFileSize = (sizeBytes: number) => {
   if (sizeBytes < 1024) return `${sizeBytes} B`;
@@ -122,6 +126,7 @@ export function ServiceOrders() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [userFilter, setUserFilter] = useState<string | null>(null);
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const ordersQuery = useQuery({
     queryKey: ["service-orders"],
@@ -141,6 +146,11 @@ export function ServiceOrders() {
     queryFn: () => fetchChecklist(selectedOS!.id),
     enabled: editOpen && !!selectedOS,
   });
+  const usersQuery = useQuery({
+    queryKey: ["users"],
+    queryFn: fetchUsers,
+  });
+  const users = usersQuery.data ?? EMPTY_USERS;
   const attachmentsQuery = useQuery({
     queryKey: ["service-order-attachments", selectedOS?.id],
     queryFn: () => fetchAttachments(selectedOS!.id),
@@ -172,7 +182,12 @@ export function ServiceOrders() {
             ?.toLowerCase()
             .includes(searchTerm.toLowerCase()) ||
           order.equipment.toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (statusFilter === "all" || order.status === statusFilter),
+        (statusFilter === "all"
+          ? order.status !== "Cancelada"
+          : statusFilter === "Cancelada"
+            ? order.status === "Cancelada"
+            : order.status === statusFilter) &&
+        (!userFilter || order.userId === userFilter),
     );
     if (!sortConfig.column || !sortConfig.direction) return result;
     return [...result].sort((a, b) => {
@@ -182,7 +197,7 @@ export function ServiceOrders() {
         ? String(av).localeCompare(String(bv), "pt-BR")
         : String(bv).localeCompare(String(av), "pt-BR");
     });
-  }, [orders, searchTerm, statusFilter, sortConfig]);
+  }, [orders, searchTerm, statusFilter, sortConfig, userFilter]);
   const total = items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
@@ -423,8 +438,22 @@ export function ServiceOrders() {
             <TabsTrigger value="Em Manutenção">Em Manutenção</TabsTrigger>
             <TabsTrigger value="Aguardando Peça">Pendentes</TabsTrigger>
             <TabsTrigger value="Finalizada">Finalizadas</TabsTrigger>
+            <TabsTrigger value="Cancelada">Canceladas</TabsTrigger>
           </TabsList>
-          <div className="relative w-full md:w-72">
+          <div className="flex gap-2 items-center w-full md:w-auto">
+            <SearchableSelect
+              options={users}
+              value={userFilter}
+              onSelect={(user) =>
+                setUserFilter(userFilter === user.id ? null : user.id)
+              }
+              placeholder="Todos os funcionários"
+              searchPlaceholder="Buscar funcionário..."
+              getKey={(u) => u.id}
+              getLabel={(u) => u.name}
+              className="w-full md:w-48"
+            />
+            <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-9"
@@ -434,6 +463,7 @@ export function ServiceOrders() {
             />
           </div>
         </div>
+      </div>
       </Tabs>
       {ordersQuery.isError && (
         <Card className="border-destructive">
@@ -489,7 +519,7 @@ export function ServiceOrders() {
                     </TableCell>
                     <TableCell>
                       <p className="flex gap-1 text-sm font-medium">
-                        <User className="h-3 w-3" />
+                        <UserIcon className="h-3 w-3" />
                         {order.customerName}
                       </p>
                       <p className="flex gap-1 text-xs text-muted-foreground">
@@ -608,8 +638,7 @@ export function ServiceOrders() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Transições inválidas serão recusadas. Finalizar exige todos os
-                itens do checklist marcados.
+                Transições inválidas serão recusadas.
               </p>
             </div>
             <Separator />

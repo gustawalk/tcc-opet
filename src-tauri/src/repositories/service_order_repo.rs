@@ -801,20 +801,6 @@ impl ServiceOrderRepository {
             ));
         }
 
-        if next_status == "Finalizada" {
-            let unchecked: i32 = transaction.query_row(
-                "SELECT COUNT(*) FROM service_order_checklists WHERE service_order_id = ?1 AND checked = 0",
-                params![service_order_id],
-                |row| row.get(0),
-            )?;
-            if unchecked > 0 {
-                return Err(business_error(
-                    "Complete the service order checklist before finalizing.",
-                    "Conclua o checklist da ordem de serviço antes de finalizar.",
-                ));
-            }
-        }
-
         if next_status == "Cancelada" {
             let mut stmt = transaction.prepare(
                 "SELECT sop.inventory_item_id, sop.quantity
@@ -1229,7 +1215,7 @@ mod tests {
     }
 
     #[test]
-    fn finalizing_requires_every_checklist_item_to_be_checked() {
+    fn finalizing_allows_unchecked_checklist_items() {
         let mut conn = setup_db();
         let customer = seed_customer(&conn);
         let mut order = build_order(&customer.id);
@@ -1259,11 +1245,11 @@ mod tests {
             false,
         );
 
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn save_edit_rolls_back_checklist_and_metadata_when_finalization_fails() {
+    fn save_edit_finalizes_with_unchecked_checklist_items() {
         let mut conn = setup_db();
         let customer = seed_customer(&conn);
         let mut order = build_order(&customer.id);
@@ -1286,31 +1272,31 @@ mod tests {
         )
         .unwrap();
 
-        let result = ServiceOrderRepository::save_edit_with_conn(
+        ServiceOrderRepository::save_edit_with_conn(
             &conn,
             &order.id,
-            "Descrição que não deve persistir",
+            "Serviço concluído",
             15.0,
             "Finalizada",
             false,
             vec![ChecklistItem {
                 id: "check-2".to_string(),
-                label: "Checklist inválido".to_string(),
+                label: "Item não checado".to_string(),
                 checked: false,
             }],
-        );
+        )
+        .unwrap();
 
-        assert!(result.is_err());
         let persisted = ServiceOrderRepository::get_by_id_with_conn(&conn, &order.id)
             .unwrap()
             .unwrap();
         let checklist = ChecklistRepository::get_os_checklist_with_conn(&conn, &order.id).unwrap();
-        assert_eq!(persisted.status, "Em Manutenção");
-        assert_eq!(persisted.description, "Troca de bateria");
-        assert_eq!(persisted.discount_percent, 0.0);
+        assert_eq!(persisted.status, "Finalizada");
+        assert_eq!(persisted.description, "Serviço concluído");
+        assert_eq!(persisted.discount_percent, 15.0);
         assert_eq!(checklist.len(), 1);
-        assert_eq!(checklist[0].label, "Checklist original");
-        assert!(checklist[0].checked);
+        assert_eq!(checklist[0].label, "Item não checado");
+        assert!(!checklist[0].checked);
     }
 
     #[test]

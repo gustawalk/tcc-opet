@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "notes": "Versão inicial do OpetS.",
+  "pub_date": "2025-07-19T04:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.0/OpetS_0.1.0_x64-setup.exe"
+    },
+    "linux-x86_64": {
+      "signature": "",
+      "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.0/tcc-opet_0.1.0_amd64.AppImage"
+    }
+  }
+}

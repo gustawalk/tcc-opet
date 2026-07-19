@@ -275,7 +275,7 @@ export function ServiceOrderCreate() {
             inventoryItemId: l.inventoryItemId,
             quantity: l.quantity,
           })),
-          checklistItems: checklistItems.map((item) => ({ label: item.label })),
+          checklistItems: checklistItems.map((item) => ({ label: item.label, checked: item.checked })),
           attachmentToken: pendingAttachments?.token ?? null,
         },
       });

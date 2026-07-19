@@ -43,12 +43,12 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar collapsible="icon">
-          <SidebarHeader className="h-16 flex items-center px-6 border-b">
-            <div className="flex items-center gap-3">
+          <SidebarHeader className="h-16 flex items-center px-6 border-b group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
+            <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0">
               <div className="rounded-lg flex items-center justify-center">
                 <LogoIcon width={32} height={32} />
               </div>
-              <span className="font-bold text-lg tracking-tight">OpetS Manager</span>
+              <span className="font-bold text-lg tracking-tight group-data-[collapsible=icon]:hidden">OpetS Manager</span>
             </div>
           </SidebarHeader>
           <SidebarContent className="py-4">

@@ -169,10 +169,15 @@ pub fn export_backup_with_paths(
             }
         }
         archive.finish().map_err(backup_error)?;
-        if destination.exists() {
-            fs::remove_file(destination).map_err(backup_error)?;
-        }
-        fs::rename(&temporary_destination, destination).map_err(backup_error)?;
+        // rename atomically overwrites destination on the same filesystem (POSIX).
+        // On Windows, rename may fail if destination exists; fall back to copy+remove temp.
+        fs::rename(&temporary_destination, destination)
+            .or_else(|_| {
+                fs::copy(&temporary_destination, destination).and_then(|_| {
+                    fs::remove_file(&temporary_destination)
+                })
+            })
+            .map_err(backup_error)?;
         crate::database::secure_private_file(destination).map_err(backup_error)?;
 
         Ok(BackupSummary {

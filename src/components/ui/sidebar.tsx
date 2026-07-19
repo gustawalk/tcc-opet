@@ -25,12 +25,20 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state"
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "14rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_STORAGE_KEY = "opets-sidebar-open"
+
+function getSidebarDefaultOpen(): boolean {
+  try {
+    const value = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    return value !== null ? value === "true" : true
+  } catch {
+    return true
+  }
+}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -63,7 +71,7 @@ const SidebarProvider = React.forwardRef<
 >(
   (
     {
-      defaultOpen = true,
+      defaultOpen = getSidebarDefaultOpen(),
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -89,8 +97,12 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState)
         }
 
-        // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        // This sets localStorage to keep the sidebar state.
+        try {
+          window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(openState))
+        } catch {
+          // Fallback: sidebar still works for this session even if storage fails
+        }
       },
       [setOpenProp, open]
     )

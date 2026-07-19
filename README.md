@@ -8,8 +8,10 @@ Aplicativo desktop para gestão de assistência técnica, desenvolvido com Tauri
 - Ordens de serviço com checklist, peças, serviços, desconto, anexos e timeline.
 - PDF de ordem de serviço com assinatura manual do cliente.
 - Relatórios financeiros em tela, CSV e PDF.
-- Backup e restauração completos, incluindo anexos, pelo formato `.osbkp`.
+- Sidebar expansível/colapsável — modo compacto mantém acesso via tooltips.
 - Tema claro e escuro, salvo localmente no dispositivo.
+- Backup e restauração completos, incluindo anexos, pelo formato `.osbkp`.
+- Auto-update via GitHub Releases com verificação de assinatura (`tauri-plugin-updater`).
 
 ## Requisitos
 
@@ -47,8 +49,14 @@ Em builds de desenvolvimento, os dados demonstrativos são inseridos por padrão
 yarn lint
 yarn typecheck
 yarn build
-cd src-tauri && cargo test
+cd src-tauri && cargo test   # 92+ testes
 ```
+
+## Auto-update
+
+O aplicativo usa `tauri-plugin-updater` para verificar atualizações. A cada inicialização, ele consulta o manifesto `updater.json` na raiz do repositório. Se houver uma versão mais nova, o usuário pode baixar e instalar diretamente pelo app.
+
+Atualizações são publicadas como GitHub Releases e assinadas com chave ed25519 (minisign). A chave pública está configurada em `tauri.conf.json`.
 
 ## Distribuição
 
@@ -57,14 +65,14 @@ yarn build:deb
 yarn build:appimage
 ```
 
-`build:appimage` usa `Dockerfile.appimage` com Debian 12, evitando a incompatibilidade entre o `strip` do `linuxdeploy` e bibliotecas modernas que usam a seção `.relr.dyn` em hosts rolling release.
+`build:appimage` usa `Dockerfile.appimage` com Debian 12, evitando a incompatibilidade entre o `strip` do `linuxdeploy` e bibliotecas modernas.
 
-Para compatibilidade com distribuições Linux mais antigas, gere o AppImage em Debian 12 ou Ubuntu 22.04. Builds gerados em sistemas mais novos podem exigir uma versão de glibc indisponível em distribuições antigas.
+Para compatibilidade com distribuições Linux mais antigas, gere o AppImage em Debian 12 ou Ubuntu 22.04.
 
 ### Releases no GitHub
 
 - Pull requests e pushes para `main` executam a validação contínua (lint, TypeScript, build frontend e testes Rust).
-- Envie uma tag `vX.Y.Z` com a mesma versão de `package.json`, `Cargo.toml` e `src-tauri/tauri.conf.json` para publicar uma GitHub Release.
-- A release contém o instalador NSIS (`.exe`) e MSI (`.msi`) para Windows, além de `.deb` e AppImage para Linux.
+- Envie uma tag `vX.Y.Z` para publicar uma GitHub Release. O pipeline de release compila para Windows e Linux (deb + AppImage).
 - Execuções manuais do workflow de release geram apenas artifacts para teste, sem publicar uma release.
 - Os instaladores Windows não são assinados nesta etapa e podem exibir aviso do SmartScreen.
+- O `productName` em `tauri.conf.json` define o nome do programa no menu iniciar, `Program Files` e Add/Remove Programs.

@@ -14,6 +14,7 @@ import {
   Smartphone,
   Trash2,
   User as UserIcon,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   ChecklistItem,
+  Customer,
   InventoryItem,
   OSStatus,
   ServiceOrder,
@@ -86,11 +88,13 @@ const fetchAttachments = (id: string) =>
     serviceOrderId: id,
   });
 const fetchUsers = () => invoke<UserType[]>("get_users");
+const fetchCustomers = () => invoke<Customer[]>("get_customers");
 const EMPTY_ORDERS: ServiceOrder[] = [];
 const EMPTY_INVENTORY: InventoryItem[] = [];
 const EMPTY_PARTS: ServiceOrderPart[] = [];
 const EMPTY_CHECKLIST: ChecklistItem[] = [];
 const EMPTY_ATTACHMENTS: ServiceOrderAttachment[] = [];
+const EMPTY_CUSTOMERS: Customer[] = [];
 const EMPTY_USERS: UserType[] = [];
 
 const formatFileSize = (sizeBytes: number) => {
@@ -120,6 +124,7 @@ export function ServiceOrders() {
   const [attachmentToDelete, setAttachmentToDelete] =
     useState<ServiceOrderAttachment | null>(null);
   const [userFilter, setUserFilter] = useState<string | null>(null);
+  const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const ordersQuery = useQuery({
     queryKey: ["service-orders"],
@@ -143,7 +148,12 @@ export function ServiceOrders() {
     queryKey: ["users"],
     queryFn: fetchUsers,
   });
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    queryFn: fetchCustomers,
+  });
   const users = usersQuery.data ?? EMPTY_USERS;
+  const customers = customersQuery.data ?? EMPTY_CUSTOMERS;
   const attachmentsQuery = useQuery({
     queryKey: ["service-order-attachments", selectedOS?.id],
     queryFn: () => fetchAttachments(selectedOS!.id),
@@ -191,11 +201,12 @@ export function ServiceOrders() {
             .includes(searchTerm.toLowerCase()) ||
           order.equipment.toLowerCase().includes(searchTerm.toLowerCase())) &&
         (statusFilter === "all"
-          ? order.status !== "Cancelada"
+          ? true
           : statusFilter === "Cancelada"
             ? order.status === "Cancelada"
             : order.status === statusFilter) &&
-        (!userFilter || order.userId === userFilter),
+        (!userFilter || order.userId === userFilter) &&
+        (!customerFilter || order.customerId === customerFilter),
     );
     if (!sortConfig.column || !sortConfig.direction) return result;
     return [...result].sort((a, b) => {
@@ -205,7 +216,7 @@ export function ServiceOrders() {
         ? String(av).localeCompare(String(bv), "pt-BR")
         : String(bv).localeCompare(String(av), "pt-BR");
     });
-  }, [orders, searchTerm, statusFilter, sortConfig, userFilter]);
+  }, [orders, searchTerm, statusFilter, sortConfig, userFilter, customerFilter]);
   const total = items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
@@ -491,18 +502,56 @@ export function ServiceOrders() {
             <TabsTrigger value="Cancelada">Canceladas</TabsTrigger>
           </TabsList>
           <div className="flex gap-2 items-center w-full md:w-auto">
-            <SearchableSelect
-              options={users}
-              value={userFilter}
-              onSelect={(user) =>
-                setUserFilter(userFilter === user.id ? null : user.id)
-              }
-              placeholder="Todos os funcionários"
-              searchPlaceholder="Buscar funcionário..."
-              getKey={(u) => u.id}
-              getLabel={(u) => u.name}
-              className="w-full md:w-48"
-            />
+            <div className="flex items-center gap-1">
+              <SearchableSelect
+                options={customers}
+                value={customerFilter}
+                onSelect={(c) =>
+                  setCustomerFilter(customerFilter === c.id ? null : c.id)
+                }
+                placeholder="Clientes"
+                searchPlaceholder="Buscar cliente..."
+                getKey={(c) => c.id}
+                getLabel={(c) => c.name}
+                className="w-full md:w-44"
+              />
+              {customerFilter && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Limpar filtro de cliente"
+                  onClick={() => setCustomerFilter(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <SearchableSelect
+                options={users}
+                value={userFilter}
+                onSelect={(user) =>
+                  setUserFilter(userFilter === user.id ? null : user.id)
+                }
+                placeholder="Funcionários"
+                searchPlaceholder="Buscar funcionário..."
+                getKey={(u) => u.id}
+                getLabel={(u) => u.name}
+                className="w-full md:w-44"
+              />
+              {userFilter && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Limpar filtro de funcionário"
+                  onClick={() => setUserFilter(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
             <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -546,8 +595,20 @@ export function ServiceOrders() {
                   onSort={cycleSort}
                   className="hidden md:table-cell"
                 />
-                <TableHead className="hidden lg:table-cell">Abertura</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
+                <SortableHeader
+                  column="createdAt"
+                  label="Abertura"
+                  sortConfig={sortConfig}
+                  onSort={cycleSort}
+                  className="hidden lg:table-cell"
+                />
+                <SortableHeader
+                  column="totalPrice"
+                  label="Valor"
+                  sortConfig={sortConfig}
+                  onSort={cycleSort}
+                  align="right"
+                />
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>

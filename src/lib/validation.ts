@@ -48,8 +48,8 @@ export const editServiceOrderSchema = z.object({
 
 export const settingsSchema = z.object({
   companyName: z.string().min(3, "Nome da empresa deve ter ao menos 3 caracteres"),
-  cnpj: z.string().refine((val) => val.replace(/\D/g, "").length === 14, "CNPJ deve ter 14 dígitos"),
-  address: z.string().min(5, "Endereço deve ter ao menos 5 caracteres"),
+  cnpj: z.string().refine((val) => val === "" || val.replace(/\D/g, "").length === 14, "CNPJ deve ter 14 dígitos"),
+  address: z.string().refine((val) => val === "" || val.length >= 5, "Endereço deve ter ao menos 5 caracteres"),
 });
 
 export const templateSchema = z.object({

@@ -226,10 +226,42 @@ jobs:
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          assets=$(find release-assets -type f)
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" $assets --clobber
-          else
-            gh release create "${GITHUB_REF_NAME}" $assets --generate-notes --title "OpetS Manager ${GITHUB_REF_NAME}"
+          set -euo pipefail
+
+          # Collect assets safely into a bash array (handles spaces/newlines)
+          assets=()
+          while IFS= read -r -d '' file; do
+            assets+=("$file")
+          done < <(find release-assets -type f -print0)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found in release-assets/ — aborting."
+            exit 1
           fi
+
+          max_attempts=5
+          attempt=1
+          backoff=5
+
+          upload_cmd() {
+            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+              gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+            else
+              gh release create "${GITHUB_REF_NAME}" "${assets[@]}" --generate-notes --title "OpetS Manager ${GITHUB_REF_NAME}"
+            fi
+          }
+
+          until upload_cmd; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "Failed to create/upload release after $attempt attempts."
+              exit 1
+            fi
+            echo "Upload attempt $attempt failed — sleeping ${backoff}s before retrying..."
+            sleep $backoff
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 2))
+          done
+
+          echo "Release upload succeeded."

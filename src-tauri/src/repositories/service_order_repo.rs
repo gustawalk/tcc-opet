@@ -794,7 +794,10 @@ impl ServiceOrderRepository {
                 "Aguardando Peça",
                 "Orçamento" | "Em Manutenção" | "Cancelada"
             ) | ("Finalizada", "Em Manutenção" | "Cancelada")
-                | ("Cancelada", "Orçamento" | "Aguardando Peça" | "Em Manutenção")
+                | (
+                    "Cancelada",
+                    "Orçamento" | "Aguardando Peça" | "Em Manutenção"
+                )
         );
         if !transition_allowed {
             return Err(business_error(

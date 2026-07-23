@@ -150,8 +150,7 @@ pub(crate) fn create_full_service_order_with_conn(
             email,
             address,
         } => {
-            let customer =
-                crate::models::customer::Customer::new(name, phone, email, address);
+            let customer = crate::models::customer::Customer::new(name, phone, email, address);
             CustomerRepository::create_with_conn(&tx, &customer)?;
             (customer.id.clone(), customer.name.clone())
         }
@@ -268,7 +267,7 @@ pub(crate) fn create_full_service_order_with_conn(
         let items: Vec<ChecklistItem> = request
             .checklist_items
             .iter()
-            .map(|input|             ChecklistItem {
+            .map(|input| ChecklistItem {
                 id: uuid::Uuid::new_v4().to_string(),
                 label: input.label.clone(),
                 checked: input.checked,
@@ -541,8 +540,7 @@ mod tests {
 
         let checklist =
             crate::repositories::checklist_repo::ChecklistRepository::get_os_checklist_with_conn(
-                &conn,
-                &order_id,
+                &conn, &order_id,
             )
             .unwrap();
         assert_eq!(checklist.len(), 2);
@@ -602,8 +600,9 @@ mod tests {
             ServiceOrderRepository::get_by_customer_id_with_conn(&conn, &customer_id).unwrap();
         assert_eq!(orders.len(), 0);
 
-        let updated_part =
-            InventoryRepository::get_by_id_with_conn(&conn, &part.id).unwrap().unwrap();
+        let updated_part = InventoryRepository::get_by_id_with_conn(&conn, &part.id)
+            .unwrap()
+            .unwrap();
         assert_eq!(updated_part.current_quantity, 1);
     }
 
@@ -653,8 +652,9 @@ mod tests {
 
         create_full_service_order_with_conn(&conn, request).unwrap();
 
-        let updated =
-            CustomerRepository::get_by_id_with_conn(&conn, &customer_id).unwrap().unwrap();
+        let updated = CustomerRepository::get_by_id_with_conn(&conn, &customer_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.email, "maria@new.com");
         assert_eq!(updated.phone, "41999999999");
         assert_eq!(updated.address, "Rua Nova");

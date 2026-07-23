@@ -78,7 +78,7 @@ const fetchMovements = async (itemId: string): Promise<InventoryMovement[]> => {
 };
 
 const createInventoryItem = async (item: Omit<InventoryItem, "id" | "createdAt" | "deletedAt">) => {
-  return await invoke<string>("create_inventory_item", {
+  return await invoke<InventoryItem>("create_inventory_item", {
     name: item.name,
     description: item.description,
     type: item.type,
@@ -152,8 +152,8 @@ export function Inventory() {
 
   const createMutation = useMutation({
     mutationFn: createInventoryItem,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    onSuccess: (item) => {
+      queryClient.setQueryData<InventoryItem[]>(["inventory"], (items = []) => [item, ...items]);
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
     },
     onError: (err) => toastError(err, "Erro ao criar item."),

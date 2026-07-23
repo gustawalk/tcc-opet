@@ -65,7 +65,7 @@ pub fn create_inventory_item(
     cost_price: f64,
     sale_price: f64,
     supplier_name: Option<String>,
-) -> Result<String, AppError> {
+) -> Result<InventoryItem, AppError> {
     validate_inventory_values(
         &r#type,
         min_quantity,
@@ -84,7 +84,7 @@ pub fn create_inventory_item(
     );
     item.supplier_name = supplier_name.filter(|name| !name.trim().is_empty());
     InventoryRepository::create(&item)?;
-    Ok(item.id)
+    Ok(item)
 }
 
 #[command]

@@ -4,10 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
+  Clock3,
   Download,
   FileText,
   LoaderCircle,
+  Repeat2,
+  Tag,
+  UserPlus,
   Wallet,
+  XCircle,
 } from "lucide-react";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { FinancialCard } from "@/components/shared/FinancialCard";
@@ -30,12 +35,18 @@ import {
 } from "@/components/ui/table";
 import { toastError, toastSuccess } from "@/lib/errors";
 import { formatCurrency } from "@/lib/formatters";
-import type { FinancialBreakdown, FinancialReport, PdfPreview } from "@/lib/types";
+import type {
+  FinancialBreakdown,
+  FinancialReport,
+  PdfPreview,
+} from "@/lib/types";
 
 const PdfPreviewDialog = lazy(() =>
-  import("@/components/shared/PdfPreviewDialog").then(({ PdfPreviewDialog }) => ({
-    default: PdfPreviewDialog,
-  })),
+  import("@/components/shared/PdfPreviewDialog").then(
+    ({ PdfPreviewDialog }) => ({
+      default: PdfPreviewDialog,
+    }),
+  ),
 );
 
 type ReportFilters = Record<string, string>;
@@ -110,6 +121,11 @@ function currentMonthStart() {
   return toLocalIsoDate(new Date(date.getFullYear(), date.getMonth(), 1));
 }
 
+function formatTurnaround(hours: number) {
+  if (hours < 24) return `${hours.toFixed(1)} h`;
+  return `${(hours / 24).toFixed(1)} dias`;
+}
+
 export function Reports() {
   const [startDate, setStartDate] = useState(currentMonthStart);
   const [endDate, setEndDate] = useState(() => toLocalIsoDate(new Date()));
@@ -150,7 +166,10 @@ export function Reports() {
   const previewPdf = async () => {
     try {
       setExporting("pdf");
-      const preview = await invoke<PdfPreview>("preview_financial_report_pdf", filters);
+      const preview = await invoke<PdfPreview>(
+        "preview_financial_report_pdf",
+        filters,
+      );
       setPdfPreview(preview);
     } catch (err) {
       toastError(err, "Erro ao gerar PDF do relatório.");
@@ -200,7 +219,8 @@ export function Reports() {
         <CardHeader className="pb-4">
           <CardTitle className="text-lg">Período</CardTitle>
           <CardDescription>
-            O relatório inicia com o mês atual até hoje. Ajuste o intervalo se necessário.
+            O relatório inicia com o mês atual até hoje. Ajuste o intervalo se
+            necessário.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -259,21 +279,7 @@ export function Reports() {
         </div>
       )}
 
-      {!isLoading && report && !hasData && (
-        <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-lg border bg-card p-6 text-center">
-          <Wallet className="h-10 w-10 text-muted-foreground" />
-          <div>
-            <h3 className="font-semibold">
-              Nenhuma ordem finalizada no período
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Altere o período para visualizar indicadores financeiros.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {!isLoading && report && hasData && (
+      {!isLoading && report && (
         <>
           <p className="text-sm text-muted-foreground">
             Dados de{" "}
@@ -284,6 +290,32 @@ export function Reports() {
             {new Date(`${report.endDate}T00:00:00`).toLocaleDateString("pt-BR")}
             .
           </p>
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+            <FinancialCard
+              title="Novos Clientes"
+              value={report.newCustomers.toString()}
+              icon={UserPlus}
+              description="Cadastros realizados no período"
+            />
+            <FinancialCard
+              title="Novas OS"
+              value={report.newOrders.toString()}
+              icon={FileText}
+              description={`${report.completionRate.toFixed(1)}% concluídas`}
+            />
+            <FinancialCard
+              title="Tempo Médio"
+              value={formatTurnaround(report.averageTurnaroundHours)}
+              icon={Clock3}
+              description="Da abertura à finalização"
+            />
+            <FinancialCard
+              title="Cancelamentos"
+              value={report.cancelledOrders.toString()}
+              icon={XCircle}
+              description={`${report.cancellationRate.toFixed(1)}% das novas OS`}
+            />
+          </div>
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             <FinancialCard
               title="Faturamento"
@@ -309,77 +341,127 @@ export function Reports() {
               icon={Wallet}
               description={`${report.finalizedOrders} OS finalizadas`}
             />
+            <FinancialCard
+              title="Clientes Recorrentes"
+              value={report.returningCustomers.toString()}
+              icon={Repeat2}
+              description="Com histórico anterior ao período"
+            />
+            <FinancialCard
+              title="Descontos Concedidos"
+              value={formatCurrency(report.totalDiscounts)}
+              icon={Tag}
+              description="Em OS finalizadas"
+            />
           </div>
-          <div className="grid gap-6 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Por Técnico</CardTitle>
-                <CardDescription>
-                  Resultado por responsável pela OS.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <BreakdownTable items={report.byTechnician} label="Técnico" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Por Categoria</CardTitle>
-                <CardDescription>
-                  Peças e serviços utilizados nas OS.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <BreakdownTable items={report.byItemType} label="Categoria" />
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Evolução Mensal</CardTitle>
-              <CardDescription>
-                Faturamento e lucro por mês dentro do período.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {report.byMonth.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mês</TableHead>
-                      <TableHead className="text-right">Faturamento</TableHead>
-                      <TableHead className="text-right">Lucro</TableHead>
-                      <TableHead className="text-right">
-                        OS finalizadas
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.byMonth.map((item) => (
-                      <TableRow key={item.month}>
-                        <TableCell className="font-medium capitalize">
-                          {formatMonth(item.month)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.revenue)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.profit)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.orderCount}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  Nenhum dado mensal disponível.
+          {!hasData ? (
+            <div className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-lg border bg-card p-6 text-center">
+              <Wallet className="h-10 w-10 text-muted-foreground" />
+              <div>
+                <h3 className="font-semibold">
+                  Nenhuma ordem finalizada no período
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Os indicadores operacionais continuam disponíveis acima.
                 </p>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-6 xl:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Por Técnico</CardTitle>
+                    <CardDescription>
+                      Resultado por responsável pela OS.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <BreakdownTable
+                      items={report.byTechnician}
+                      label="Técnico"
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Por Categoria</CardTitle>
+                    <CardDescription>
+                      Peças e serviços utilizados nas OS.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <BreakdownTable
+                      items={report.byItemType}
+                      label="Categoria"
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Itens e Serviços Mais Vendidos</CardTitle>
+                    <CardDescription>
+                      Ranking por faturamento nas OS finalizadas.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <BreakdownTable
+                      items={report.topItems}
+                      label="Item / Serviço"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Evolução Mensal</CardTitle>
+                  <CardDescription>
+                    Faturamento e lucro por mês dentro do período.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {report.byMonth.length ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Mês</TableHead>
+                          <TableHead className="text-right">
+                            Faturamento
+                          </TableHead>
+                          <TableHead className="text-right">Lucro</TableHead>
+                          <TableHead className="text-right">
+                            OS finalizadas
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {report.byMonth.map((item) => (
+                          <TableRow key={item.month}>
+                            <TableCell className="font-medium capitalize">
+                              {formatMonth(item.month)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(item.revenue)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatCurrency(item.profit)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {item.orderCount}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhum dado mensal disponível.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </>
       )}
       {exporting && (
@@ -390,7 +472,10 @@ export function Reports() {
       )}
       {pdfPreview && (
         <Suspense fallback={null}>
-          <PdfPreviewDialog preview={pdfPreview} onClose={() => setPdfPreview(null)} />
+          <PdfPreviewDialog
+            preview={pdfPreview}
+            onClose={() => setPdfPreview(null)}
+          />
         </Suspense>
       )}
     </div>

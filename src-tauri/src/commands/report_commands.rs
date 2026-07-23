@@ -28,10 +28,10 @@ pub fn export_financial_report_csv(
 ) -> Result<(), AppError> {
     let report = FinancialReportRepository::get_report(start_date.as_deref(), end_date.as_deref())?;
     let mut csv = String::from(
-        "Período inicial,Período final,Faturamento,Custo,Lucro,Ticket médio,OS finalizadas\n",
+        "Período inicial,Período final,Faturamento,Custo,Lucro,Ticket médio,OS finalizadas,Novos clientes,Novas OS,Taxa de conclusão,OS canceladas,Taxa de cancelamento,Tempo médio de conclusão (horas),Clientes recorrentes,Descontos concedidos\n",
     );
     csv.push_str(&format!(
-        "{},{},{:.2},{:.2},{:.2},{:.2},{}\n\n",
+        "{},{},{:.2},{:.2},{:.2},{:.2},{},{},{},{:.2},{},{:.2},{:.2},{},{:.2}\n\n",
         csv_escape(&report.start_date),
         csv_escape(&report.end_date),
         report.total_revenue,
@@ -39,6 +39,14 @@ pub fn export_financial_report_csv(
         report.net_profit,
         report.average_ticket,
         report.finalized_orders,
+        report.new_customers,
+        report.new_orders,
+        report.completion_rate,
+        report.cancelled_orders,
+        report.cancellation_rate,
+        report.average_turnaround_hours,
+        report.returning_customers,
+        report.total_discounts,
     ));
     csv.push_str("Técnico,Faturamento,Custo,Lucro,OS finalizadas\n");
     for item in report.by_technician {
@@ -53,6 +61,17 @@ pub fn export_financial_report_csv(
     }
     csv.push_str("\nCategoria,Faturamento,Custo,Lucro,Quantidade\n");
     for item in report.by_item_type {
+        csv.push_str(&format!(
+            "{},{:.2},{:.2},{:.2},{}\n",
+            csv_escape(&item.label),
+            item.revenue,
+            item.cost,
+            item.profit,
+            item.count,
+        ));
+    }
+    csv.push_str("\nItens e serviços mais vendidos,Faturamento,Custo,Lucro,Quantidade\n");
+    for item in report.top_items {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
             csv_escape(&item.label),

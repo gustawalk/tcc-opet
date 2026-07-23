@@ -1,4 +1,9 @@
-export type OSStatus = "Orçamento" | "Em Manutenção" | "Aguardando Peça" | "Finalizada" | "Cancelada";
+export type OSStatus =
+  | "Orçamento"
+  | "Em Manutenção"
+  | "Aguardando Peça"
+  | "Finalizada"
+  | "Cancelada";
 
 export interface Customer {
   id: string;
@@ -25,7 +30,7 @@ export interface InventoryItem {
   id: string;
   name: string;
   description: string;
-  type: 'part' | 'service';
+  type: "part" | "service";
   minQuantity: number;
   currentQuantity: number;
   costPrice: number;
@@ -124,7 +129,7 @@ export interface ServiceOrderPart {
   serviceOrderId: string;
   inventoryItemId: string;
   inventoryItemName: string;
-  itemType: 'part' | 'service';
+  itemType: "part" | "service";
   currentQuantity: number;
   quantity: number;
   unitCost: number;
@@ -154,7 +159,7 @@ export interface RecentOS {
 export interface InventoryMovement {
   id: string;
   inventoryItemId: string;
-  type: 'entrada' | 'saida';
+  type: "entrada" | "saida";
   quantity: number;
   referenceOsId?: string | null;
   osDisplayId?: string | null;
@@ -223,8 +228,17 @@ export interface FinancialReport {
   netProfit: number;
   averageTicket: number;
   finalizedOrders: number;
+  newCustomers: number;
+  newOrders: number;
+  completionRate: number;
+  cancelledOrders: number;
+  cancellationRate: number;
+  averageTurnaroundHours: number;
+  returningCustomers: number;
+  totalDiscounts: number;
   byTechnician: FinancialBreakdown[];
   byItemType: FinancialBreakdown[];
+  topItems: FinancialBreakdown[];
   byMonth: FinancialMonth[];
 }
 

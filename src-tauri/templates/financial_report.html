@@ -30,11 +30,20 @@
     <div class="card"><span>Ticket médio</span><strong>{{ average_ticket }}</strong></div>
     <div class="card"><span>Custos</span><strong>{{ total_cost }}</strong></div>
     <div class="card"><span>OS finalizadas</span><strong>{{ finalized_orders }}</strong></div>
+    <div class="card"><span>Novos clientes</span><strong>{{ new_customers }}</strong></div>
+    <div class="card"><span>Novas OS</span><strong>{{ new_orders }}</strong></div>
+    <div class="card"><span>Taxa de conclusão</span><strong>{{ completion_rate }}</strong></div>
+    <div class="card"><span>OS canceladas</span><strong>{{ cancelled_orders }} ({{ cancellation_rate }})</strong></div>
+    <div class="card"><span>Tempo médio de conclusão</span><strong>{{ average_turnaround_hours }}</strong></div>
+    <div class="card"><span>Clientes recorrentes</span><strong>{{ returning_customers }}</strong></div>
+    <div class="card"><span>Descontos concedidos</span><strong>{{ total_discounts }}</strong></div>
   </section>
   <h2>Resultado por técnico</h2>
   <table><thead><tr><th>Técnico</th><th class="right">Faturamento</th><th class="right">Custo</th><th class="right">Lucro</th><th class="right">OS</th></tr></thead><tbody>{% for item in by_technician %}<tr><td>{{ item.label }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.cost }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_technician | length == 0 %}<tr><td colspan="5" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
   <h2>Resultado por categoria</h2>
   <table><thead><tr><th>Categoria</th><th class="right">Faturamento</th><th class="right">Custo</th><th class="right">Lucro</th><th class="right">Quantidade</th></tr></thead><tbody>{% for item in by_item_type %}<tr><td>{{ item.label }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.cost }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_item_type | length == 0 %}<tr><td colspan="5" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
+  <h2>Itens e serviços mais vendidos</h2>
+  <table><thead><tr><th>Item</th><th class="right">Faturamento</th><th class="right">Custo</th><th class="right">Lucro</th><th class="right">Quantidade</th></tr></thead><tbody>{% for item in top_items %}<tr><td>{{ item.label }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.cost }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if top_items | length == 0 %}<tr><td colspan="5" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
   <h2>Evolução mensal</h2>
   <table><thead><tr><th>Mês</th><th class="right">Faturamento</th><th class="right">Lucro</th><th class="right">OS</th></tr></thead><tbody>{% for item in by_month %}<tr><td>{{ item.month }}</td><td class="right">{{ item.revenue }}</td><td class="right">{{ item.profit }}</td><td class="right">{{ item.count }}</td></tr>{% endfor %}{% if by_month | length == 0 %}<tr><td colspan="4" class="muted">Sem dados no período.</td></tr>{% endif %}</tbody></table>
   <footer>Relatório gerado em {{ generated_at }} pelo OpetS Manager.</footer>

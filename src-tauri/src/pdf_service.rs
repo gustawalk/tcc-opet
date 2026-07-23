@@ -257,6 +257,23 @@ pub fn preview_financial_report_pdf(
     context.insert("net_profit", &format_currency(report.net_profit));
     context.insert("average_ticket", &format_currency(report.average_ticket));
     context.insert("finalized_orders", &report.finalized_orders);
+    context.insert("new_customers", &report.new_customers);
+    context.insert("new_orders", &report.new_orders);
+    context.insert(
+        "completion_rate",
+        &format!("{:.1}%", report.completion_rate),
+    );
+    context.insert("cancelled_orders", &report.cancelled_orders);
+    context.insert(
+        "cancellation_rate",
+        &format!("{:.1}%", report.cancellation_rate),
+    );
+    context.insert(
+        "average_turnaround_hours",
+        &format!("{:.1} h", report.average_turnaround_hours),
+    );
+    context.insert("returning_customers", &report.returning_customers);
+    context.insert("total_discounts", &format_currency(report.total_discounts));
     context.insert(
         "by_technician",
         &report
@@ -300,6 +317,22 @@ pub fn preview_financial_report_pdf(
                     "revenue": format_currency(item.revenue),
                     "profit": format_currency(item.profit),
                     "count": item.order_count,
+                })
+            })
+            .collect::<Vec<_>>(),
+    );
+    context.insert(
+        "top_items",
+        &report
+            .top_items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "label": item.label,
+                    "revenue": format_currency(item.revenue),
+                    "cost": format_currency(item.cost),
+                    "profit": format_currency(item.profit),
+                    "count": item.count,
                 })
             })
             .collect::<Vec<_>>(),

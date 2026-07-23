@@ -32,8 +32,17 @@ pub struct FinancialReport {
     pub net_profit: f64,
     pub average_ticket: f64,
     pub finalized_orders: i32,
+    pub new_customers: i32,
+    pub new_orders: i32,
+    pub completion_rate: f64,
+    pub cancelled_orders: i32,
+    pub cancellation_rate: f64,
+    pub average_turnaround_hours: f64,
+    pub returning_customers: i32,
+    pub total_discounts: f64,
     pub by_technician: Vec<FinancialBreakdown>,
     pub by_item_type: Vec<FinancialBreakdown>,
+    pub top_items: Vec<FinancialBreakdown>,
     pub by_month: Vec<FinancialMonth>,
 }
 
@@ -62,7 +71,8 @@ impl FinancialReportRepository {
             "SELECT
                 COALESCE(SUM(so.total_price * (1.0 - COALESCE(so.discount_percent, 0.0) / 100.0)), 0.0),
                 COALESCE(SUM(COALESCE(costs.total_cost, 0.0)), 0.0),
-                COUNT(*)
+                COUNT(*),
+                COALESCE(SUM(so.total_price * COALESCE(so.discount_percent, 0.0) / 100.0), 0.0)
              FROM service_orders so
              LEFT JOIN (
                  SELECT service_order_id, SUM(quantity * unit_cost) AS total_cost
@@ -70,10 +80,51 @@ impl FinancialReportRepository {
              ) costs ON costs.service_order_id = so.id
              WHERE {period_filter}"
         );
-        let (total_revenue, total_cost, finalized_orders): (f64, f64, i32) =
+        let (total_revenue, total_cost, finalized_orders, total_discounts): (f64, f64, i32, f64) =
             conn.query_row(&summary_sql, params![start, end], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })?;
+
+        let created_in_period = "so.deleted_at IS NULL AND date(so.created_at, 'localtime') BETWEEN date(?1) AND date(?2)";
+        let operational_sql = format!(
+            "SELECT
+                (SELECT COUNT(*) FROM customers c WHERE c.deleted_at IS NULL AND date(c.created_at, 'localtime') BETWEEN date(?1) AND date(?2)),
+                (SELECT COUNT(*) FROM service_orders so WHERE {created_in_period}),
+                (SELECT COUNT(*) FROM service_orders so WHERE {created_in_period} AND so.status = 'Finalizada'),
+                (SELECT COUNT(*) FROM service_orders so WHERE {created_in_period} AND so.status = 'Cancelada'),
+                (SELECT COALESCE(AVG((julianday(COALESCE(so.closed_at, so.created_at)) - julianday(so.created_at)) * 24.0), 0.0) FROM service_orders so WHERE {period_filter}),
+                (SELECT COUNT(DISTINCT so.customer_id) FROM service_orders so WHERE {created_in_period} AND EXISTS (
+                    SELECT 1 FROM service_orders previous WHERE previous.customer_id = so.customer_id AND previous.deleted_at IS NULL AND date(previous.created_at, 'localtime') < date(?1)
+                ))"
+        );
+        let (
+            new_customers,
+            new_orders,
+            completed_created_orders,
+            cancelled_orders,
+            average_turnaround_hours,
+            returning_customers,
+        ): (i32, i32, i32, i32, f64, i32) =
+            conn.query_row(&operational_sql, params![start, end], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?;
+        let completion_rate = if new_orders > 0 {
+            completed_created_orders as f64 / new_orders as f64 * 100.0
+        } else {
+            0.0
+        };
+        let cancellation_rate = if new_orders > 0 {
+            cancelled_orders as f64 / new_orders as f64 * 100.0
+        } else {
+            0.0
+        };
 
         let by_technician = query_breakdown(
             conn,
@@ -109,6 +160,25 @@ impl FinancialReportRepository {
                   WHERE {period_filter}
                  GROUP BY ii.type
                  ORDER BY 2 DESC"
+            ),
+            start,
+            end,
+        )?;
+
+        let top_items = query_breakdown(
+            conn,
+            &format!(
+                "SELECT ii.name,
+                        COALESCE(SUM(sop.quantity * sop.unit_price), 0.0),
+                        COALESCE(SUM(sop.quantity * sop.unit_cost), 0.0),
+                        COALESCE(SUM(sop.quantity), 0)
+                 FROM service_order_parts sop
+                 JOIN service_orders so ON sop.service_order_id = so.id
+                 JOIN inventory_items ii ON sop.inventory_item_id = ii.id
+                 WHERE {period_filter}
+                 GROUP BY ii.id
+                 ORDER BY 2 DESC
+                 LIMIT 5"
             ),
             start,
             end,
@@ -151,8 +221,17 @@ impl FinancialReportRepository {
                 0.0
             },
             finalized_orders,
+            new_customers,
+            new_orders,
+            completion_rate,
+            cancelled_orders,
+            cancellation_rate,
+            average_turnaround_hours,
+            returning_customers,
+            total_discounts,
             by_technician,
             by_item_type,
+            top_items,
             by_month,
         })
     }
@@ -253,7 +332,16 @@ mod tests {
         assert_eq!(report.total_revenue, 180.0);
         assert_eq!(report.total_cost, 100.0);
         assert_eq!(report.net_profit, 80.0);
+        assert_eq!(report.total_discounts, 20.0);
+        assert_eq!(report.new_customers, 1);
+        assert_eq!(report.new_orders, 1);
+        assert_eq!(report.completion_rate, 100.0);
+        assert_eq!(report.cancelled_orders, 0);
+        assert_eq!(report.cancellation_rate, 0.0);
+        assert_eq!(report.returning_customers, 0);
         assert_eq!(report.by_technician[0].label, "Técnica");
+        assert_eq!(report.top_items[0].label, "Tela");
+        assert_eq!(report.top_items[0].count, 2);
     }
 
     #[test]
@@ -300,5 +388,85 @@ mod tests {
         .unwrap();
 
         assert_eq!(report.finalized_orders, 1);
+    }
+
+    #[test]
+    fn reports_operational_customer_and_cancellation_metrics() {
+        let conn = setup_db();
+        let returning_customer = Customer::new(
+            "Cliente recorrente".to_string(),
+            "41".to_string(),
+            "recorrente@example.com".to_string(),
+            "Rua A".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &returning_customer).unwrap();
+        conn.execute(
+            "UPDATE customers SET created_at = '2024-01-01T12:00:00+00:00' WHERE id = ?1",
+            params![returning_customer.id],
+        )
+        .unwrap();
+        let new_customer = Customer::new(
+            "Cliente novo".to_string(),
+            "42".to_string(),
+            "novo@example.com".to_string(),
+            "Rua B".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &new_customer).unwrap();
+        conn.execute(
+            "UPDATE customers SET created_at = '2024-02-10T12:00:00+00:00' WHERE id = ?1",
+            params![new_customer.id],
+        )
+        .unwrap();
+
+        let mut previous_order = ServiceOrder::new(
+            returning_customer.id.clone(),
+            "Notebook".to_string(),
+            "Avaliação inicial".to_string(),
+        );
+        ServiceOrderRepository::create_with_conn(&conn, &mut previous_order).unwrap();
+        conn.execute(
+            "UPDATE service_orders SET created_at = '2024-01-15T12:00:00+00:00' WHERE id = ?1",
+            params![previous_order.id],
+        )
+        .unwrap();
+
+        let mut completed_order = ServiceOrder::new(
+            returning_customer.id.clone(),
+            "Notebook".to_string(),
+            "Reparo concluído".to_string(),
+        );
+        ServiceOrderRepository::create_with_conn(&conn, &mut completed_order).unwrap();
+        conn.execute(
+            "UPDATE service_orders SET status = 'Finalizada', created_at = '2024-02-10T12:00:00+00:00', closed_at = '2024-02-11T12:00:00+00:00' WHERE id = ?1",
+            params![completed_order.id],
+        )
+        .unwrap();
+
+        let mut cancelled_order = ServiceOrder::new(
+            new_customer.id.clone(),
+            "Tablet".to_string(),
+            "Orçamento cancelado".to_string(),
+        );
+        ServiceOrderRepository::create_with_conn(&conn, &mut cancelled_order).unwrap();
+        conn.execute(
+            "UPDATE service_orders SET status = 'Cancelada', created_at = '2024-02-12T12:00:00+00:00', closed_at = '2024-02-12T18:00:00+00:00' WHERE id = ?1",
+            params![cancelled_order.id],
+        )
+        .unwrap();
+
+        let report = FinancialReportRepository::get_report_with_conn(
+            &conn,
+            Some("2024-02-01"),
+            Some("2024-02-29"),
+        )
+        .unwrap();
+
+        assert_eq!(report.new_customers, 1);
+        assert_eq!(report.new_orders, 2);
+        assert_eq!(report.completion_rate, 50.0);
+        assert_eq!(report.cancelled_orders, 1);
+        assert_eq!(report.cancellation_rate, 50.0);
+        assert_eq!(report.returning_customers, 1);
+        assert_eq!(report.average_turnaround_hours, 24.0);
     }
 }

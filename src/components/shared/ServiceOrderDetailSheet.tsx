@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -44,18 +45,22 @@ import {
   LoaderCircle,
   Paperclip,
   Trash2,
+  Edit,
 } from "lucide-react";
 
 const PdfPreviewDialog = lazy(() =>
-  import("@/components/shared/PdfPreviewDialog").then(({ PdfPreviewDialog }) => ({
-    default: PdfPreviewDialog,
-  })),
+  import("@/components/shared/PdfPreviewDialog").then(
+    ({ PdfPreviewDialog }) => ({
+      default: PdfPreviewDialog,
+    }),
+  ),
 );
 
 interface ServiceOrderDetailSheetProps {
   orderId: string | null;
   open: boolean;
   onClose: () => void;
+  onEdit?: (order: ServiceOrder) => void;
 }
 
 const fetchOrder = async (id: string): Promise<ServiceOrder | null> => {
@@ -329,6 +334,7 @@ export function ServiceOrderDetailSheet({
   orderId,
   open,
   onClose,
+  onEdit,
 }: ServiceOrderDetailSheetProps) {
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const {
@@ -404,10 +410,7 @@ export function ServiceOrderDetailSheet({
   const timelineItems = visibleEvents?.map((event) => {
     const content = getEventContent(event);
     return (
-      <div
-        key={event.id}
-        className="border-l-2 border-primary/30 pl-3 py-1"
-      >
+      <div key={event.id} className="border-l-2 border-primary/30 pl-3 py-1">
         <p className="text-sm font-medium">{content.label}</p>
         {content.detail && (
           <p className="text-xs text-muted-foreground">{content.detail}</p>
@@ -438,13 +441,50 @@ export function ServiceOrderDetailSheet({
                 Detalhamento completo da ordem de serviço.
               </SheetDescription>
             </div>
-            {order && getStatusBadge(order.status)}
+            {order && (
+              <div className="flex items-center gap-2">
+                {getStatusBadge(order.status)}
+                {onEdit && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onEdit(order)}
+                    aria-label="Editar ordem de serviço"
+                    title="Editar ordem de serviço"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </SheetHeader>
 
         {orderLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-muted-foreground">Carregando...</p>
+          <div
+            className="mt-8 space-y-6"
+            aria-label="Carregando ordem de serviço"
+          >
+            <div className="grid grid-cols-2 gap-4">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div className="space-y-2" key={index}>
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-5 w-full" />
+                </div>
+              ))}
+            </div>
+            <Separator />
+            <Skeleton className="h-20 w-full" />
+            <Separator />
+            <Skeleton className="h-36 w-full" />
+            <Separator />
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           </div>
         ) : orderError ? (
           <div className="flex items-center justify-center py-16">
@@ -668,10 +708,7 @@ export function ServiceOrderDetailSheet({
                   </p>
                 )}
               {attachments?.map((attachment) => (
-                <AttachmentItem
-                  key={attachment.id}
-                  attachment={attachment}
-                />
+                <AttachmentItem key={attachment.id} attachment={attachment} />
               ))}
             </div>
 
@@ -741,7 +778,10 @@ export function ServiceOrderDetailSheet({
       </SheetContent>
       {pdfPreview && (
         <Suspense fallback={null}>
-          <PdfPreviewDialog preview={pdfPreview} onClose={() => setPdfPreview(null)} />
+          <PdfPreviewDialog
+            preview={pdfPreview}
+            onClose={() => setPdfPreview(null)}
+          />
         </Suspense>
       )}
     </Sheet>

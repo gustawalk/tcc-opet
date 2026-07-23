@@ -12,10 +12,17 @@ import {
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
-  Plus
+  Plus,
 } from "lucide-react";
 import { FinancialCard } from "@/components/shared/FinancialCard";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,13 +31,13 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardData } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
-import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
+import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { toastError, toastSuccess } from "@/lib/errors";
 
 const fetchDashboardData = async (): Promise<DashboardData> => {
@@ -39,7 +46,7 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const { openServiceOrder } = useServiceOrderDrawer();
   const [isExportingReport, setIsExportingReport] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard-data"],
@@ -72,7 +79,9 @@ export function Dashboard() {
           <Skeleton className="h-10 w-32" />
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
         </div>
         <div className="grid gap-6 md:grid-cols-7">
           <Skeleton className="col-span-4 h-96 w-full" />
@@ -88,9 +97,12 @@ export function Dashboard() {
         <AlertTriangle className="h-12 w-12 text-destructive" />
         <h3 className="text-xl font-bold">Erro ao carregar dashboard</h3>
         <p className="text-muted-foreground text-center max-w-sm">
-          Não foi possível conectar ao banco de dados local. Tente reiniciar o sistema.
+          Não foi possível conectar ao banco de dados local. Tente reiniciar o
+          sistema.
         </p>
-        <Button onClick={() => window.location.reload()}>Tentar Novamente</Button>
+        <Button onClick={() => window.location.reload()}>
+          Tentar Novamente
+        </Button>
       </div>
     );
   }
@@ -107,10 +119,19 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportReport} disabled={isExportingReport}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportReport}
+            disabled={isExportingReport}
+          >
             {isExportingReport ? "Exportando..." : "Exportar Relatório"}
           </Button>
-          <Button size="sm" className="gap-2" onClick={() => navigate("/os/new")} >
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => navigate("/os/new")}
+          >
             <Plus className="h-4 w-4" /> Nova Ordem
           </Button>
         </div>
@@ -150,9 +171,16 @@ export function Dashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Ordens Recentes</CardTitle>
-              <CardDescription>As últimas atividades registradas no sistema.</CardDescription>
+              <CardDescription>
+                As últimas atividades registradas no sistema.
+              </CardDescription>
             </div>
-            <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate("/os")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate("/os")}
+            >
               Ver Todas <ArrowRight className="h-4 w-4" />
             </Button>
           </CardHeader>
@@ -162,30 +190,55 @@ export function Dashboard() {
                 <TableRow>
                   <TableHead className="w-[100px]">ID</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead className="hidden md:table-cell">Equipamento</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Equipamento
+                  </TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recentOrders.map((os) => (
-                  <TableRow key={os.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setSelectedOrderId(os.id)}>
-                    <TableCell className="font-medium">{os.displayId || os.id.slice(0, 8)}</TableCell>
+                  <TableRow
+                    key={os.id}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => openServiceOrder(os.id)}
+                  >
+                    <TableCell className="font-medium">
+                      {os.displayId || os.id.slice(0, 8)}
+                    </TableCell>
                     <TableCell>{os.customerName}</TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">{os.equipment}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {os.equipment}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={
-                        os.status === "Finalizada" ? "secondary" :
-                          os.status === "Em Manutenção" ? "default" :
-                            os.status === "Aguardando Peça" ? "destructive" : "outline"
-                      }>
+                      <Badge
+                        variant={
+                          os.status === "Finalizada"
+                            ? "secondary"
+                            : os.status === "Em Manutenção"
+                              ? "default"
+                              : os.status === "Aguardando Peça"
+                                ? "destructive"
+                                : "outline"
+                        }
+                      >
                         {os.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {os.discountPercent > 0
-                        ? <><span className="text-xs line-through text-muted-foreground mr-1">{formatCurrency(os.totalPrice)}</span> {formatCurrency(os.totalPrice * (1 - os.discountPercent / 100))}</>
-                        : formatCurrency(os.totalPrice)}
+                      {os.discountPercent > 0 ? (
+                        <>
+                          <span className="text-xs line-through text-muted-foreground mr-1">
+                            {formatCurrency(os.totalPrice)}
+                          </span>{" "}
+                          {formatCurrency(
+                            os.totalPrice * (1 - os.discountPercent / 100),
+                          )}
+                        </>
+                      ) : (
+                        formatCurrency(os.totalPrice)
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -204,24 +257,49 @@ export function Dashboard() {
                 <div key={s.status}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`p-1.5 rounded-md ${s.status === 'Orçamento' ? 'bg-blue-100 text-blue-600' :
-                        s.status === 'Em Manutenção' ? 'bg-amber-100 text-amber-600' :
-                          'bg-green-100 text-green-600'
-                        }`}>
-                        {s.status === 'Orçamento' && <Clock className="h-4 w-4" />}
-                        {s.status === 'Em Manutenção' && <Wrench className="h-4 w-4" />}
-                        {s.status === 'Finalizada' && <CheckCircle2 className="h-4 w-4" />}
+                      <div
+                        className={`p-1.5 rounded-md ${
+                          s.status === "Orçamento"
+                            ? "bg-blue-100 text-blue-600"
+                            : s.status === "Em Manutenção"
+                              ? "bg-amber-100 text-amber-600"
+                              : "bg-green-100 text-green-600"
+                        }`}
+                      >
+                        {s.status === "Orçamento" && (
+                          <Clock className="h-4 w-4" />
+                        )}
+                        {s.status === "Em Manutenção" && (
+                          <Wrench className="h-4 w-4" />
+                        )}
+                        {s.status === "Finalizada" && (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
                       </div>
-                      <span className="text-sm font-medium">{s.status === 'Finalizada' ? 'Finalizadas (Mês)' : s.status}</span>
+                      <span className="text-sm font-medium">
+                        {s.status === "Finalizada"
+                          ? "Finalizadas (Mês)"
+                          : s.status}
+                      </span>
                     </div>
-                    <span className="font-bold">{s.count.toString().padStart(2, '0')}</span>
+                    <span className="font-bold">
+                      {s.count.toString().padStart(2, "0")}
+                    </span>
                   </div>
-                  {i < statusCounts.length - 1 && <Separator className="mt-4" />}
+                  {i < statusCounts.length - 1 && (
+                    <Separator className="mt-4" />
+                  )}
                 </div>
               ))}
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full text-xs h-8" onClick={() => navigate("/reports")}>Ver Dashboard Financeiro Completo</Button>
+              <Button
+                variant="outline"
+                className="w-full text-xs h-8"
+                onClick={() => navigate("/reports")}
+              >
+                Ver Dashboard Financeiro Completo
+              </Button>
             </CardFooter>
           </Card>
 
@@ -236,30 +314,40 @@ export function Dashboard() {
                 <div key={alert.id} className="flex flex-col gap-1">
                   <div className="flex justify-between text-sm">
                     <span className="font-medium">{alert.name}</span>
-                    <span className={alert.currentStock === 0 ? "text-destructive font-bold" : "text-muted-foreground"}>
+                    <span
+                      className={
+                        alert.currentStock === 0
+                          ? "text-destructive font-bold"
+                          : "text-muted-foreground"
+                      }
+                    >
                       {alert.currentStock} un.
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                     <div
                       className={`h-full ${alert.currentStock === 0 ? "bg-destructive" : "bg-amber-500"}`}
-                      style={{ width: `${Math.max((alert.currentStock / alert.minStock) * 100, 5)}%` }}
+                      style={{
+                        width: `${Math.max((alert.currentStock / alert.minStock) * 100, 5)}%`,
+                      }}
                     />
                   </div>
                 </div>
               ))}
             </CardContent>
             <CardFooter>
-              <Button variant="destructive" size="sm" className="w-full h-8" onClick={() => navigate("/inventory")}>Fazer Reposição</Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full h-8"
+                onClick={() => navigate("/inventory")}
+              >
+                Fazer Reposição
+              </Button>
             </CardFooter>
           </Card>
         </div>
       </div>
-      <ServiceOrderDetailSheet
-        orderId={selectedOrderId}
-        open={!!selectedOrderId}
-        onClose={() => setSelectedOrderId(null)}
-      />
     </div>
   );
 }

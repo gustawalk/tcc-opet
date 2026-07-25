@@ -1,15 +1,15 @@
 {
   "version": "0.1.0",
-  "notes": "Versão inicial do OpetS.",
-  "pub_date": "2025-07-19T04:00:00Z",
+  "notes": "Versão inicial do OpetS com atualizações automáticas.",
+  "pub_date": "2026-07-25T05:53:54Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycWVVcnAreXQ4Nm1jNWlRQSthb1lnVEFXdmNDdGQ1WW5lNU5TUGNiei82UnZHcXFjbmJtSUwzRXZMR2EvNXE5c3NCYkw3MGo5SUdkekRhOXIrcWFaYUFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0OTU4NTYwCWZpbGU6T3BldFNfMC4xLjBfeDY0LXNldHVwLmV4ZQpWZ1ZlbzIzQkh2L0ZDNGdGcUZtMldEeWNXRlpGb0tWWTM3emZQOXQzb0JUZVJrKzdzNlRIeEZVL0ZDVmMxNnc0N3lNRXVGbVIxaDBPeGhBd1VJOWNBQT09Cg==",
       "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.0/OpetS_0.1.0_x64-setup.exe"
     },
     "linux-x86_64": {
-      "signature": "",
-      "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.0/tcc-opet_0.1.0_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycVJPUVA2c2FRK2VONVRrdUw5RGNZeDJURkxKZVJzOGJrT0JxRzhOMENCV05iRzB5NHZoSWd5SnVlV1Y3VVNNWlVsV2NUNTVEQWZaVHFla2IyMlE1QWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0OTU4ODE1CWZpbGU6T3BldFNfMC4xLjBfYW1kNjQuQXBwSW1hZ2UKTXF6dDVJQnkrV0FoQzBlUjI1UGh0emhFT0hrY2h6dHZXM1M2MkorN0VHaXIvU1RodnF4UGZoZGpGUElOV1E2YXlQQTR5dXRlSVJxejVpQzdTMEI1QlE9PQo=",
+      "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.0/OpetS_0.1.0_amd64.AppImage"
     }
   }
 }

@@ -3,8 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Building2, Database, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +43,14 @@ const fetchSystemInfo = async (): Promise<SystemInfo> => {
   return await invoke<SystemInfo>("get_system_info");
 };
 
+type UpdateProgress = {
+  downloadedBytes: number;
+  totalBytes?: number;
+  phase: "downloading" | "installing";
+};
+
+const formatVersion = (version: string) => (version.startsWith("v") ? version : `v${version}`);
+
 export function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -42,6 +60,9 @@ export function Settings() {
   const [isResetStarting, setIsResetStarting] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ available: boolean; version?: string } | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
@@ -112,7 +133,7 @@ export function Settings() {
       const update = await check();
       if (update) {
         setUpdateInfo({ available: true, version: update.version });
-        toastSuccess(`Nova versão disponível: ${update.version}.`);
+        setPendingUpdate(update);
       } else {
         setUpdateInfo({ available: false });
         toastSuccess("Você já está usando a versão mais recente.");
@@ -123,6 +144,47 @@ export function Settings() {
       toastError(err, "Erro ao verificar atualizações.");
     },
   });
+
+  const installUpdate = async () => {
+    if (!pendingUpdate) return;
+
+    try {
+      setIsUpdating(true);
+      setUpdateProgress({ downloadedBytes: 0, phase: "downloading" });
+
+      await pendingUpdate.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            setUpdateProgress({
+              downloadedBytes: 0,
+              totalBytes: event.data.contentLength,
+              phase: "downloading",
+            });
+            break;
+          case "Progress":
+            setUpdateProgress((current) => ({
+              downloadedBytes: (current?.downloadedBytes ?? 0) + event.data.chunkLength,
+              totalBytes: current?.totalBytes,
+              phase: "downloading",
+            }));
+            break;
+          case "Finished":
+            setUpdateProgress((current) => ({
+              downloadedBytes: current?.downloadedBytes ?? 0,
+              totalBytes: current?.totalBytes,
+              phase: "installing",
+            }));
+            break;
+        }
+      });
+
+      await relaunch();
+    } catch (err) {
+      setIsUpdating(false);
+      setUpdateProgress(null);
+      toastError(err, "Não foi possível concluir a atualização.");
+    }
+  };
 
   const handleSave = () => {
     const result = settingsSchema.safeParse(localSettings);
@@ -181,6 +243,9 @@ export function Settings() {
     setTheme(nextTheme);
     setThemePreference(nextTheme);
   };
+  const updateProgressPercentage = updateProgress?.totalBytes
+    ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
+    : null;
 
   return (
     <form className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-4xl mx-auto" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
@@ -449,6 +514,44 @@ export function Settings() {
           </div>
         </div>
       )}
+      <AlertDialog
+        open={pendingUpdate !== null}
+        onOpenChange={(open) => {
+          if (!open && !isUpdating) {
+            setPendingUpdate(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Atualização disponível</AlertDialogTitle>
+            <AlertDialogDescription>
+              Uma nova versão do OpetS está pronta para instalar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingUpdate && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-md border bg-muted/50 px-3 py-2 font-mono">
+                {formatVersion(pendingUpdate.currentVersion)} → {formatVersion(pendingUpdate.version)}
+              </div>
+              {pendingUpdate.body?.trim() && (
+                <div className="space-y-1">
+                  <p className="font-medium">Notas da versão</p>
+                  <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/50 p-3 text-muted-foreground">
+                    {pendingUpdate.body}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUpdating}>Cancelar</AlertDialogCancel>
+            <Button type="button" onClick={() => void installUpdate()} disabled={isUpdating}>
+              {isUpdating ? "Atualizando..." : "Atualizar agora"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {isResetting && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
@@ -463,6 +566,37 @@ export function Settings() {
                 Não feche o aplicativo enquanto removemos os dados e anexos.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+      {isUpdating && updateProgress && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
+          role="status"
+          aria-live="assertive"
+        >
+          <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-lg border bg-card p-8 text-center shadow-xl">
+            <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-1">
+              <p className="font-semibold">
+                {updateProgress.phase === "downloading" ? "Baixando atualização" : "Instalando atualização"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {updateProgress.phase === "downloading"
+                  ? updateProgressPercentage === null
+                    ? "Aguarde enquanto a nova versão é baixada."
+                    : `${updateProgressPercentage}% concluído.`
+                  : "A nova versão será iniciada em instantes."}
+              </p>
+            </div>
+            {updateProgressPercentage !== null && updateProgress.phase === "downloading" && (
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                aria-label={`Download da atualização: ${updateProgressPercentage}%`}
+              >
+                <div className="h-full bg-primary transition-all" style={{ width: `${updateProgressPercentage}%` }} />
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -54,6 +54,16 @@ fn is_newer_version(latest: &str, current: &str) -> bool {
     parse(latest) > parse(current)
 }
 
+fn update_check_from_manifest(manifest: UpdateManifest, current_version: String) -> UpdateCheck {
+    UpdateCheck {
+        configured: true,
+        update_available: is_newer_version(&manifest.version, &current_version),
+        current_version,
+        latest_version: Some(manifest.version),
+        download_url: manifest.download_url,
+    }
+}
+
 #[command]
 pub fn get_settings() -> Result<Settings, AppError> {
     Ok(SettingsRepository::get_settings()?)
@@ -168,13 +178,7 @@ pub fn check_for_updates() -> Result<UpdateCheck, AppError> {
         )
     })?;
 
-    Ok(UpdateCheck {
-        configured: true,
-        update_available: is_newer_version(&manifest.version, &current_version),
-        current_version,
-        latest_version: Some(manifest.version),
-        download_url: manifest.download_url,
-    })
+    Ok(update_check_from_manifest(manifest, current_version))
 }
 
 #[command]
@@ -328,5 +332,25 @@ mod tests {
         assert!(is_newer_version("1.0.1", "1.0.0-beta.1"));
         assert!(!is_newer_version("1.0.0", "1.0.0"));
         assert!(!is_newer_version("0.9.9", "1.0.0"));
+    }
+
+    #[test]
+    fn reports_a_newer_manifest_version_with_its_download_url() {
+        let update = update_check_from_manifest(
+            UpdateManifest {
+                version: "v0.2.0".to_string(),
+                download_url: Some("https://updates.example.com/opets-0.2.0.AppImage".to_string()),
+            },
+            "0.1.0".to_string(),
+        );
+
+        assert!(update.configured);
+        assert!(update.update_available);
+        assert_eq!(update.current_version, "0.1.0");
+        assert_eq!(update.latest_version.as_deref(), Some("v0.2.0"));
+        assert_eq!(
+            update.download_url.as_deref(),
+            Some("https://updates.example.com/opets-0.2.0.AppImage")
+        );
     }
 }

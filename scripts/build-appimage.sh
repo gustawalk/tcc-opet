@@ -8,9 +8,14 @@ if ! command -v docker >/dev/null 2>&1; then
   printf '%s\n' "Docker é necessário para gerar AppImage neste projeto." >&2
   exit 1
 fi
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+  printf '%s\n' "TAURI_SIGNING_PRIVATE_KEY é necessária para gerar um AppImage assinado." >&2
+  exit 1
+fi
 
 mkdir -p "${OUTPUT_DIR}"
-docker build \
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=tauri_signing_private_key,env=TAURI_SIGNING_PRIVATE_KEY \
   --file Dockerfile.appimage \
   --target artifacts \
   --tag "${IMAGE_TAG}" \

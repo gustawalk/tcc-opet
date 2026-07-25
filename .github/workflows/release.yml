@@ -243,11 +243,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Collect assets safely into a bash array (handles spaces/newlines)
+          # Keep updater signatures as workflow artifacts, not public release downloads.
           assets=()
           while IFS= read -r -d '' file; do
             assets+=("$file")
-          done < <(find release-assets -type f -print0)
+          done < <(find release-assets -type f ! -name '*.sig' -print0)
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets found in release-assets/ — aborting."

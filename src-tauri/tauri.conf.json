@@ -23,7 +23,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxN0JGOEI4OTY1Q0EyRjAKUldUd29seVd1UGg3a2REa05tZGZiT3h2dGdlWTBQa1Rxa2FTTTBVVCtITmxVUFNrVHlnZkh2ZTEK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5RjY1RDIwRjA4RjEyNTQKUldSVUVvL3dJRjMycVdGRTBzK25mVHA0NWQ5WGhBTDI1alh2T2Fma00zTmJyMzZMTFNnNWp5UDMK",
       "endpoints": [
         "https://raw.githubusercontent.com/gustawalk/tcc-opet/main/updater.json"
       ]

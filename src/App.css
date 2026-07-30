@@ -124,4 +124,9 @@
     background-color: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
   }
+
+  .hide-native-password-reveal::-ms-clear,
+  .hide-native-password-reveal::-ms-reveal {
+    display: none;
+  }
 }

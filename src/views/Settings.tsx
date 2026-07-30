@@ -543,7 +543,7 @@ export function Settings() {
                 autoComplete={
                   backupPassphraseDialog === "export" ? "new-password" : "current-password"
                 }
-                className="pr-10"
+                className="pr-10 hide-native-password-reveal"
                 value={backupPassphrase}
                 onChange={(event) => setBackupPassphrase(event.target.value)}
               />

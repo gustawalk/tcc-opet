@@ -1,7 +1,10 @@
+import { useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
+import { toast } from "sonner";
+import { check } from "@tauri-apps/plugin-updater";
 import { MainLayout } from "./layouts/MainLayout";
 import { Dashboard } from "./views/Dashboard";
 import { ServiceOrderCreate } from "./views/ServiceOrderCreate";
@@ -13,6 +16,7 @@ import { Settings } from "./views/Settings";
 import { Templates } from "./views/Templates";
 import { Reports } from "./views/Reports";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
+import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -24,24 +28,45 @@ const queryClient = new QueryClient({
   },
 });
 
+function UpdateAvailabilityNotice() {
+  const hasChecked = useRef(false);
+
+  useEffect(() => {
+    if (import.meta.env.DEV || hasChecked.current) return;
+    hasChecked.current = true;
+
+    void check()
+      .then((update) => {
+        if (!update) return;
+        toast.info(`Atualização ${update.version} disponível. Verifique em Configurações > Atualizações.`);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <UpdateAvailabilityNotice />
         <ServiceOrderDrawerProvider>
-          <MainLayout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/os" element={<ServiceOrders />} />
-              <Route path="/os/new" element={<ServiceOrderCreate />} />
-              <Route path="/customers" element={<Customers />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/templates" element={<Templates />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </MainLayout>
+          <CustomerDrawerProvider>
+            <MainLayout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/os" element={<ServiceOrders />} />
+                <Route path="/os/new" element={<ServiceOrderCreate />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/templates" element={<Templates />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/users" element={<Users />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </MainLayout>
+          </CustomerDrawerProvider>
         </ServiceOrderDrawerProvider>
       </BrowserRouter>
       <Toaster position="top-right" richColors closeButton duration={4000} />

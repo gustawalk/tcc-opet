@@ -308,7 +308,7 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore: publish updater manifest for ${GITHUB_REF_NAME}"
+          git -c user.name="gustawalk" -c user.email="gustawalk@gmail.com" commit -m "chore: publish updater manifest for ${GITHUB_REF_NAME}"
           git push origin HEAD:main
 
       - name: Delete temporary build artifacts

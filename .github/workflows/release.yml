@@ -229,7 +229,6 @@ jobs:
     permissions:
       actions: write
       contents: write
-      pull-requests: write
 
     steps:
       - uses: actions/checkout@v7
@@ -311,10 +310,6 @@ jobs:
           fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore: publish updater manifest for ${GITHUB_REF_NAME}"
           git push origin HEAD:main
-
-          if [ "$(gh pr list --base dev --head main --state open --json number --jq 'length')" = "0" ]; then
-            gh pr create --base dev --head main --title "chore: sync v0.1.1 updater bridge" --body "Synchronizes the final raw-main updater manifest required by v0.1.0 clients."
-          fi
 
       - name: Delete temporary build artifacts
         env:

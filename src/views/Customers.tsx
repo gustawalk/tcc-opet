@@ -15,7 +15,6 @@ import {
   User as UserIcon,
   Globe,
   History,
-  Copy,
 } from "lucide-react";
 import {
   Card,
@@ -29,8 +28,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -39,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { toastSuccess, toastError, copyToClipboard } from "@/lib/errors";
+import { toastSuccess, toastError } from "@/lib/errors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,8 +53,8 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { Customer, ServiceOrder } from "@/lib/types";
-import { formatCurrency, formatBRPhone } from "@/lib/formatters";
+import { Customer } from "@/lib/types";
+import { formatBRPhone } from "@/lib/formatters";
 import {
   customerSchema,
   parseErrors,
@@ -66,18 +63,10 @@ import {
 } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
-import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
+import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 
 const fetchCustomers = async (): Promise<Customer[]> => {
   return await invoke<Customer[]>("get_customers");
-};
-
-const fetchCustomerOrders = async (
-  customerId: string,
-): Promise<ServiceOrder[]> => {
-  return await invoke<ServiceOrder[]>("get_service_orders_by_customer_id", {
-    customerId,
-  });
 };
 
 const initialFormData = {
@@ -88,7 +77,7 @@ const initialFormData = {
 };
 
 export function Customers() {
-  const { openServiceOrder } = useServiceOrderDrawer();
+  const { openCustomerHistory } = useCustomerDrawer();
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -98,8 +87,6 @@ export function Customers() {
   );
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<ValidationErrors>({});
-  const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
-  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
 
@@ -162,19 +149,6 @@ export function Customers() {
     },
     onError: (err) => toastError(err, "Erro ao excluir cliente."),
   });
-
-  const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
-    queryKey: ["customer-orders", viewingCustomer?.id],
-    queryFn: () => fetchCustomerOrders(viewingCustomer!.id),
-    enabled: !!viewingCustomer,
-  });
-
-  const sortedOrders = useMemo(() => {
-    return [...customerOrders].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [customerOrders]);
 
   const getCustomerSortValue = (
     customer: Customer,
@@ -303,22 +277,7 @@ export function Customers() {
   };
 
   const handleViewOS = (customer: Customer) => {
-    setViewingCustomer(customer);
-    setIsHistorySheetOpen(true);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<
-      string,
-      "default" | "secondary" | "destructive" | "outline"
-    > = {
-      Finalizada: "secondary",
-      "Em Manutenção": "default",
-      "Aguardando Peça": "destructive",
-      Orçamento: "outline",
-      Cancelada: "outline",
-    };
-    return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
+    openCustomerHistory(customer.id);
   };
 
   if (error) {
@@ -639,132 +598,6 @@ export function Customers() {
                 : isEditing
                   ? "Salvar Alterações"
                   : "Cadastrar Cliente"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      {/* Sheet para Histórico de OS */}
-      <Sheet open={isHistorySheetOpen} onOpenChange={setIsHistorySheetOpen}>
-        <SheetContent className="sm:max-w-2xl overflow-hidden flex flex-col">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <History className="h-5 w-5 text-primary" />
-              Histórico de Ordens de Serviço
-            </SheetTitle>
-            <SheetDescription>
-              Mostrando serviços realizados para{" "}
-              <strong>{viewingCustomer?.name}</strong>.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-hidden mt-6">
-            <ScrollArea className="h-full">
-              {isLoadingOrders ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="h-24 w-full bg-muted animate-pulse rounded-lg"
-                    />
-                  ))}
-                </div>
-              ) : sortedOrders.length > 0 ? (
-                <div className="space-y-4 pr-4">
-                  {sortedOrders.map((os) => (
-                    <Card
-                      key={os.id}
-                      className="overflow-hidden border-primary/10 hover:border-primary/30 transition-colors"
-                    >
-                      <CardHeader className="p-4 pb-2 bg-muted/30">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-primary">
-                            {os.displayId || os.id.slice(0, 8)}
-                          </span>
-                          {getStatusBadge(os.status)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4 pt-2">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                              Equipamento
-                            </p>
-                            <p className="text-sm font-medium">
-                              {os.equipment}
-                            </p>
-                          </div>
-                          <div className="space-y-1 text-right">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                              Abertura
-                            </p>
-                            <p className="text-sm">
-                              {new Date(os.createdAt).toLocaleDateString(
-                                "pt-BR",
-                              )}
-                            </p>
-                          </div>
-                          <div className="space-y-1 col-span-2">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                              Descrição
-                            </p>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {os.description}
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                      <div className="px-4 py-2 bg-primary/5 flex items-center justify-between border-t">
-                        <span className="text-sm font-bold">
-                          {formatCurrency(os.totalPrice || 0)}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs gap-1.5"
-                          onClick={async () => {
-                            const text = os.displayId || os.id.slice(0, 8);
-                            const ok = await copyToClipboard(text);
-                            if (ok) toastSuccess(`ID ${text} copiado.`);
-                            else toastError("Erro ao copiar ID.");
-                          }}
-                        >
-                          Copiar ID
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs"
-                          onClick={() => {
-                            setIsHistorySheetOpen(false);
-                            window.setTimeout(() => openServiceOrder(os.id), 0);
-                          }}
-                        >
-                          Ver detalhes
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">
-                    Este cliente ainda não possui ordens de serviço.
-                  </p>
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-
-          <SheetFooter className="mt-6 pt-6 border-t">
-            <Button
-              variant="outline"
-              onClick={() => setIsHistorySheetOpen(false)}
-              className="w-full"
-            >
-              Fechar Histórico
             </Button>
           </SheetFooter>
         </SheetContent>

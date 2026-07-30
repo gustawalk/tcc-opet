@@ -88,6 +88,10 @@ export interface BackupSummary {
   attachmentCount: number;
 }
 
+export interface BackupInspection {
+  requiresPassphrase: boolean;
+}
+
 export interface ChecklistItem {
   id: string;
   label: string;

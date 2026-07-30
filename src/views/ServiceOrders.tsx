@@ -38,6 +38,7 @@ import {
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
+import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useSort } from "@/hooks/useSort";
 import { formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
@@ -57,6 +58,7 @@ export function ServiceOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openServiceOrder } = useServiceOrderDrawer();
+  const { openCustomerHistory } = useCustomerDrawer();
   const { sortConfig, cycleSort } = useSort();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -301,15 +303,21 @@ export function ServiceOrders() {
                     <TableCell className="font-mono text-xs font-bold">
                       {order.displayId}
                     </TableCell>
-                    <TableCell>
-                      <p className="flex gap-1 text-sm font-medium">
-                        <UserIcon className="h-3 w-3" />
-                        {order.customerName}
-                      </p>
-                      <p className="flex gap-1 text-xs text-muted-foreground">
-                        <Smartphone className="h-3 w-3" />
-                        {order.equipment}
-                      </p>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="block w-full rounded-sm text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => openCustomerHistory(order.customerId)}
+                      >
+                        <span className="flex gap-1 text-sm font-medium">
+                          <UserIcon className="h-3 w-3" />
+                          {order.customerName}
+                        </span>
+                        <span className="flex gap-1 text-xs text-muted-foreground">
+                          <Smartphone className="h-3 w-3" />
+                          {order.equipment}
+                        </span>
+                      </button>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {statusBadge(order.status)}

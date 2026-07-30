@@ -1,13 +1,21 @@
-use crate::database::run_migrations;
+use crate::database::{
+    is_plaintext_database, migrate_plaintext_database, open_encrypted_database, run_migrations,
+};
 use crate::error::AppError;
-use rusqlite::{params, Connection};
+use argon2::Argon2;
+use base64::Engine;
+use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use rusqlite::backup::Backup;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 #[cfg(test)]
 use std::path::PathBuf;
 use std::path::{Component, Path};
+use std::time::Duration;
 use uuid::Uuid;
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -15,7 +23,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const DATABASE_ENTRY: &str = "database.db";
 const ATTACHMENTS_PREFIX: &str = "attachments/";
 const MANIFEST_ENTRY: &str = "opets-backup.json";
-const BACKUP_FORMAT_VERSION: u8 = 1;
+const BACKUP_FORMAT_VERSION: u8 = 2;
+const ENCRYPTED_BACKUP_MAGIC: &[u8] = b"OPETBKP2";
 const MAX_BACKUP_FILE_SIZE_BYTES: u64 = 250 * 1024 * 1024;
 const MAX_DATABASE_SIZE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE_BYTES: u64 = 10 * 1024 * 1024;
@@ -44,6 +53,17 @@ const REQUIRED_TABLES: [&str; 14] = [
 struct BackupManifest {
     application: String,
     format_version: u8,
+    #[serde(default)]
+    key_version: Option<u8>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupEnvelopeHeader {
+    format_version: u8,
+    key_version: u8,
+    requires_passphrase: bool,
+    salt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +73,12 @@ pub struct BackupSummary {
     pub attachment_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInspection {
+    pub requires_passphrase: bool,
+}
+
 fn backup_error(error: impl std::fmt::Display) -> AppError {
     AppError::new(
         format!("Backup operation failed: {error}"),
@@ -60,12 +86,206 @@ fn backup_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
+fn activate_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppError> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| backup_error("Backup destination has no parent directory."))?;
+    let previous = parent.join(format!(".opets-backup-previous-{}", Uuid::new_v4()));
+    let had_destination = destination.exists();
+    if had_destination {
+        fs::rename(destination, &previous).map_err(backup_error)?;
+    }
+    if let Err(error) = fs::rename(temporary, destination) {
+        if had_destination {
+            let _ = fs::rename(&previous, destination);
+        }
+        return Err(backup_error(error));
+    }
+    if had_destination {
+        let _ = fs::remove_file(previous);
+    }
+    Ok(())
+}
+
+fn backup_envelope_key(
+    passphrase: Option<&str>,
+    salt: Option<&[u8]>,
+) -> Result<([u8; 32], Option<Vec<u8>>, bool), AppError> {
+    let passphrase = passphrase.unwrap_or("");
+    if passphrase.is_empty() {
+        return Ok((
+            crate::encryption::derive_key("com.walk.tcc-opet/backup/v1"),
+            None,
+            false,
+        ));
+    }
+    let salt = salt.map(Vec::from).unwrap_or_else(|| {
+        let mut value = vec![0_u8; 16];
+        use rand::RngCore;
+        OsRng.fill_bytes(&mut value);
+        value
+    });
+    let mut key = [0_u8; 32];
+    Argon2::default()
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut key)
+        .map_err(backup_error)?;
+    Ok((key, Some(salt), true))
+}
+
+fn encrypt_backup_archive(archive: &[u8], passphrase: Option<&str>) -> Result<Vec<u8>, AppError> {
+    let (key, salt, requires_passphrase) = backup_envelope_key(passphrase, None)?;
+    let header = BackupEnvelopeHeader {
+        format_version: BACKUP_FORMAT_VERSION,
+        key_version: crate::encryption::ACTIVE_KEY_VERSION,
+        requires_passphrase,
+        salt: salt.map(|value| base64::engine::general_purpose::STANDARD.encode(value)),
+    };
+    let header_bytes = serde_json::to_vec(&header).map_err(backup_error)?;
+    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let cipher = XChaCha20Poly1305::new((&key).into());
+    let ciphertext = cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: archive,
+                aad: &header_bytes,
+            },
+        )
+        .map_err(backup_error)?;
+    let mut output = Vec::with_capacity(
+        ENCRYPTED_BACKUP_MAGIC.len() + 4 + header_bytes.len() + nonce.len() + ciphertext.len(),
+    );
+    output.extend_from_slice(ENCRYPTED_BACKUP_MAGIC);
+    output.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+    output.extend_from_slice(&header_bytes);
+    output.extend_from_slice(&nonce);
+    output.extend_from_slice(&ciphertext);
+    Ok(output)
+}
+
+fn validate_backup_envelope_header(header: &BackupEnvelopeHeader) -> Result<(), AppError> {
+    if header.format_version != BACKUP_FORMAT_VERSION
+        || header.key_version != crate::encryption::ACTIVE_KEY_VERSION
+    {
+        return Err(backup_error(
+            "Encrypted backup uses an unsupported format or key version.",
+        ));
+    }
+    if header.requires_passphrase != header.salt.is_some() {
+        return Err(backup_error("Encrypted backup header is invalid."));
+    }
+    Ok(())
+}
+
+pub fn inspect_backup(source: &Path) -> Result<BackupInspection, AppError> {
+    let metadata = fs::symlink_metadata(source).map_err(backup_error)?;
+    if !metadata.file_type().is_file() || metadata.len() > MAX_BACKUP_FILE_SIZE_BYTES {
+        return Err(backup_error(
+            "Backup source is invalid or exceeds the allowed size limit.",
+        ));
+    }
+
+    let mut file = File::open(source).map_err(backup_error)?;
+    let mut prefix = [0_u8; ENCRYPTED_BACKUP_MAGIC.len() + 4];
+    file.read_exact(&mut prefix).map_err(backup_error)?;
+    if !prefix.starts_with(ENCRYPTED_BACKUP_MAGIC) {
+        return Ok(BackupInspection {
+            requires_passphrase: false,
+        });
+    }
+
+    let header_length = u32::from_be_bytes(
+        prefix[ENCRYPTED_BACKUP_MAGIC.len()..]
+            .try_into()
+            .map_err(backup_error)?,
+    ) as usize;
+    if header_length == 0 || header_length > 64 * 1024 {
+        return Err(backup_error("Encrypted backup header is invalid."));
+    }
+    let mut header_bytes = vec![0_u8; header_length];
+    file.read_exact(&mut header_bytes).map_err(backup_error)?;
+    let header: BackupEnvelopeHeader =
+        serde_json::from_slice(&header_bytes).map_err(backup_error)?;
+    validate_backup_envelope_header(&header)?;
+    Ok(BackupInspection {
+        requires_passphrase: header.requires_passphrase,
+    })
+}
+
+fn decrypt_backup_archive(
+    bytes: &[u8],
+    passphrase: Option<&str>,
+) -> Result<Option<Vec<u8>>, AppError> {
+    if !bytes.starts_with(ENCRYPTED_BACKUP_MAGIC) {
+        return Ok(None);
+    }
+    let header_length_start = ENCRYPTED_BACKUP_MAGIC.len();
+    let header_length_end = header_length_start + 4;
+    if bytes.len() <= header_length_end {
+        return Err(backup_error("Encrypted backup header is incomplete."));
+    }
+    let header_length = u32::from_be_bytes(
+        bytes[header_length_start..header_length_end]
+            .try_into()
+            .map_err(backup_error)?,
+    ) as usize;
+    let header_end = header_length_end
+        .checked_add(header_length)
+        .ok_or_else(|| backup_error("Encrypted backup header is invalid."))?;
+    let nonce_end = header_end + 24;
+    if bytes.len() <= nonce_end {
+        return Err(backup_error("Encrypted backup payload is incomplete."));
+    }
+    let header_bytes = &bytes[header_length_end..header_end];
+    let header: BackupEnvelopeHeader =
+        serde_json::from_slice(header_bytes).map_err(backup_error)?;
+    validate_backup_envelope_header(&header)?;
+    let salt = header
+        .salt
+        .as_deref()
+        .map(|value| {
+            base64::engine::general_purpose::STANDARD
+                .decode(value)
+                .map_err(backup_error)
+        })
+        .transpose()?;
+    if header.requires_passphrase && passphrase.unwrap_or("").is_empty() {
+        return Err(AppError::new(
+            "Backup passphrase is required.",
+            "Este backup requer uma senha.",
+        ));
+    }
+    let (key, _, _) = backup_envelope_key(passphrase, salt.as_deref())?;
+    let cipher = XChaCha20Poly1305::new((&key).into());
+    let archive = cipher
+        .decrypt(
+            XNonce::from_slice(&bytes[header_end..nonce_end]),
+            Payload {
+                msg: &bytes[nonce_end..],
+                aad: header_bytes,
+            },
+        )
+        .map_err(|_| {
+            AppError::new(
+                "Backup authentication failed.",
+                "Não foi possível autenticar o backup.",
+            )
+        })?;
+    Ok(Some(archive))
+}
+
 fn create_snapshot(database_path: &Path, snapshot_path: &Path) -> Result<(), AppError> {
-    let connection = Connection::open(database_path)?;
-    connection.execute(
-        "VACUUM INTO ?1",
-        params![snapshot_path.to_string_lossy().to_string()],
-    )?;
+    if is_plaintext_database(database_path).map_err(backup_error)? {
+        let source = Connection::open(database_path)?;
+        let mut destination = Connection::open(snapshot_path)?;
+        let backup = Backup::new(&source, &mut destination)?;
+        backup.run_to_completion(64, Duration::from_millis(5), None)?;
+    } else {
+        let source = open_encrypted_database(database_path)?;
+        let mut destination = open_encrypted_database(snapshot_path)?;
+        let backup = Backup::new(&source, &mut destination)?;
+        backup.run_to_completion(64, Duration::from_millis(5), None)?;
+    }
     Ok(())
 }
 
@@ -79,16 +299,23 @@ fn backup_manifest() -> BackupManifest {
     BackupManifest {
         application: "com.walk.tcc-opet".to_string(),
         format_version: BACKUP_FORMAT_VERSION,
+        key_version: Some(crate::encryption::ACTIVE_KEY_VERSION),
     }
 }
 
 fn validate_manifest(manifest: BackupManifest) -> Result<(), AppError> {
-    if manifest.application != "com.walk.tcc-opet"
-        || manifest.format_version != BACKUP_FORMAT_VERSION
-    {
+    if manifest.application != "com.walk.tcc-opet" || !matches!(manifest.format_version, 1 | 2) {
         return Err(AppError::new(
             "Backup manifest is not compatible with this application.",
             "O manifesto do backup não é compatível com este aplicativo.",
+        ));
+    }
+    if manifest.format_version == BACKUP_FORMAT_VERSION
+        && manifest.key_version != Some(crate::encryption::ACTIVE_KEY_VERSION)
+    {
+        return Err(AppError::new(
+            "Backup uses an unsupported encryption key version.",
+            "O backup usa uma versão de chave de criptografia não suportada.",
         ));
     }
     Ok(())
@@ -169,14 +396,7 @@ pub fn export_backup_with_paths(
             }
         }
         archive.finish().map_err(backup_error)?;
-        // rename atomically overwrites destination on the same filesystem (POSIX).
-        // On Windows, rename may fail if destination exists; fall back to copy+remove temp.
-        fs::rename(&temporary_destination, destination)
-            .or_else(|_| {
-                fs::copy(&temporary_destination, destination)
-                    .and_then(|_| fs::remove_file(&temporary_destination))
-            })
-            .map_err(backup_error)?;
+        activate_backup_file(&temporary_destination, destination)?;
         crate::database::secure_private_file(destination).map_err(backup_error)?;
 
         Ok(BackupSummary {
@@ -187,6 +407,35 @@ pub fn export_backup_with_paths(
 
     let _ = fs::remove_file(snapshot_path);
     let _ = fs::remove_file(temporary_destination);
+    result
+}
+
+pub fn export_backup_with_passphrase(
+    database_path: &Path,
+    attachments_path: &Path,
+    destination: &Path,
+    passphrase: Option<&str>,
+) -> Result<BackupSummary, AppError> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| backup_error("Backup destination has no parent directory."))?;
+    let archive_path = parent.join(format!(".opets-backup-archive-{}.tmp", Uuid::new_v4()));
+    let result = (|| -> Result<BackupSummary, AppError> {
+        let summary = export_backup_with_paths(database_path, attachments_path, &archive_path)?;
+        let encrypted =
+            encrypt_backup_archive(&fs::read(&archive_path).map_err(backup_error)?, passphrase)?;
+        let temporary_destination =
+            parent.join(format!(".opets-backup-encrypted-{}.tmp", Uuid::new_v4()));
+        fs::write(&temporary_destination, encrypted).map_err(backup_error)?;
+        crate::database::secure_private_file(&temporary_destination).map_err(backup_error)?;
+        activate_backup_file(&temporary_destination, destination)?;
+        crate::database::secure_private_file(destination).map_err(backup_error)?;
+        Ok(BackupSummary {
+            path: destination.to_string_lossy().to_string(),
+            attachment_count: summary.attachment_count,
+        })
+    })();
+    let _ = fs::remove_file(archive_path);
     result
 }
 
@@ -360,14 +609,18 @@ pub fn restore_backup_with_paths(
             let mut output = File::create(&output_path).map_err(backup_error)?;
             std::io::copy(&mut entry, &mut output).map_err(backup_error)?;
             drop(output);
-            crate::attachment_service::validate_attachment_file(&output_path)?;
             crate::database::secure_private_file(&output_path).map_err(backup_error)?;
             attachment_count += 1;
         }
         drop(archive);
 
-        let validation_connection = Connection::open(&staging_database)?;
-        if legacy_backup {
+        let plaintext_database = is_plaintext_database(&staging_database).map_err(backup_error)?;
+        let validation_connection = if plaintext_database {
+            Connection::open(&staging_database)?
+        } else {
+            open_encrypted_database(&staging_database)?
+        };
+        if legacy_backup || plaintext_database {
             validate_database_schema(&validation_connection)?;
         }
         run_migrations(&validation_connection)?;
@@ -381,6 +634,17 @@ pub fn restore_backup_with_paths(
         }
         validate_database_schema(&validation_connection)?;
         drop(validation_connection);
+
+        if plaintext_database {
+            let recovery_path = migrate_plaintext_database(&staging_database)?;
+            let _ = fs::remove_file(recovery_path);
+        }
+        let encrypted_connection = open_encrypted_database(&staging_database)?;
+        crate::attachment_service::migrate_legacy_attachments(
+            &encrypted_connection,
+            &staging_attachments,
+        )?;
+        drop(encrypted_connection);
 
         let previous_database = parent.join(format!(".opet-previous-{}.db", Uuid::new_v4()));
         let previous_attachments =
@@ -441,6 +705,36 @@ pub fn restore_backup_with_paths(
     result
 }
 
+pub fn restore_backup_with_passphrase(
+    source: &Path,
+    database_path: &Path,
+    attachments_path: &Path,
+    passphrase: Option<&str>,
+) -> Result<BackupSummary, AppError> {
+    let source_metadata = fs::symlink_metadata(source).map_err(backup_error)?;
+    if !source_metadata.file_type().is_file() || source_metadata.len() > MAX_BACKUP_FILE_SIZE_BYTES
+    {
+        return Err(backup_error(
+            "Backup source is invalid or exceeds the allowed size limit.",
+        ));
+    }
+    let bytes = fs::read(source).map_err(backup_error)?;
+    let Some(archive) = decrypt_backup_archive(&bytes, passphrase)? else {
+        return restore_backup_with_paths(source, database_path, attachments_path);
+    };
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| backup_error("Database path has no parent directory."))?;
+    let temporary_archive = parent.join(format!(".opets-backup-import-{}.tmp", Uuid::new_v4()));
+    let result = (|| -> Result<BackupSummary, AppError> {
+        fs::write(&temporary_archive, archive).map_err(backup_error)?;
+        crate::database::secure_private_file(&temporary_archive).map_err(backup_error)?;
+        restore_backup_with_paths(&temporary_archive, database_path, attachments_path)
+    })();
+    let _ = fs::remove_file(temporary_archive);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,12 +774,9 @@ mod tests {
             restore_backup_with_paths(&archive_path, &restore_database, &restore_attachments)
                 .unwrap();
         assert_eq!(restored.attachment_count, 1);
-        assert_eq!(
-            fs::read(restore_attachments.join("photo.jpg")).unwrap(),
-            b"\x89PNG\r\n\x1a\n"
-        );
+        assert!(!restore_attachments.join("photo.jpg").exists());
 
-        let restored_conn = Connection::open(&restore_database).unwrap();
+        let restored_conn = open_encrypted_database(&restore_database).unwrap();
         let company_name: String = restored_conn
             .query_row(
                 "SELECT company_name FROM settings WHERE id = 1",
@@ -523,6 +814,37 @@ mod tests {
 
         assert!(error.en.contains("manifest"));
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn password_protected_backup_requires_the_original_passphrase() {
+        let encrypted = encrypt_backup_archive(b"backup contents", Some("senha-segura")).unwrap();
+
+        assert!(decrypt_backup_archive(&encrypted, Some("senha-incorreta")).is_err());
+        assert_eq!(
+            decrypt_backup_archive(&encrypted, Some("senha-segura"))
+                .unwrap()
+                .unwrap(),
+            b"backup contents"
+        );
+    }
+
+    #[test]
+    fn inspection_reports_whether_a_backup_requires_a_passphrase() {
+        let encrypted_path = temp_path("encrypted-backup-inspection");
+        fs::write(
+            &encrypted_path,
+            encrypt_backup_archive(b"backup contents", Some("senha-segura")).unwrap(),
+        )
+        .unwrap();
+        assert!(inspect_backup(&encrypted_path).unwrap().requires_passphrase);
+
+        let legacy_path = temp_path("legacy-backup-inspection");
+        fs::write(&legacy_path, b"legacy backup contents").unwrap();
+        assert!(!inspect_backup(&legacy_path).unwrap().requires_passphrase);
+
+        let _ = fs::remove_file(encrypted_path);
+        let _ = fs::remove_file(legacy_path);
     }
 
     #[test]

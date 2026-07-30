@@ -16,11 +16,16 @@ if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]]; then
   printf '%s\n' "TAURI_SIGNING_PRIVATE_KEY_PASSWORD é necessária para gerar um AppImage assinado." >&2
   exit 1
 fi
+if [[ -z "${OPETS_DATA_KEY_V1:-}" ]]; then
+  printf '%s\n' "OPETS_DATA_KEY_V1 é necessária para gerar um AppImage criptografado." >&2
+  exit 1
+fi
 
 mkdir -p "${OUTPUT_DIR}"
 DOCKER_BUILDKIT=1 docker build \
   --secret id=tauri_signing_private_key,env=TAURI_SIGNING_PRIVATE_KEY \
   --secret id=tauri_signing_private_key_password,env=TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+  --secret id=opets_data_key_v1,env=OPETS_DATA_KEY_V1 \
   --file Dockerfile.appimage \
   --target artifacts \
   --tag "${IMAGE_TAG}" \

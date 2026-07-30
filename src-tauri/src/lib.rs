@@ -7,6 +7,7 @@ mod attachment_service;
 mod backup_service;
 mod commands;
 mod database;
+mod encryption;
 mod error;
 mod models;
 mod pdf_service;
@@ -70,6 +71,7 @@ pub fn run() {
             commands::settings_commands::check_for_updates,
             commands::settings_commands::export_backup,
             commands::settings_commands::restore_backup,
+            commands::settings_commands::inspect_backup,
             commands::checklist_commands::create_checklist_template,
             commands::checklist_commands::get_checklist_templates,
             commands::checklist_commands::get_checklist_template_items,

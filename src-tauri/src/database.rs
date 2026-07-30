@@ -1,5 +1,6 @@
 use once_cell::sync::OnceCell;
 use rusqlite::{params, Connection, Result};
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io;
@@ -11,6 +12,16 @@ use uuid::Uuid;
 
 // Static connection pool for simple desktop usage
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
+const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
+const STORAGE_FORMAT_VERSION: u8 = 1;
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StorageMetadata {
+    format_version: u8,
+    key_version: u8,
+    authentication: String,
+}
 
 // Initialize the database connection
 pub fn init_db(app: &tauri::App) -> Result<()> {
@@ -28,9 +39,26 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
         ensure_private_dir(parent).map_err(io_error)?;
     }
 
+    let recovery_backup = if is_plaintext_database(&database_path()).map_err(io_error)? {
+        Some(create_pre_encryption_recovery_backup(
+            &database_path(),
+            &attachments_dir(),
+        )?)
+    } else {
+        None
+    };
+    let legacy_database = if recovery_backup.is_some() {
+        Some(migrate_plaintext_database(&database_path())?)
+    } else {
+        None
+    };
+
     // Open the connection once to run migrations with foreign keys enabled.
     let conn = get_db()?;
     run_migrations(&conn)?;
+    write_or_validate_storage_metadata()?;
+    crate::attachment_service::migrate_legacy_attachments(&conn, &attachments_dir())
+        .map_err(database_error)?;
     secure_private_file(&database_path()).map_err(io_error)?;
 
     drop(conn);
@@ -44,11 +72,150 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
         println!("[SEED] Demo seed data skipped in production.");
     }
 
+    if let Some(path) = legacy_database {
+        let _ = fs::remove_file(path);
+    }
+    if let Some(path) = recovery_backup {
+        println!(
+            "[MIGRATION] Encrypted pre-migration recovery backup created at {}.",
+            path.display()
+        );
+    }
+
     Ok(())
 }
 
 fn io_error(error: io::Error) -> rusqlite::Error {
     rusqlite::Error::ToSqlConversionFailure(Box::new(error))
+}
+
+fn database_error(error: impl std::fmt::Display) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error.to_string())))
+}
+
+fn create_pre_encryption_recovery_backup(
+    database_path: &Path,
+    attachments_path: &Path,
+) -> Result<PathBuf> {
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| database_error("Database path has no parent."))?;
+    let destination = parent.join(format!(
+        "opets-pre-encryption-v0.1.0-{}.osbkp",
+        Uuid::new_v4()
+    ));
+    crate::backup_service::export_backup_with_passphrase(
+        database_path,
+        attachments_path,
+        &destination,
+        None,
+    )
+    .map_err(database_error)?;
+    Ok(destination)
+}
+
+pub(crate) fn is_plaintext_database(path: &Path) -> io::Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let bytes = fs::read(path)?;
+    Ok(bytes.starts_with(SQLITE_HEADER))
+}
+
+fn storage_metadata_path() -> PathBuf {
+    let mut path = database_path();
+    path.set_extension("encryption.json");
+    path
+}
+
+fn metadata_payload(format_version: u8, key_version: u8) -> String {
+    format!("{format_version}:{key_version}")
+}
+
+fn write_or_validate_storage_metadata() -> Result<()> {
+    let path = storage_metadata_path();
+    let expected_authentication = crate::encryption::metadata_authentication(&metadata_payload(
+        STORAGE_FORMAT_VERSION,
+        crate::encryption::ACTIVE_KEY_VERSION,
+    ));
+    if path.exists() {
+        let metadata: StorageMetadata =
+            serde_json::from_slice(&fs::read(&path).map_err(io_error)?).map_err(database_error)?;
+        if metadata.format_version != STORAGE_FORMAT_VERSION
+            || metadata.key_version != crate::encryption::ACTIVE_KEY_VERSION
+            || metadata.authentication != expected_authentication
+        {
+            return Err(database_error(
+                "Unsupported or invalid encrypted storage metadata.",
+            ));
+        }
+        return Ok(());
+    }
+
+    let metadata = StorageMetadata {
+        format_version: STORAGE_FORMAT_VERSION,
+        key_version: crate::encryption::ACTIVE_KEY_VERSION,
+        authentication: expected_authentication,
+    };
+    fs::write(
+        &path,
+        serde_json::to_vec(&metadata).map_err(database_error)?,
+    )
+    .map_err(io_error)?;
+    secure_private_file(&path).map_err(io_error)
+}
+
+fn database_key_hex() -> String {
+    crate::encryption::database_key()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+pub(crate) fn open_encrypted_database(path: &Path) -> Result<Connection> {
+    let conn = Connection::open(path)?;
+    let key = database_key_hex();
+    conn.execute_batch(&format!(
+        "PRAGMA key = \"x'{key}'\"; PRAGMA cipher_memory_security = ON; PRAGMA foreign_keys = ON;"
+    ))?;
+    conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    Ok(conn)
+}
+
+fn quote_sql(value: &Path) -> String {
+    value.to_string_lossy().replace('\'', "''")
+}
+
+pub(crate) fn migrate_plaintext_database(path: &Path) -> Result<PathBuf> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| database_error("Database path has no parent."))?;
+    let staging_path = parent.join(format!(".opets-encrypted-{}.db", Uuid::new_v4()));
+    let recovery_path = parent.join(format!(".opets-plaintext-recovery-{}.db", Uuid::new_v4()));
+    let source = Connection::open(path)?;
+    let key = database_key_hex();
+    let export_result = source.execute_batch(&format!(
+        "ATTACH DATABASE '{}' AS encrypted KEY \"x'{}'\"; SELECT sqlcipher_export('encrypted'); DETACH DATABASE encrypted;",
+        quote_sql(&staging_path),
+        key,
+    ));
+    drop(source);
+    if let Err(error) = export_result {
+        let _ = fs::remove_file(&staging_path);
+        return Err(error);
+    }
+    let encrypted = open_encrypted_database(&staging_path)?;
+    encrypted.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?;
+    drop(encrypted);
+
+    fs::rename(path, &recovery_path).map_err(io_error)?;
+    if let Err(error) = fs::rename(&staging_path, path) {
+        let _ = fs::rename(&recovery_path, path);
+        return Err(io_error(error));
+    }
+    Ok(recovery_path)
 }
 
 pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
@@ -414,9 +581,7 @@ pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
 
 // Get database connection - returns a new connection using the stored path
 pub fn get_db() -> Result<Connection> {
-    let conn = Connection::open(database_path())?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    Ok(conn)
+    open_encrypted_database(&database_path())
 }
 
 pub fn database_path() -> PathBuf {
@@ -499,6 +664,78 @@ mod tests {
 
         assert!(table_count >= 14);
         assert_eq!(settings_count, 0);
+    }
+
+    #[test]
+    fn encrypted_database_cannot_be_read_without_the_application_key() {
+        let path = std::env::temp_dir().join(format!("opets-encrypted-{}.db", Uuid::new_v4()));
+        let conn = open_encrypted_database(&path).unwrap();
+        run_migrations(&conn).unwrap();
+        drop(conn);
+
+        assert!(Connection::open(&path)
+            .and_then(
+                |conn| conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row
+                    .get::<_, i64>(0))
+            )
+            .is_err());
+        assert!(open_encrypted_database(&path).is_ok());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn plaintext_database_is_migrated_to_encrypted_storage() {
+        let path = std::env::temp_dir().join(format!("opets-legacy-{}.db", Uuid::new_v4()));
+        let conn = Connection::open(&path).unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute(
+            "UPDATE settings SET company_name = 'Dados legados' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let recovery = migrate_plaintext_database(&path).unwrap();
+        assert!(Connection::open(&path)
+            .and_then(
+                |conn| conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row
+                    .get::<_, i64>(0))
+            )
+            .is_err());
+        let encrypted = open_encrypted_database(&path).unwrap();
+        let company_name: String = encrypted
+            .query_row(
+                "SELECT company_name FROM settings WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(company_name, "Dados legados");
+
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(recovery);
+    }
+
+    #[test]
+    fn creates_encrypted_recovery_backup_before_plaintext_migration() {
+        let directory = std::env::temp_dir().join(format!("opets-recovery-{}", Uuid::new_v4()));
+        let database = directory.join("database.db");
+        let attachments = directory.join("database.attachments");
+        fs::create_dir_all(&attachments).unwrap();
+        let conn = Connection::open(&database).unwrap();
+        run_migrations(&conn).unwrap();
+        drop(conn);
+
+        let backup = create_pre_encryption_recovery_backup(&database, &attachments).unwrap();
+        assert!(backup.exists());
+        assert!(
+            !crate::backup_service::inspect_backup(&backup)
+                .unwrap()
+                .requires_passphrase
+        );
+
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]

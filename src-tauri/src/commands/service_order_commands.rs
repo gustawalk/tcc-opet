@@ -285,7 +285,8 @@ pub(crate) fn create_full_service_order_with_conn(
                     "O armazenamento temporário de anexos está indisponível.",
                 )
             })?
-            .remove(token)
+            .get(token)
+            .cloned()
             .ok_or_else(|| {
                 AppError::new(
                     "Selected attachments are no longer available.",
@@ -303,6 +304,11 @@ pub(crate) fn create_full_service_order_with_conn(
     }
 
     tx.commit()?;
+    if let Some(token) = &request.attachment_token {
+        if let Ok(mut selections) = PENDING_ATTACHMENT_SELECTIONS.lock() {
+            selections.remove(token);
+        }
+    }
     Ok(order_id)
 }
 

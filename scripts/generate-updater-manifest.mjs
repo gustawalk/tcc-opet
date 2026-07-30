@@ -12,7 +12,7 @@ if (!assetsDirectory || !releaseTag || !repository || !releaseNotesFile) {
 }
 
 const version = releaseTag.replace(/^v/, "");
-const files = await readdir(assetsDirectory);
+const files = await readdir(assetsDirectory, { recursive: true });
 const notes = (await readFile(releaseNotesFile, "utf8")).trim();
 if (!notes) throw new Error("Release notes file must not be empty.");
 
@@ -38,7 +38,7 @@ const signatureFor = async (fileName) => {
 };
 
 const downloadUrl = (fileName) =>
-  `https://github.com/${repository}/releases/download/${releaseTag}/${encodeURIComponent(fileName)}`;
+  `https://github.com/${repository}/releases/download/${releaseTag}/${encodeURIComponent(path.basename(fileName))}`;
 
 const manifest = {
   version,

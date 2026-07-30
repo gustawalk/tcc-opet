@@ -8,10 +8,6 @@ import {
   ClipboardList, 
   Edit, 
   Trash2, 
-  Save, 
-  X,
-  ChevronDown,
-  ChevronUp,
   AlertTriangle,
 } from "lucide-react";
 import { 
@@ -23,7 +19,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { 
   Table, 
   TableBody, 
@@ -42,27 +37,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChecklistTemplate } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { templateSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-} from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
 
 const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
   return await invoke("get_checklist_templates");
-};
-
-const fetchTemplateItems = async (templateId: string): Promise<string[]> => {
-  return await invoke("get_checklist_template_items", { id: templateId });
 };
 
 export function Templates() {
@@ -72,11 +53,6 @@ export function Templates() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [items, setItems] = useState<string[]>([]);
-  const [newItem, setNewItem] = useState("");
-  const [errors, setErrors] = useState<ValidationErrors>({});
-  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: templates = [], isLoading, error, refetch } = useQuery({
@@ -119,82 +95,12 @@ export function Templates() {
 
   const handleAddTemplate = () => {
     setSelectedTemplate(null);
-    setErrors({});
-    setTitle("");
-    setItems([]);
-    setNewItem("");
     setIsSheetOpen(true);
   };
 
-  const handleEditTemplate = async (template: ChecklistTemplate) => {
+  const handleEditTemplate = (template: ChecklistTemplate) => {
     setSelectedTemplate(template);
-    setTitle(template.title);
-    try {
-      const templateItems = await fetchTemplateItems(template.id);
-      setItems(templateItems);
-    } catch (error) {
-      console.error("Error fetching template items:", error);
-      setItems(template.items || []);
-    }
-    setNewItem("");
     setIsSheetOpen(true);
-  };
-
-  const handleAddItem = () => {
-    if (newItem.trim()) {
-      setItems([...items, newItem.trim()]);
-      setNewItem("");
-      setErrors(clearFieldError(errors, "items"));
-    }
-  };
-
-  const handleRemoveItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
-
-  const handleMoveItem = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-    const nextItems = [...items];
-    [nextItems[index], nextItems[nextIndex]] = [nextItems[nextIndex], nextItems[index]];
-    setItems(nextItems);
-  };
-
-  const handleSave = async () => {
-    if (isSaving) return;
-    const result = templateSchema.safeParse({ title, items });
-    const fieldErrors = parseErrors(result);
-    if (fieldErrors) {
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-
-    try {
-      setIsSaving(true);
-      if (selectedTemplate) {
-        await invoke("update_checklist_template", {
-          id: selectedTemplate.id,
-          title,
-          items
-        });
-        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
-        setIsSheetOpen(false);
-        toastSuccess("Template atualizado com sucesso.");
-      } else {
-        await invoke("create_checklist_template", {
-          title,
-          items
-        });
-        await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
-        setIsSheetOpen(false);
-        toastSuccess("Template criado com sucesso.");
-      }
-    } catch (error) {
-      toastError(error, "Erro ao salvar template.");
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const handleDeleteTemplate = async (id: string) => {
@@ -332,89 +238,14 @@ export function Templates() {
           </CardContent>
         </Card>
 
-        {/* Sheet para Cadastro/Edição de Template */}
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent className="sm:max-w-md flex flex-col h-full">
-          <SheetHeader>
-            <SheetTitle>{selectedTemplate ? "Editar Template" : "Novo Template"}</SheetTitle>
-            <SheetDescription>
-              Crie uma lista de verificação para ser preenchida na entrada de aparelhos.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-hidden flex flex-col gap-6 py-6">
-            <div className="grid gap-2">
-              <Label htmlFor="title">Título do Template</Label>
-              <Input 
-                id="title" 
-                value={title}
-                placeholder="Ex: Checklist iPhone"
-                onChange={(e) => { setTitle(e.target.value); setErrors(clearFieldError(errors, "title")); }}
-              />
-              {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
-            </div>
-            
-            <Separator />
-
-            <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-              <Label>Itens do Checklist</Label>
-              {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
-              <div className="flex gap-2">
-                <Input 
-                  placeholder="Novo item..." 
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddItem()}
-                />
-                <Button size="icon" onClick={handleAddItem}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <ScrollArea className="flex-1 border rounded-md p-2">
-                <div className="space-y-2">
-                  {items.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2 group bg-muted/50 p-2 rounded-sm border border-transparent hover:border-primary/20 transition-colors">
-                       <span className="text-sm flex-1">{item}</span>
-                       <div className="flex items-center">
-                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label={`Mover ${item} para cima`} onClick={() => handleMoveItem(index, -1)} disabled={index === 0}>
-                           <ChevronUp className="h-3 w-3" />
-                         </Button>
-                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label={`Mover ${item} para baixo`} onClick={() => handleMoveItem(index, 1)} disabled={index === items.length - 1}>
-                           <ChevronDown className="h-3 w-3" />
-                         </Button>
-                       </div>
-                       <Button
-                         type="button"
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleRemoveItem(index)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                  {items.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground text-xs italic">
-                      Nenhum item adicionado ainda.
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
-          </div>
-
-          <SheetFooter className="pt-4 border-t">
-            <Button variant="outline" className="w-full" onClick={() => setIsSheetOpen(false)}>
-              Cancelar
-            </Button>
-            <Button className="w-full gap-2" onClick={handleSave} disabled={isSaving}>
-              <Save className="h-4 w-4" /> {isSaving ? "Salvando..." : selectedTemplate ? "Salvar Alterações" : "Criar Template"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <ChecklistTemplateSheet
+        open={isSheetOpen}
+        onOpenChange={(open) => {
+          setIsSheetOpen(open);
+          if (!open) setSelectedTemplate(null);
+        }}
+        template={selectedTemplate}
+      />
 
       {confirmDeleteId && (
         <div

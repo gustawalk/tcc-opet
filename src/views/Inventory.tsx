@@ -12,9 +12,6 @@ import {
   Edit,
   Trash2,
   History,
-  Save,
-  DollarSign,
-  Box,
 } from "lucide-react";
 import {
   Card,
@@ -26,7 +23,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -62,12 +58,12 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
-import { inventoryItemSchema, quantitySchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
+import { quantitySchema, parseErrors, ValidationErrors } from "@/lib/validation";
 import { useSort } from "@/hooks/useSort";
 import { Copyable } from "@/components/shared/Copyable";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
+import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
@@ -75,32 +71,6 @@ const fetchInventory = async (): Promise<InventoryItem[]> => {
 
 const fetchMovements = async (itemId: string): Promise<InventoryMovement[]> => {
   return await invoke<InventoryMovement[]>("get_inventory_movements", { id: itemId });
-};
-
-const createInventoryItem = async (item: Omit<InventoryItem, "id" | "createdAt" | "deletedAt">) => {
-  return await invoke<InventoryItem>("create_inventory_item", {
-    name: item.name,
-    description: item.description,
-    type: item.type,
-    minQuantity: item.minQuantity,
-    currentQuantity: item.type === "part" ? 0 : 999,
-    costPrice: item.costPrice,
-    salePrice: item.salePrice,
-    supplierName: item.supplierName,
-  });
-};
-
-const updateInventoryItem = async (item: InventoryItem) => {
-  return await invoke("update_inventory_item", {
-    id: item.id,
-    name: item.name,
-    description: item.description,
-    type: item.type,
-    minQuantity: item.minQuantity,
-    costPrice: item.costPrice,
-    salePrice: item.salePrice,
-    supplierName: item.supplierName,
-  });
 };
 
 const deleteInventoryItem = async (id: string) => {
@@ -111,19 +81,8 @@ export function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [createType, setCreateType] = useState<InventoryItem["type"]>("part");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    type: "part" as "part" | "service",
-    minQuantity: 0,
-    costPrice: 0,
-    salePrice: 0,
-    supplierName: ""
-  });
-  const [errors, setErrors] = useState<ValidationErrors>({});
   const [restockErrors, setRestockErrors] = useState<ValidationErrors>({});
   const [removeErrors, setRemoveErrors] = useState<ValidationErrors>({});
 
@@ -149,24 +108,6 @@ export function Inventory() {
 
   const queryClient = useQueryClient();
   const { sortConfig, cycleSort } = useSort();
-
-  const createMutation = useMutation({
-    mutationFn: createInventoryItem,
-    onSuccess: (item) => {
-      queryClient.setQueryData<InventoryItem[]>(["inventory"], (items = []) => [item, ...items]);
-      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
-    },
-    onError: (err) => toastError(err, "Erro ao criar item."),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: updateInventoryItem,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
-    },
-    onError: (err) => toastError(err, "Erro ao atualizar item."),
-  });
 
   const deleteMutation = useMutation({
     mutationFn: deleteInventoryItem,
@@ -319,69 +260,13 @@ export function Inventory() {
 
   const handleAddItem = (type: "part" | "service" = "part") => {
     setSelectedItem(null);
-    setErrors({});
-    setFormData({
-      name: "",
-      description: "",
-      type: type,
-      minQuantity: type === "part" ? 5 : 0,
-      costPrice: 0,
-      salePrice: 0,
-      supplierName: ""
-    });
+    setCreateType(type);
     setIsSheetOpen(true);
   };
 
   const handleEditItem = (item: InventoryItem) => {
     setSelectedItem(item);
-    setErrors({});
-    setFormData({
-      name: item.name,
-      description: item.description,
-      type: item.type,
-      minQuantity: item.minQuantity,
-      costPrice: item.costPrice,
-      salePrice: item.salePrice,
-      supplierName: item.supplierName ?? ""
-    });
     setIsSheetOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (createMutation.isPending || updateMutation.isPending) return;
-    const result = inventoryItemSchema.safeParse(formData);
-    const fieldErrors = parseErrors(result);
-    if (fieldErrors) {
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-    try {
-      if (selectedItem) {
-        await updateMutation.mutateAsync({
-          ...selectedItem,
-          ...formData,
-        });
-      } else {
-        await createMutation.mutateAsync({
-          ...formData,
-          currentQuantity: formData.type === "part" ? 0 : 999,
-        } as Omit<InventoryItem, "id" | "createdAt" | "deletedAt">);
-      }
-    } catch {
-      return;
-    }
-    setIsSheetOpen(false);
-    setSelectedItem(null);
-    setFormData({
-      name: "",
-      description: "",
-      type: "part",
-      minQuantity: 0,
-      costPrice: 0,
-      salePrice: 0,
-      supplierName: ""
-    });
   };
 
   const handleDeleteItem = (id: string) => {
@@ -849,105 +734,15 @@ export function Inventory() {
         </SheetContent>
       </Sheet>
 
-      {/* Sheet para Cadastro/Edição de Item */}
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>
-              {selectedItem ? "Editar" : "Novo"} {formData.type === "part" ? "Item no Estoque" : "Serviço"}
-            </SheetTitle>
-            <SheetDescription>
-              {formData.type === "part"
-                ? "Cadastre peças e insumos para gerenciar seu estoque."
-                : "Cadastre serviços e mão de obra para suas ordens de serviço."}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="grid gap-4 py-6">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Nome do {formData.type === "part" ? "Produto" : "Serviço"}</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                placeholder={formData.type === "part" ? "Ex: Tela iPhone 11" : "Ex: Mão de obra Drone"}
-                onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setErrors(clearFieldError(errors, "name")); }}
-              />
-              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Descrição</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                placeholder="Ex: Detalhes adicionais..."
-                onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(clearFieldError(errors, "description")); }}
-              />
-              {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
-            </div>
-            <div className="grid gap-2"><Label htmlFor="supplier">Fornecedor (opcional)</Label><Input id="supplier" value={formData.supplierName} placeholder="Ex.: Distribuidora ABC" onChange={(event) => setFormData({ ...formData, supplierName: event.target.value })} /></div>
-
-            <Separator />
-
-            {formData.type === "part" && (
-              <div className="grid gap-2">
-                <Label htmlFor="min">Qtd. Mínima (Alerta)</Label>
-                <div className="relative">
-                  <Box className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="min"
-                    type="number"
-                    className="pl-9"
-                    value={formData.minQuantity}
-                    onChange={(e) => { setFormData({ ...formData, minQuantity: parseInt(e.target.value) || 0 }); setErrors(clearFieldError(errors, "minQuantity")); }}
-                  />
-                </div>
-                {errors.minQuantity && <p className="text-xs text-destructive">{errors.minQuantity}</p>}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="cost">{formData.type === "part" ? "Preço de Custo" : "Custo Estimado"}</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="cost"
-                    type="number"
-                    step="0.01"
-                    className="pl-9"
-                    value={formData.costPrice}
-                    onChange={(e) => { setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 }); setErrors(clearFieldError(errors, "costPrice")); }}
-                  />
-                </div>
-                {errors.costPrice && <p className="text-xs text-destructive">{errors.costPrice}</p>}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="sale">Preço de Venda</Label>
-                <div className="relative">
-                  <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
-                  <Input
-                    id="sale"
-                    type="number"
-                    step="0.01"
-                    className="pl-9"
-                    value={formData.salePrice}
-                    onChange={(e) => { setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 }); setErrors(clearFieldError(errors, "salePrice")); }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <SheetFooter>
-            <Button variant="outline" className="w-full" onClick={() => setIsSheetOpen(false)}>
-              Cancelar
-            </Button>
-            <Button className="w-full gap-2" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
-              <Save className="h-4 w-4" /> {createMutation.isPending || updateMutation.isPending ? "Salvando..." : selectedItem ? "Salvar Alterações" : "Cadastrar"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <InventoryItemSheet
+        open={isSheetOpen}
+        onOpenChange={(open) => {
+          setIsSheetOpen(open);
+          if (!open) setSelectedItem(null);
+        }}
+        initialType={createType}
+        item={selectedItem}
+      />
 
       {confirmDeleteId && (
         <div

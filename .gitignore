@@ -23,6 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 *.md
+!docs/**/*.md
 
 database.db
 
@@ -31,6 +32,7 @@ database.db
 
 # Runtime data
 src-tauri/database.attachments/
+src-tauri/database.encryption.json
 src-tauri/database.pdf-previews/
 
 # Rust / Tauri build artifacts

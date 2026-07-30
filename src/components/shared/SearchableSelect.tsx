@@ -15,6 +15,8 @@ interface SearchableSelectProps<T> {
   getKey: (item: T) => string;
   getLabel: (item: T) => string;
   getSubtitle?: (item: T) => string | undefined;
+  createLabel?: string;
+  onCreate?: () => void;
   className?: string;
 }
 
@@ -30,6 +32,8 @@ export function SearchableSelect<T>({
   getKey,
   getLabel,
   getSubtitle,
+  createLabel,
+  onCreate,
   className,
 }: SearchableSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
@@ -232,6 +236,21 @@ export function SearchableSelect<T>({
               </div>
             )}
           </div>
+          {createLabel && onCreate && (
+            <div className="border-t p-1">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-full justify-start text-sm text-primary"
+                onClick={() => {
+                  close();
+                  onCreate();
+                }}
+              >
+                {createLabel}
+              </Button>
+            </div>
+          )}
         </Card>
       )}
     </div>

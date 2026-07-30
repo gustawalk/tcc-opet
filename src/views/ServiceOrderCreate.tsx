@@ -15,6 +15,7 @@ import {
   Trash2,
   User,
   Wrench,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
+import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
 import {
   ServiceOrderItemLine,
   ServiceOrderItemsEditor,
@@ -84,6 +87,10 @@ export function ServiceOrderCreate() {
   const [selectedTemplate, setSelectedTemplate] =
     useState<ChecklistTemplate | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [isTemplateSheetOpen, setIsTemplateSheetOpen] = useState(false);
+  const [createInventoryType, setCreateInventoryType] = useState<
+    InventoryItem["type"] | null
+  >(null);
   const [pendingAttachments, setPendingAttachments] =
     useState<PendingAttachmentSelection | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -175,6 +182,26 @@ export function ServiceOrderCreate() {
       address: customer.address,
     }));
   };
+  const clearSelectedCustomer = () => {
+    setSelectedCustomer(null);
+    setOriginalCustomer(null);
+    setCustomerSearch("");
+    setShowCustomers(false);
+    setFormData((data) => ({
+      ...data,
+      phone: "",
+      email: "",
+      address: "",
+    }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.name;
+      delete next.phone;
+      delete next.email;
+      delete next.address;
+      return next;
+    });
+  };
   const addItem = (item: InventoryItem) => {
     setLines((current) =>
       current.some((line) => line.inventoryItemId === item.id)
@@ -194,6 +221,16 @@ export function ServiceOrderCreate() {
                   item.type === "part" ? item.currentQuantity : undefined,
               },
             ],
+    );
+  };
+  const applyTemplate = (template: ChecklistTemplate) => {
+    setSelectedTemplate(template);
+    setChecklistItems(
+      template.items.map((label, index) => ({
+        id: String(index),
+        label,
+        checked: false,
+      })),
     );
   };
   const changeQuantity = (line: ServiceOrderItemLine, next: number) => {
@@ -335,7 +372,7 @@ export function ServiceOrderCreate() {
       )}
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="md:col-span-2">
-          <CardHeader>
+          <CardHeader className="relative pr-14">
             <CardTitle className="flex gap-2">
               <User className="h-5 w-5 text-primary" />
               Dados do Cliente
@@ -343,6 +380,19 @@ export function ServiceOrderCreate() {
             <CardDescription>
               Procure um cliente existente ou cadastre um novo.
             </CardDescription>
+            {selectedCustomer && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-4 top-4 h-8 w-8"
+                aria-label="Limpar cliente selecionado"
+                title="Limpar cliente selecionado"
+                onClick={clearSelectedCustomer}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div ref={customerRef} className="relative">
@@ -537,21 +587,14 @@ export function ServiceOrderCreate() {
             <SearchableSelect
               options={templates}
               value={selectedTemplate?.id ?? null}
-              onSelect={(template) => {
-                setSelectedTemplate(template);
-                setChecklistItems(
-                  template.items.map((label, index) => ({
-                    id: String(index),
-                    label,
-                    checked: false,
-                  })),
-                );
-              }}
+              onSelect={applyTemplate}
               placeholder="Selecione um modelo..."
               searchPlaceholder="Buscar template..."
               maxOptions={5}
               getKey={(template) => template.id}
               getLabel={(template) => template.title}
+              createLabel="Novo checklist"
+              onCreate={() => setIsTemplateSheetOpen(true)}
             />
             {checklistItems.map((item) => (
               <div className="flex gap-2 items-center" key={item.id}>
@@ -580,6 +623,8 @@ export function ServiceOrderCreate() {
           onRemove={(line) =>
             setLines((current) => current.filter((entry) => entry.id !== line.id))
           }
+          onCreatePart={() => setCreateInventoryType("part")}
+          onCreateService={() => setCreateInventoryType("service")}
         />
         <Card>
           <CardHeader>
@@ -683,6 +728,20 @@ export function ServiceOrderCreate() {
             {isSubmitting ? "Criando..." : "Criar OS"}
           </Button>
         </div>
+        <ChecklistTemplateSheet
+          open={isTemplateSheetOpen}
+          onOpenChange={setIsTemplateSheetOpen}
+          onCreated={applyTemplate}
+        />
+        <InventoryItemSheet
+          open={createInventoryType !== null}
+          onOpenChange={(open) => {
+            if (!open) setCreateInventoryType(null);
+          }}
+          initialType={createInventoryType ?? "part"}
+          initialPartQuantity={1}
+          onCreated={addItem}
+        />
       </div>
     </form>
   );

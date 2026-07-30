@@ -30,8 +30,10 @@ RUN yarn install --frozen-lockfile
 COPY . .
 RUN --mount=type=secret,id=tauri_signing_private_key \
     --mount=type=secret,id=tauri_signing_private_key_password \
+    --mount=type=secret,id=opets_data_key_v1 \
     TAURI_SIGNING_PRIVATE_KEY="$(cat /run/secrets/tauri_signing_private_key)" \
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat /run/secrets/tauri_signing_private_key_password)" \
+    OPETS_DATA_KEY_V1="$(cat /run/secrets/opets_data_key_v1)" \
     yarn tauri build --bundles appimage
 
 FROM busybox:1.36.1 AS artifacts

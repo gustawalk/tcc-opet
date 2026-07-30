@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, Database, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, Database, Eye, EyeOff, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,6 +25,7 @@ import {
   type Settings,
   type SystemInfo,
   type BackupSummary,
+  type BackupInspection,
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
@@ -49,6 +50,8 @@ type UpdateProgress = {
   phase: "downloading" | "installing";
 };
 
+type BackupPassphraseDialogMode = "export" | "restore";
+
 const formatVersion = (version: string) => (version.startsWith("v") ? version : `v${version}`);
 
 export function Settings() {
@@ -56,6 +59,12 @@ export function Settings() {
   const navigate = useNavigate();
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [restoreSource, setRestoreSource] = useState<string | null>(null);
+  const [restorePassphrase, setRestorePassphrase] = useState("");
+  const [pendingRestoreSource, setPendingRestoreSource] = useState<string | null>(null);
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [isBackupPassphraseVisible, setIsBackupPassphraseVisible] = useState(false);
+  const [backupPassphraseDialog, setBackupPassphraseDialog] =
+    useState<BackupPassphraseDialogMode | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetStarting, setIsResetStarting] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
@@ -100,15 +109,18 @@ export function Settings() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: async (destination: string) => invoke<BackupSummary>("export_backup", { destination }),
+    mutationFn: async ({ destination, passphrase }: { destination: string; passphrase: string }) =>
+      invoke<BackupSummary>("export_backup", { destination, passphrase }),
     onSuccess: (backup) => toastSuccess(`Backup exportado com ${backup.attachmentCount} anexo(s).`),
     onError: (err) => toastError(err, "Erro ao exportar backup."),
   });
 
   const restoreMutation = useMutation({
-    mutationFn: async (source: string) => invoke<BackupSummary>("restore_backup", { source }),
+    mutationFn: async ({ source, passphrase }: { source: string; passphrase: string }) =>
+      invoke<BackupSummary>("restore_backup", { source, passphrase }),
     onSuccess: async (backup) => {
       setRestoreSource(null);
+      setRestorePassphrase("");
       await queryClient.invalidateQueries();
       toastSuccess(`Backup restaurado com ${backup.attachmentCount} anexo(s).`);
     },
@@ -211,13 +223,14 @@ export function Settings() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (passphrase: string) => {
     try {
       const destination = await save({
         defaultPath: "opets-backup.osbkp",
         filters: [{ name: "Backup OPETS", extensions: ["osbkp"] }],
       });
-      if (destination) exportMutation.mutate(destination);
+      if (!destination) return;
+      exportMutation.mutate({ destination, passphrase });
     } catch (err) {
       toastError(err, "Erro ao selecionar o destino do backup.");
     }
@@ -229,7 +242,19 @@ export function Settings() {
         multiple: false,
         filters: [{ name: "Backup OPETS", extensions: ["osbkp"] }],
       });
-      if (typeof selected === "string") setRestoreSource(selected);
+      if (typeof selected !== "string") return;
+      const inspection = await invoke<BackupInspection>("inspect_backup", {
+        source: selected,
+      });
+      if (inspection.requiresPassphrase) {
+        setPendingRestoreSource(selected);
+        setBackupPassphrase("");
+        setIsBackupPassphraseVisible(false);
+        setBackupPassphraseDialog("restore");
+      } else {
+        setRestorePassphrase("");
+        setRestoreSource(selected);
+      }
     } catch (err) {
       toastError(err, "Erro ao selecionar o arquivo de backup.");
     }
@@ -242,6 +267,29 @@ export function Settings() {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
     setThemePreference(nextTheme);
+  };
+  const closeBackupPassphraseDialog = () => {
+    setBackupPassphraseDialog(null);
+    setBackupPassphrase("");
+    setIsBackupPassphraseVisible(false);
+    setPendingRestoreSource(null);
+  };
+  const confirmBackupPassphrase = () => {
+    const mode = backupPassphraseDialog;
+    const passphrase = backupPassphrase;
+    setBackupPassphraseDialog(null);
+    setBackupPassphrase("");
+    setIsBackupPassphraseVisible(false);
+
+    if (mode === "export") {
+      void handleExport(passphrase);
+      return;
+    }
+    if (mode === "restore" && pendingRestoreSource) {
+      setRestorePassphrase(passphrase);
+      setRestoreSource(pendingRestoreSource);
+    }
+    setPendingRestoreSource(null);
   };
   const updateProgressPercentage = updateProgress?.totalBytes
     ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
@@ -375,7 +423,17 @@ export function Settings() {
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleExport} disabled={exportMutation.isPending}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={() => {
+                    setBackupPassphrase("");
+                    setIsBackupPassphraseVisible(false);
+                    setBackupPassphraseDialog("export");
+                  }}
+                  disabled={exportMutation.isPending}
+                >
                   <Save className="h-4 w-4" /> {exportMutation.isPending ? "Exportando..." : "Exportar Backup"}
                 </Button>
                 <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
@@ -455,10 +513,74 @@ export function Settings() {
         </Card>
       )}
 
+      <AlertDialog
+        open={backupPassphraseDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) closeBackupPassphraseDialog();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {backupPassphraseDialog === "export"
+                ? "Proteger backup"
+                : "Senha do backup"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {backupPassphraseDialog === "export"
+                ? "Defina uma senha para proteger este backup. Deixe em branco para usar a chave do aplicativo."
+                : "Informe a senha se este backup foi exportado com uma. Deixe em branco para backups sem senha."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="backup-passphrase">
+              Senha <span className="font-normal text-muted-foreground">(opcional)</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="backup-passphrase"
+                type={isBackupPassphraseVisible ? "text" : "password"}
+                autoComplete={
+                  backupPassphraseDialog === "export" ? "new-password" : "current-password"
+                }
+                className="pr-10"
+                value={backupPassphrase}
+                onChange={(event) => setBackupPassphrase(event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full w-10 text-muted-foreground"
+                aria-label={isBackupPassphraseVisible ? "Ocultar senha" : "Mostrar senha"}
+                onClick={() => setIsBackupPassphraseVisible((visible) => !visible)}
+              >
+                {isBackupPassphraseVisible ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button type="button" onClick={confirmBackupPassphrase}>
+              Continuar
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {restoreSource && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto"
-          onClick={() => !restoreMutation.isPending && setRestoreSource(null)}
+          onClick={() => {
+            if (!restoreMutation.isPending) {
+              setRestoreSource(null);
+              setRestorePassphrase("");
+            }
+          }}
         >
           <div
             className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
@@ -469,14 +591,26 @@ export function Settings() {
               Os dados atuais serão substituídos pelo conteúdo deste backup. Esta ação não pode ser desfeita.
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRestoreSource(null)} disabled={restoreMutation.isPending}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRestoreSource(null);
+                  setRestorePassphrase("");
+                }}
+                disabled={restoreMutation.isPending}
+              >
                 Cancelar
               </Button>
               <Button
                 variant="destructive"
                 disabled={restoreMutation.isPending}
                 onClick={() => {
-                  if (restoreSource) restoreMutation.mutate(restoreSource);
+                  if (restoreSource) {
+                    restoreMutation.mutate({
+                      source: restoreSource,
+                      passphrase: restorePassphrase,
+                    });
+                  }
                 }}
               >
                 {restoreMutation.isPending ? "Restaurando..." : "Restaurar backup"}
@@ -537,7 +671,7 @@ export function Settings() {
               {pendingUpdate.body?.trim() && (
                 <div className="space-y-1">
                   <p className="font-medium">Notas da versão</p>
-                  <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/50 p-3 text-muted-foreground">
+                  <p className="max-h-48 overflow-y-auto whitespace-pre-line rounded-md border bg-muted/50 p-3 text-muted-foreground">
                     {pendingUpdate.body}
                   </p>
                 </div>

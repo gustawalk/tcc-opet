@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpetS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.walk.tcc-opet",
   "build": {
     "beforeDevCommand": "yarn dev",
@@ -25,7 +25,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5RjY1RDIwRjA4RjEyNTQKUldSVUVvL3dJRjMycVdGRTBzK25mVHA0NWQ5WGhBTDI1alh2T2Fma00zTmJyMzZMTFNnNWp5UDMK",
       "endpoints": [
-        "https://raw.githubusercontent.com/gustawalk/tcc-opet/main/updater.json"
+        "https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json"
       ]
     }
   },

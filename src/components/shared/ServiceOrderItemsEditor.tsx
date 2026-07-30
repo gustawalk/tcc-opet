@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, DollarSign, Search, Trash2 } from "lucide-react";
+import { Check, DollarSign, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,8 @@ interface ServiceOrderItemsEditorProps {
     quantity: number,
   ) => void | Promise<void>;
   onRemove: (line: ServiceOrderItemLine) => void | Promise<void>;
+  onCreatePart?: () => void;
+  onCreateService?: () => void;
 }
 
 function TruncatedItemName({
@@ -84,6 +86,8 @@ export function ServiceOrderItemsEditor({
   onSelectItem,
   onQuantityChange,
   onRemove,
+  onCreatePart,
+  onCreateService,
 }: ServiceOrderItemsEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
@@ -114,6 +118,12 @@ export function ServiceOrderItemsEditor({
       Math.min(line.maxQuantity ?? requested, requested),
     );
     void onQuantityChange(line, quantity);
+  };
+  const createItem = (type: "part" | "service") => {
+    setSearch("");
+    setShowItems(false);
+    if (type === "part") onCreatePart?.();
+    else onCreateService?.();
   };
 
   return (
@@ -146,8 +156,9 @@ export function ServiceOrderItemsEditor({
             </div>
             {showItems && (
               <Card className="absolute z-10 mt-1 w-full shadow-lg">
-                <CardContent className="max-h-48 overflow-auto p-1">
-                  {filteredItems.map((item) => {
+                <CardContent className="p-1">
+                  <div className="max-h-48 overflow-auto">
+                    {filteredItems.map((item) => {
                     const unavailable =
                       item.type === "part" && item.currentQuantity <= 0;
                     const isSelected = lines.some(
@@ -187,7 +198,39 @@ export function ServiceOrderItemsEditor({
                         </span>
                       </button>
                     );
-                  })}
+                    })}
+                    {!filteredItems.length && (
+                      <p className="p-4 text-center text-xs italic text-muted-foreground">
+                        Nenhum resultado encontrado.
+                      </p>
+                    )}
+                  </div>
+                  {(onCreatePart || onCreateService) && (
+                    <div className="mt-1 flex gap-1 border-t pt-1">
+                      {onCreatePart && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="flex-1 justify-start text-primary"
+                          onClick={() => createItem("part")}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Nova peça
+                        </Button>
+                      )}
+                      {onCreateService && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="flex-1 justify-start text-primary"
+                          onClick={() => createItem("service")}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Novo serviço
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

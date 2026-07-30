@@ -184,21 +184,32 @@ pub fn check_for_updates() -> Result<UpdateCheck, AppError> {
 #[command]
 pub fn export_backup(
     destination: String,
+    passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
-    crate::backup_service::export_backup_with_paths(
+    crate::backup_service::export_backup_with_passphrase(
         &crate::database::database_path(),
         &crate::database::attachments_dir(),
         Path::new(&destination),
+        passphrase.as_deref(),
     )
 }
 
 #[command]
-pub fn restore_backup(source: String) -> Result<crate::backup_service::BackupSummary, AppError> {
-    crate::backup_service::restore_backup_with_paths(
+pub fn restore_backup(
+    source: String,
+    passphrase: Option<String>,
+) -> Result<crate::backup_service::BackupSummary, AppError> {
+    crate::backup_service::restore_backup_with_passphrase(
         Path::new(&source),
         &crate::database::database_path(),
         &crate::database::attachments_dir(),
+        passphrase.as_deref(),
     )
+}
+
+#[command]
+pub fn inspect_backup(source: String) -> Result<crate::backup_service::BackupInspection, AppError> {
+    crate::backup_service::inspect_backup(Path::new(&source))
 }
 
 fn logo_data_url(path: &Path) -> Result<String, AppError> {

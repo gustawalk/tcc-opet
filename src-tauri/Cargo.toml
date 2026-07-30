@@ -1,6 +1,6 @@
 [package]
 name = "tcc-opet"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -25,7 +25,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
 uuid = { version = "1.4", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.5.0"
@@ -39,3 +39,7 @@ headless_chrome = "1.0"
 ureq = "3"
 infer = "0.19"
 tauri-plugin-process = "2"
+blake3 = "1"
+chacha20poly1305 = "0.10"
+rand = "0.8"
+argon2 = "0.5"

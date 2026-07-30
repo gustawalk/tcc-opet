@@ -1,14 +1,14 @@
 {
   "version": "0.1.1",
   "notes": "OpetS v0.1.1\n\nNovidades\n- Crie checklists, peças e serviços sem sair da nova ordem de serviço.\n- Consulte o histórico de ordens de serviço de um cliente pela tela de clientes ou pela lista de OS.\n- Receba um aviso discreto quando houver uma atualização disponível.\n\nProteção de dados\n- Banco de dados, anexos e novos backups passam a ser protegidos contra visualização casual de arquivos locais.\n- A primeira abertura da nova versão cria um backup de recuperação e migra os dados existentes automaticamente.\n- Backups podem receber uma senha opcional.\n\nImportante\n- Backups antigos da versão 0.1.0 continuam podendo ser importados.\n- A senha de backup só é solicitada quando o arquivo foi protegido por senha.\n- Não faça downgrade para a versão 0.1.0 depois da migração: ela não consegue abrir os dados protegidos.",
-  "pub_date": "2026-07-30T06:46:39.045Z",
+  "pub_date": "2026-07-30T07:15:14.301Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycVRiWGhvRE1pRzdHTFNiQWtDWk80TDN1MEI2aWEreFpRQ2dsZ3NvVmlOdHBTTy9JZHN6aGlIMEw5c3RsMDJ3OG5TWHpXZVRQOU9hNHZaejIvZEFXOGc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzkzNzA1CWZpbGU6T3BldFNfMC4xLjFfeDY0LXNldHVwLmV4ZQp4cXBKMkdHQ0ttR2xRcEgwVG1MKzcxU1ZCbk5QRXRuSUtIcFBuZnhqVWZCTnhQcWpBZkdxYVZYY2dCMFRRWGQxWUVFNHE1MnAyZ3c5b2xMeCt3U09Bdz09Cg==",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycVJ1UVdvRkxlS3NScmUyZHViZElIVEF0WnF3RXVIY09lY3lxWHczelFXaGhOVFg1V3VjSndSbktJMVVnSjA2UlMrL1Z4Z0d1dUpabVlmbWhJdEM0L2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1Mzk1NDIxCWZpbGU6T3BldFNfMC4xLjFfeDY0LXNldHVwLmV4ZQozT1VSOVRLanhWWXpPUVZ5cGt3L1I1MlJnajNQaVMvNnhxNVdLTTQwQUtqWWZzZGJXUk5yUG5VU0x0K3RibkpCTmRKRU1Qa2ZnaUNoMTVKN1dXN3FDdz09Cg==",
       "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.1/OpetS_0.1.1_x64-setup.exe"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycVJMN0ZqRjhLL01xNmpPV01kMUtnSTJsQXNVbXd2NSsybWJiRnhacGhsN3ozb2VmNkNVUnF0d3gyQ0tDSTU0Z21Tbzl4ajFzdzFwdDBaNFQ4aEp5REEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzkzOTc1CWZpbGU6T3BldFNfMC4xLjFfYW1kNjQuQXBwSW1hZ2UKUllwNldpZmFDdFE0dU1TZWRPUncrU3BzMmdrWHVtc0VrV2E2QVRYMjdjWEFiZldIeDYwQ1JVTUdKWXEwZUpZMGxldlFic2oxTUJmVHo4TzN6MmgwQ3c9PQo=",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSVUVvL3dJRjMycVRycWRxZVE1WStjNmp0S280M2VLK0hvdEVtNUlmZ2hla2FOY2ozb0RrbzNWSDhNaVZtWXdjL28wS0xma3ltQXl0ME1ScStxT1cvMVdKaFNVbXVqOFFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1Mzk1Njg2CWZpbGU6T3BldFNfMC4xLjFfYW1kNjQuQXBwSW1hZ2UKMFUxclk1YU5RSnB6SDdsSGNVc3d6cE04VzNFQzJaU1JMTm9IQUlUd2VrMmpNN09ySXYyMWtLNTI3RjBEcWpLTkNRaC9RZUFtcVVJMXRKa1RCMTdZQ3c9PQo=",
       "url": "https://github.com/gustawalk/tcc-opet/releases/download/v0.1.1/OpetS_0.1.1_amd64.AppImage"
     }
   }

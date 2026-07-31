@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, Database, Eye, EyeOff, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, Database, Eye, EyeOff, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -15,6 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +37,7 @@ import {
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
 import { toastSuccess, toastError } from "@/lib/errors";
+import { releaseNotes } from "@/lib/release-notes";
 import {
   getThemePreference,
   setThemePreference,
@@ -52,6 +60,8 @@ type UpdateProgress = {
 
 type BackupPassphraseDialogMode = "export" | "restore";
 
+const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
+
 const formatVersion = (version: string) => (version.startsWith("v") ? version : `v${version}`);
 
 export function Settings() {
@@ -65,6 +75,7 @@ export function Settings() {
   const [isBackupPassphraseVisible, setIsBackupPassphraseVisible] = useState(false);
   const [backupPassphraseDialog, setBackupPassphraseDialog] =
     useState<BackupPassphraseDialogMode | null>(null);
+  const [isValidatingBackupPassphrase, setIsValidatingBackupPassphrase] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetStarting, setIsResetStarting] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
@@ -72,6 +83,7 @@ export function Settings() {
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
+  const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
@@ -161,6 +173,12 @@ export function Settings() {
     if (!pendingUpdate) return;
 
     try {
+      if (pendingUpdate.body?.trim()) {
+        localStorage.setItem(
+          UPDATE_PATCH_NOTES_STORAGE_KEY,
+          JSON.stringify({ version: pendingUpdate.version, body: pendingUpdate.body }),
+        );
+      }
       setIsUpdating(true);
       setUpdateProgress({ downloadedBytes: 0, phase: "downloading" });
 
@@ -274,22 +292,36 @@ export function Settings() {
     setIsBackupPassphraseVisible(false);
     setPendingRestoreSource(null);
   };
-  const confirmBackupPassphrase = () => {
+  const confirmBackupPassphrase = async () => {
     const mode = backupPassphraseDialog;
     const passphrase = backupPassphrase;
-    setBackupPassphraseDialog(null);
-    setBackupPassphrase("");
-    setIsBackupPassphraseVisible(false);
 
     if (mode === "export") {
+      setBackupPassphraseDialog(null);
+      setBackupPassphrase("");
+      setIsBackupPassphraseVisible(false);
       void handleExport(passphrase);
       return;
     }
     if (mode === "restore" && pendingRestoreSource) {
-      setRestorePassphrase(passphrase);
-      setRestoreSource(pendingRestoreSource);
+      try {
+        setIsValidatingBackupPassphrase(true);
+        await invoke("validate_backup_passphrase", {
+          source: pendingRestoreSource,
+          passphrase,
+        });
+        setRestorePassphrase(passphrase);
+        setRestoreSource(pendingRestoreSource);
+        setBackupPassphraseDialog(null);
+        setBackupPassphrase("");
+        setIsBackupPassphraseVisible(false);
+        setPendingRestoreSource(null);
+      } catch (err) {
+        toastError(err, "Não foi possível validar a senha do backup.");
+      } finally {
+        setIsValidatingBackupPassphrase(false);
+      }
     }
-    setPendingRestoreSource(null);
   };
   const updateProgressPercentage = updateProgress?.totalBytes
     ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
@@ -444,10 +476,19 @@ export function Settings() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
+            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
               </CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-2"
+                onClick={() => setIsReleaseHistoryOpen(true)}
+              >
+                <History className="h-4 w-4" /> Histórico de versões
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -504,6 +545,40 @@ export function Settings() {
         </Card>
       </div>
 
+      <Dialog open={isReleaseHistoryOpen} onOpenChange={setIsReleaseHistoryOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Histórico de versões</DialogTitle>
+            <DialogDescription>
+              Consulte as novidades de cada atualização, mesmo sem conexão com a internet.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6">
+            {releaseNotes.map((release) => (
+              <article key={release.version} className="rounded-lg border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold">{release.title}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{release.date}</p>
+                  </div>
+                  <Badge>{release.version}</Badge>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {release.sections.map((section) => (
+                    <section key={section.title}>
+                      <h4 className="text-sm font-medium">{section.title}</h4>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                        {section.items.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {isSettingsError && (
         <Card className="border-destructive/20">
           <CardContent className="flex items-center justify-between gap-4 pt-6">
@@ -529,12 +604,15 @@ export function Settings() {
             <AlertDialogDescription>
               {backupPassphraseDialog === "export"
                 ? "Defina uma senha para proteger este backup. Deixe em branco para usar a chave do aplicativo."
-                : "Informe a senha se este backup foi exportado com uma. Deixe em branco para backups sem senha."}
+                : "Informe a senha definida para este backup."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-2">
             <Label htmlFor="backup-passphrase">
-              Senha <span className="font-normal text-muted-foreground">(opcional)</span>
+              Senha{" "}
+              {backupPassphraseDialog === "export" && (
+                <span className="font-normal text-muted-foreground">(opcional)</span>
+              )}
             </Label>
             <div className="relative">
               <Input
@@ -564,9 +642,9 @@ export function Settings() {
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <Button type="button" onClick={confirmBackupPassphrase}>
-              Continuar
+            <AlertDialogCancel disabled={isValidatingBackupPassphrase}>Cancelar</AlertDialogCancel>
+            <Button type="button" onClick={() => void confirmBackupPassphrase()} disabled={isValidatingBackupPassphrase}>
+              {isValidatingBackupPassphrase ? "Validando..." : "Continuar"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

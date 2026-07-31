@@ -212,6 +212,24 @@ pub fn inspect_backup(source: &Path) -> Result<BackupInspection, AppError> {
     })
 }
 
+pub fn validate_backup_passphrase(source: &Path, passphrase: Option<&str>) -> Result<(), AppError> {
+    let metadata = fs::symlink_metadata(source).map_err(backup_error)?;
+    if !metadata.file_type().is_file() || metadata.len() > MAX_BACKUP_FILE_SIZE_BYTES {
+        return Err(backup_error(
+            "Backup source is invalid or exceeds the allowed size limit.",
+        ));
+    }
+
+    let bytes = fs::read(source).map_err(backup_error)?;
+    let Some(_) = decrypt_backup_archive(&bytes, passphrase)? else {
+        return Err(AppError::new(
+            "Backup does not require a passphrase.",
+            "Este backup não requer senha.",
+        ));
+    };
+    Ok(())
+}
+
 fn decrypt_backup_archive(
     bytes: &[u8],
     passphrase: Option<&str>,
@@ -827,6 +845,21 @@ mod tests {
                 .unwrap(),
             b"backup contents"
         );
+    }
+
+    #[test]
+    fn validates_a_password_protected_backup_without_restoring_it() {
+        let path = temp_path("backup-passphrase-validation");
+        fs::write(
+            &path,
+            encrypt_backup_archive(b"backup contents", Some("senha-segura")).unwrap(),
+        )
+        .unwrap();
+
+        assert!(validate_backup_passphrase(&path, Some("senha-segura")).is_ok());
+        assert!(validate_backup_passphrase(&path, Some("senha-incorreta")).is_err());
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]

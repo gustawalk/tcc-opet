@@ -212,6 +212,11 @@ pub fn inspect_backup(source: String) -> Result<crate::backup_service::BackupIns
     crate::backup_service::inspect_backup(Path::new(&source))
 }
 
+#[command]
+pub fn validate_backup_passphrase(source: String, passphrase: String) -> Result<(), AppError> {
+    crate::backup_service::validate_backup_passphrase(Path::new(&source), Some(&passphrase))
+}
+
 fn logo_data_url(path: &Path) -> Result<String, AppError> {
     let metadata = std::fs::symlink_metadata(path).map_err(|error| {
         AppError::new(

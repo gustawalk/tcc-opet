@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { toast } from "sonner";
 import { check } from "@tauri-apps/plugin-updater";
+import { getVersion } from "@tauri-apps/api/app";
 import { MainLayout } from "./layouts/MainLayout";
 import { Dashboard } from "./views/Dashboard";
 import { ServiceOrderCreate } from "./views/ServiceOrderCreate";
@@ -17,6 +18,12 @@ import { Templates } from "./views/Templates";
 import { Reports } from "./views/Reports";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
+import { Button } from "./components/ui/button";
+
+const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
+
+type PendingPatchNotes = { version: string; body: string };
 
 // Create a client
 const queryClient = new QueryClient({
@@ -46,11 +53,71 @@ function UpdateAvailabilityNotice() {
   return null;
 }
 
+function UpdatePatchNotes() {
+  const [patchNotes, setPatchNotes] = useState<PendingPatchNotes | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(UPDATE_PATCH_NOTES_STORAGE_KEY);
+    if (!stored) return;
+
+    let pending: PendingPatchNotes;
+    try {
+      pending = JSON.parse(stored);
+    } catch {
+      localStorage.removeItem(UPDATE_PATCH_NOTES_STORAGE_KEY);
+      return;
+    }
+    if (
+      typeof pending.version !== "string" ||
+      typeof pending.body !== "string" ||
+      !pending.body.trim()
+    ) {
+      localStorage.removeItem(UPDATE_PATCH_NOTES_STORAGE_KEY);
+      return;
+    }
+
+    void getVersion()
+      .then((version) => {
+        if (version === pending.version.replace(/^v/, "")) {
+          setPatchNotes(pending);
+        } else {
+          localStorage.removeItem(UPDATE_PATCH_NOTES_STORAGE_KEY);
+        }
+      })
+      .catch(() => localStorage.removeItem(UPDATE_PATCH_NOTES_STORAGE_KEY));
+  }, []);
+
+  const close = () => {
+    localStorage.removeItem(UPDATE_PATCH_NOTES_STORAGE_KEY);
+    setPatchNotes(null);
+  };
+
+  return (
+    <Dialog open={patchNotes !== null} onOpenChange={(open) => !open && close()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Atualização concluída</DialogTitle>
+          <DialogDescription>
+            Você está usando a versão {patchNotes?.version}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+          {patchNotes?.body}
+        </div>
+        <DialogFooter>
+          <Button type="button" onClick={close}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <UpdateAvailabilityNotice />
+        <UpdatePatchNotes />
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
             <MainLayout>

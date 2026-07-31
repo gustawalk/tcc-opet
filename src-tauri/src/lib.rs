@@ -72,6 +72,7 @@ pub fn run() {
             commands::settings_commands::export_backup,
             commands::settings_commands::restore_backup,
             commands::settings_commands::inspect_backup,
+            commands::settings_commands::validate_backup_passphrase,
             commands::checklist_commands::create_checklist_template,
             commands::checklist_commands::get_checklist_templates,
             commands::checklist_commands::get_checklist_template_items,

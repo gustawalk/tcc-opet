@@ -92,7 +92,7 @@ Em builds de desenvolvimento, os dados demonstrativos são inseridos por padrão
 - Ao atualizar uma instalação com banco em texto aberto, o app cria um backup de recuperação criptografado no diretório de dados antes de migrar banco e anexos.
 - Em Unix, banco, anexos e backups criados pelo app recebem permissões restritas ao usuário atual.
 - O reset remove todos os dados e anexos, recria as tabelas e restaura somente registros técnicos padrão.
-- O backup `.osbkp` contém um snapshot do banco e todos os anexos protegidos. A senha de exportação é opcional e só é solicitada na restauração quando necessária.
+- O backup `.osbkp` contém um snapshot do banco e todos os anexos protegidos. A senha de exportação é opcional; backups protegidos validam a senha antes da confirmação de restauração, enquanto backups legados ou sem senha seguem direto para essa confirmação.
 - A restauração valida manifesto, schema, integridade, chaves estrangeiras e limites de tamanho antes de substituir banco e anexos. Em caso de falha, os dados anteriores são restaurados.
 
 ## Validação
@@ -106,7 +106,7 @@ cd src-tauri && cargo test
 
 ## Auto-update
 
-O aplicativo usa `tauri-plugin-updater` para verificar atualizações. A cada inicialização de uma build distribuída, ele consulta o manifesto `updater.json` publicado como asset da GitHub Release mais recente. Se houver uma versão mais nova, mostra um aviso para o usuário consultar Configurações > Atualizações, onde o download e a instalação podem ser iniciados.
+O aplicativo usa `tauri-plugin-updater` para verificar atualizações. A cada inicialização de uma build distribuída, ele consulta o manifesto `updater.json` publicado como asset da GitHub Release mais recente. Se houver uma versão mais nova, mostra um aviso para o usuário consultar Configurações > Atualizações, onde o download e a instalação podem ser iniciados. Quando a atualização possui notas, elas são exibidas uma vez após a reinicialização bem-sucedida na nova versão.
 
 Atualizações são publicadas como GitHub Releases e assinadas com chave ed25519 (minisign). A chave pública está configurada em `tauri.conf.json`.
 

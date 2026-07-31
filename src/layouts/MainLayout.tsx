@@ -32,7 +32,7 @@ const menuItems = [
   { icon: ClipboardList, label: "Templates", path: "/templates" },
   { icon: ChartNoAxesCombined, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
-  { icon: User, label: "Usuarios", path: "/users" }
+  { icon: User, label: "Usuários", path: "/users" }
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
@@ -61,7 +61,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                     tooltip={item.label}
                   >
                     <Link to={item.path} className="flex items-center gap-3 px-3">
-                      <item.icon className="h-4 w-4" />
+                       <item.icon className="h-7 w-7" />
                       <span>{item.label}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -81,7 +81,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                 Nova OS</Button>
             </div>
           </header>
-          <main className="flex-1 p-6 lg:p-10 max-w-[1600px] mx-auto w-full">
+          <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 sm:p-6 lg:p-10">
             {children}
           </main>
         </SidebarInset>

@@ -21,6 +21,7 @@ export const inventoryItemSchema = z.object({
   costPrice: z.number().min(0, "Preço de custo deve ser maior ou igual a 0"),
   salePrice: z.number().min(0, "Preço de venda deve ser maior ou igual a 0"),
   minQuantity: z.number().int("Deve ser um número inteiro").min(0, "Quantidade mínima deve ser maior ou igual a 0"),
+  initialQuantity: z.number().int("Deve ser um número inteiro").min(0, "Quantidade inicial deve ser maior ou igual a 0"),
 });
 
 export const quantitySchema = z.object({

@@ -242,7 +242,7 @@ export function ServiceOrderItemsEditor({
               </p>
             ) : lines.length ? (
               lines.map((line) => (
-                <div className="flex items-center gap-2 p-3" key={line.id}>
+                <div className="grid grid-cols-[minmax(0,1fr)_4rem_auto] items-center gap-2 p-3 sm:flex" key={line.id}>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-1">
                       <TruncatedItemName
@@ -267,7 +267,7 @@ export function ServiceOrderItemsEditor({
                     onChange={(event) => changeQuantity(line, event.target.value)}
                     disabled={isBusy}
                   />
-                  <span className="w-20 text-right text-xs font-bold">
+                  <span className="col-start-2 w-16 text-center text-xs font-bold sm:w-20 sm:text-right">
                     {formatCurrency(line.unitPrice * line.quantity)}
                   </span>
                   <Button

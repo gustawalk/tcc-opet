@@ -37,9 +37,9 @@ impl ServiceOrderRepository {
         service_order_id: &str,
     ) -> Result<Vec<ServiceOrderPart>> {
         let mut stmt = conn.prepare(
-            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, ii.name as inventory_item_name, ii.type, ii.current_quantity, sop.quantity, sop.unit_cost, sop.unit_price
+            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, COALESCE(ii.current_quantity, 0), sop.quantity, sop.unit_cost, sop.unit_price
              FROM service_order_parts sop
-             JOIN inventory_items ii ON sop.inventory_item_id = ii.id
+             LEFT JOIN inventory_items ii ON sop.inventory_item_id = ii.id
              WHERE sop.service_order_id = ?1"
         )?;
 
@@ -97,10 +97,10 @@ impl ServiceOrderRepository {
             return Err(rusqlite::Error::InvalidQuery);
         }
 
-        let (item_type, current_quantity, unit_cost, unit_price) = {
+        let (item_name, item_type, current_quantity, unit_cost, unit_price) = {
             // Check the active catalog item and snapshot its prices for this OS.
             let mut stmt = transaction.prepare(
-                "SELECT type, current_quantity,
+                "SELECT name, type, current_quantity,
                             CASE WHEN average_cost > 0 THEN average_cost ELSE cost_price END,
                             sale_price
                      FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
@@ -108,9 +108,10 @@ impl ServiceOrderRepository {
             let mut rows = stmt.query_map(params![inventory_item_id], |row: &rusqlite::Row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, i32>(1)?,
-                    row.get::<_, f64>(2)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i32>(2)?,
                     row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
                 ))
             })?;
 
@@ -132,12 +133,14 @@ impl ServiceOrderRepository {
 
         // 2. Record the part usage
         transaction.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price, stock_restored)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
             params![
                 Uuid::new_v4().to_string(),
                 service_order_id,
                 inventory_item_id,
+                item_name,
+                item_type,
                 quantity,
                 unit_cost,
                 unit_price
@@ -206,9 +209,8 @@ impl ServiceOrderRepository {
 
         let (os_id, inventory_item_id, quantity, item_type, status) = {
             let mut stmt = transaction.prepare(
-                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, ii.type, so.status
+                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.item_type, so.status
                  FROM service_order_parts sop
-                 JOIN inventory_items ii ON sop.inventory_item_id = ii.id
                  JOIN service_orders so ON sop.service_order_id = so.id
                  WHERE sop.id = ?1"
             )?;
@@ -306,7 +308,7 @@ impl ServiceOrderRepository {
         ): (String, String, i32, f64, String, i32, String) = transaction
             .query_row(
                 "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.unit_cost,
-                        ii.type, ii.current_quantity, so.status
+                         sop.item_type, ii.current_quantity, so.status
                  FROM service_order_parts sop
                  JOIN inventory_items ii ON ii.id = sop.inventory_item_id
                  JOIN service_orders so ON so.id = sop.service_order_id
@@ -809,9 +811,10 @@ impl ServiceOrderRepository {
         if next_status == "Cancelada" {
             let mut stmt = transaction.prepare(
                 "SELECT sop.inventory_item_id, sop.quantity
-                 FROM service_order_parts sop
-                 JOIN inventory_items ii ON ii.id = sop.inventory_item_id
-                 WHERE sop.service_order_id = ?1 AND ii.type = 'part'",
+                  FROM service_order_parts sop
+                  WHERE sop.service_order_id = ?1
+                    AND sop.item_type = 'part'
+                    AND sop.stock_restored = 0",
             )?;
             let part_rows = stmt
                 .query_map(params![service_order_id], |row| {
@@ -847,12 +850,70 @@ impl ServiceOrderRepository {
                     )?;
                 }
                 transaction.execute(
-                    "DELETE FROM service_order_parts
-                     WHERE service_order_id = ?1
-                     AND inventory_item_id IN (SELECT id FROM inventory_items WHERE type = 'part')",
+                    "UPDATE service_order_parts SET stock_restored = 1
+                     WHERE service_order_id = ?1 AND item_type = 'part' AND stock_restored = 0",
                     params![service_order_id],
                 )?;
             }
+        }
+
+        if current_status == "Cancelada" && next_status != "Cancelada" {
+            let mut stmt = transaction.prepare(
+                "SELECT sop.inventory_item_id, SUM(sop.quantity)
+                 FROM service_order_parts sop
+                 WHERE sop.service_order_id = ?1 AND sop.item_type = 'part' AND sop.stock_restored = 1
+                 GROUP BY sop.inventory_item_id",
+            )?;
+            let parts_to_consume = stmt
+                .query_map(params![service_order_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Validate every aggregate before changing stock so an unavailable item rolls back cleanly.
+            for (inventory_item_id, quantity) in &parts_to_consume {
+                let available: i32 = transaction
+                    .query_row(
+                        "SELECT current_quantity FROM inventory_items WHERE id = ?1",
+                        params![inventory_item_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| {
+                        business_error(
+                            "Insufficient stock to reactivate this service order.",
+                            "Estoque insuficiente para reativar esta ordem de serviço.",
+                        )
+                    })?;
+                if available < *quantity {
+                    return Err(business_error(
+                        "Insufficient stock to reactivate this service order.",
+                        "Estoque insuficiente para reativar esta ordem de serviço.",
+                    ));
+                }
+            }
+            for (inventory_item_id, quantity) in parts_to_consume {
+                let updated = transaction.execute(
+                    "UPDATE inventory_items SET current_quantity = current_quantity - ?1, updated_at = ?2
+                     WHERE id = ?3 AND current_quantity >= ?1",
+                    params![quantity, Utc::now().to_rfc3339(), inventory_item_id],
+                )?;
+                if updated == 0 {
+                    return Err(business_error(
+                        "Insufficient stock to reactivate this service order.",
+                        "Estoque insuficiente para reativar esta ordem de serviço.",
+                    ));
+                }
+                transaction.execute(
+                    "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, created_at)
+                     VALUES (?1, ?2, 'saida', ?3, ?4, 'service_order_reactivate', ?5)",
+                    params![Uuid::new_v4().to_string(), inventory_item_id, quantity, service_order_id, Utc::now().to_rfc3339()],
+                )?;
+            }
+            transaction.execute(
+                "UPDATE service_order_parts SET stock_restored = 0
+                 WHERE service_order_id = ?1 AND item_type = 'part' AND stock_restored = 1",
+                params![service_order_id],
+            )?;
         }
 
         let closed_at = if matches!(next_status, "Finalizada" | "Cancelada") {
@@ -1049,6 +1110,8 @@ mod tests {
         assert_eq!(updated_part.current_quantity, 3);
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0].quantity, 2);
+        assert_eq!(parts[0].inventory_item_name, "Bateria");
+        assert_eq!(parts[0].item_type, "part");
         assert_eq!(total_price, 160.0);
         assert_eq!(movements.len(), 1);
         assert_eq!(movements[0].r#type, "saida");
@@ -1346,7 +1409,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelling_with_stock_restore_returns_parts_and_removes_lines() {
+    fn cancelling_with_stock_restore_keeps_lines_and_reactivation_consumes_stock() {
         let mut conn = setup_db();
         let customer = seed_customer(&conn);
         let part = seed_part(&conn, 4);
@@ -1380,8 +1443,112 @@ mod tests {
 
         assert_eq!(cancelled.status, "Cancelada");
         assert_eq!(item.current_quantity, 4);
-        assert!(lines.is_empty());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].quantity, 2);
+        let restored: bool = conn
+            .query_row(
+                "SELECT stock_restored FROM service_order_parts WHERE id = ?1",
+                params![lines[0].id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(restored);
         assert!(cancelled.closed_at.is_some());
+        conn.execute(
+            "UPDATE inventory_items SET type = 'service' WHERE id = ?1",
+            params![part.id],
+        )
+        .unwrap();
+
+        ServiceOrderRepository::transition_status_with_conn(
+            &conn,
+            &order.id,
+            "Em Manutenção",
+            false,
+        )
+        .unwrap();
+        let reactivated_item = InventoryRepository::get_by_id_with_conn(&conn, &part.id)
+            .unwrap()
+            .unwrap();
+        let restored_after_reactivation: bool = conn
+            .query_row(
+                "SELECT stock_restored FROM service_order_parts WHERE id = ?1",
+                params![lines[0].id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
+
+        assert_eq!(reactivated_item.current_quantity, 2);
+        assert!(!restored_after_reactivation);
+        assert!(movements
+            .iter()
+            .any(|movement| movement.reason == "service_order_reactivate"));
+    }
+
+    #[test]
+    fn reactivation_rolls_back_when_any_restored_part_lacks_stock() {
+        let mut conn = setup_db();
+        let customer = seed_customer(&conn);
+        let first = seed_part(&conn, 2);
+        let second = InventoryItem::new(
+            "Conector".to_string(),
+            "Peça".to_string(),
+            "part".to_string(),
+            1,
+            2,
+            10.0,
+            30.0,
+        );
+        InventoryRepository::create_with_conn(&conn, &second).unwrap();
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        ServiceOrderRepository::add_part_to_service_order_with_conn(
+            &mut conn, &order.id, &first.id, 2,
+        )
+        .unwrap();
+        ServiceOrderRepository::add_part_to_service_order_with_conn(
+            &mut conn, &order.id, &second.id, 2,
+        )
+        .unwrap();
+        ServiceOrderRepository::transition_status_with_conn(&conn, &order.id, "Cancelada", true)
+            .unwrap();
+        conn.execute(
+            "UPDATE inventory_items SET current_quantity = 1 WHERE id = ?1",
+            params![second.id],
+        )
+        .unwrap();
+
+        let result = ServiceOrderRepository::transition_status_with_conn(
+            &conn,
+            &order.id,
+            "Em Manutenção",
+            false,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            InventoryRepository::get_by_id_with_conn(&conn, &first.id)
+                .unwrap()
+                .unwrap()
+                .current_quantity,
+            2
+        );
+        assert_eq!(
+            ServiceOrderRepository::get_by_id_with_conn(&conn, &order.id)
+                .unwrap()
+                .unwrap()
+                .status,
+            "Cancelada"
+        );
+        let restored_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM service_order_parts WHERE service_order_id = ?1 AND stock_restored = 1",
+                params![order.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored_count, 2);
     }
 
     #[test]

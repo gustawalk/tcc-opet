@@ -175,14 +175,28 @@ pub(crate) fn create_full_service_order_with_conn(
             ));
         }
 
-        let (item_type, current_qty, unit_cost, unit_price): (String, i32, f64, f64) = tx
+        let (item_name, item_type, current_qty, unit_cost, unit_price): (
+            String,
+            String,
+            i32,
+            f64,
+            f64,
+        ) = tx
             .query_row(
-                "SELECT type, current_quantity,
+                "SELECT name, type, current_quantity,
                         CASE WHEN average_cost > 0 THEN average_cost ELSE cost_price END,
                         sale_price
                  FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
                 rusqlite::params![part.inventory_item_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
@@ -199,12 +213,14 @@ pub(crate) fn create_full_service_order_with_conn(
         }
 
         tx.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price, stock_restored)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
             rusqlite::params![
                 uuid::Uuid::new_v4().to_string(),
                 order_id,
                 part.inventory_item_id,
+                item_name,
+                item_type,
                 part.quantity,
                 unit_cost,
                 unit_price,

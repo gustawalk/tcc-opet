@@ -146,23 +146,24 @@ export function ServiceOrders() {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Ordens de Serviço
           </h2>
           <p className="text-muted-foreground mt-1">
             Gerencie atendimentos, ordens de serviço e orçamentos.
           </p>
         </div>
-        <Button className="gap-2" onClick={() => navigate("/os/new")}>
+        <Button className="w-full gap-2 sm:w-auto" onClick={() => navigate("/os/new")}>
           <Plus className="h-4 w-4" />
           Nova OS
         </Button>
       </div>
       <Tabs defaultValue="all" onValueChange={setStatusFilter}>
-        <div className="flex flex-col md:flex-row justify-between gap-4">
-          <TabsList>
+        <div className="flex flex-col gap-4 xl:flex-row xl:justify-between">
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList className="w-max">
             <TabsTrigger value="all">Todas</TabsTrigger>
             <TabsTrigger value="Orçamento">Orçamentos</TabsTrigger>
             <TabsTrigger value="Em Manutenção">Em Manutenção</TabsTrigger>
@@ -170,7 +171,8 @@ export function ServiceOrders() {
             <TabsTrigger value="Finalizada">Finalizadas</TabsTrigger>
             <TabsTrigger value="Cancelada">Canceladas</TabsTrigger>
           </TabsList>
-          <div className="flex gap-2 items-center w-full md:w-auto">
+          </div>
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:items-center">
             <div className="flex items-center gap-1">
               <SearchableSelect
                 options={customers}
@@ -223,7 +225,7 @@ export function ServiceOrders() {
                 </Button>
               )}
             </div>
-            <div className="relative w-full md:w-72">
+            <div className="relative w-full sm:col-span-2 xl:w-72">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -303,7 +305,7 @@ export function ServiceOrders() {
                     <TableCell className="font-mono text-xs font-bold">
                       {order.displayId}
                     </TableCell>
-                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         className="block w-full rounded-sm text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
@@ -316,6 +318,13 @@ export function ServiceOrders() {
                         <span className="flex gap-1 text-xs text-muted-foreground">
                           <Smartphone className="h-3 w-3" />
                           {order.equipment}
+                        </span>
+                        <span className="mt-2 flex flex-wrap items-center gap-2 md:hidden">
+                          {statusBadge(order.status)}
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(order.createdAt).toLocaleDateString("pt-BR")}
+                          </span>
                         </span>
                       </button>
                     </TableCell>

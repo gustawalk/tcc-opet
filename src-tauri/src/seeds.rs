@@ -404,10 +404,20 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
     println!("[SEED] seed_service_orders: Fetching inventory items...");
     let mut inventory_stmt = conn
-        .prepare("SELECT id, sale_price, cost_price FROM inventory_items ORDER BY ROWID")
+        .prepare(
+            "SELECT id, name, type, sale_price, cost_price FROM inventory_items ORDER BY ROWID",
+        )
         .map_err(|e| e.to_string())?;
-    let inventory_items: Vec<(String, f64, f64)> = inventory_stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+    let inventory_items: Vec<(String, String, String, f64, f64)> = inventory_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -536,19 +546,21 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         let mut total_price = 0.0;
 
         for item_idx in 0..num_items {
-            let (inventory_id, sale_price, cost_price) =
+            let (inventory_id, inventory_name, item_type, sale_price, cost_price) =
                 &inventory_items[(idx * 3 + item_idx) % inventory_items.len()];
 
             let quantity = 1;
             total_price += sale_price;
 
             conn.execute(
-                "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     Uuid::new_v4().to_string(),
                     order_id,
                     inventory_id,
+                    inventory_name,
+                    item_type,
                     quantity,
                     cost_price,
                     sale_price

@@ -3,6 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { Eye, Paperclip, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -18,6 +27,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
 import {
   ServiceOrderItemLine,
   ServiceOrderItemsEditor,
@@ -81,6 +91,9 @@ export function ServiceOrderEditorSheet({
   const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
   const [attachmentToDelete, setAttachmentToDelete] =
     useState<ServiceOrderAttachment | null>(null);
+  const [createInventoryType, setCreateInventoryType] = useState<
+    InventoryItem["type"] | null
+  >(null);
   const orderQuery = useQuery({
     queryKey: ["service-order", orderId],
     queryFn: () => fetchOrder(orderId!),
@@ -155,6 +168,7 @@ export function ServiceOrderEditorSheet({
       }),
       queryClient.invalidateQueries({ queryKey: ["inventory-lookup"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }),
+      queryClient.invalidateQueries({ queryKey: ["financial-report"] }),
     ]);
 
   const addItem = async (item: InventoryItem) => {
@@ -179,6 +193,9 @@ export function ServiceOrderEditorSheet({
     } finally {
       setItemActionId(null);
     }
+  };
+  const addCreatedItem = async (item: InventoryItem) => {
+    await addItem(item);
   };
   const removeItem = async (id: string) => {
     if (itemActionId) return;
@@ -344,7 +361,7 @@ export function ServiceOrderEditorSheet({
           if (!isOpen && !cancelConfirmationOpen) onClose();
         }}
       >
-        <SheetContent className="sm:max-w-xl overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto px-4 sm:px-6">
           <SheetHeader>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -402,7 +419,7 @@ export function ServiceOrderEditorSheet({
                   <Label className="text-xs font-semibold uppercase">
                     Status da Ordem
                   </Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {(
                       [
                         "Orçamento",
@@ -488,6 +505,8 @@ export function ServiceOrderEditorSheet({
                       updateItemQuantity(line.id, quantity)
                     }
                     onRemove={(line) => removeItem(line.id)}
+                    onCreatePart={() => setCreateInventoryType("part")}
+                    onCreateService={() => setCreateInventoryType("service")}
                   />
                 )}
                 <Separator />
@@ -603,39 +622,43 @@ export function ServiceOrderEditorSheet({
           )}
         </SheetContent>
       </Sheet>
-      {cancelConfirmationOpen && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
-          onClick={() => !isSaving && setCancelConfirmationOpen(false)}
-        >
-          <div
-            className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold">Cancelar ordem de serviço</h3>
-            <p className="text-sm text-muted-foreground">
-              Ao cancelar esta OS, o estoque das peças físicas será restaurado e
-              as linhas de peças serão removidas. Deseja continuar?
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setCancelConfirmationOpen(false)}
-                disabled={isSaving}
-              >
-                Voltar
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleCancelConfirm}
-                disabled={isSaving}
-              >
-                {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <InventoryItemSheet
+        open={createInventoryType !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setCreateInventoryType(null);
+        }}
+        initialType={createInventoryType ?? "part"}
+        initialPartQuantity={1}
+        onCreated={addCreatedItem}
+      />
+      <AlertDialog
+        open={cancelConfirmationOpen}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isSaving) setCancelConfirmationOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar ordem de serviço</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ao cancelar esta OS, o estoque das peças físicas será restaurado.
+              Os itens permanecerão registrados e serão baixados novamente se a
+              OS for reativada. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Voltar</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleCancelConfirm()}
+              disabled={isSaving}
+            >
+              {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {attachmentToDelete && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"

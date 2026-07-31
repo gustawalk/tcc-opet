@@ -279,8 +279,8 @@ mod tests {
         InventoryRepository::create_with_conn(&conn, &inventory_item).unwrap();
 
         conn.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params!["part-1", finalized.id, inventory_item.id, 2, 30.0, 80.0],
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params!["part-1", finalized.id, inventory_item.id, inventory_item.name, "part", 2, 30.0, 80.0],
         )
         .unwrap();
 

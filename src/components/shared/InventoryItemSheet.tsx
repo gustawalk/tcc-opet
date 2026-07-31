@@ -34,6 +34,7 @@ type InventoryItemFormData = Pick<
   | "salePrice"
 > & {
   supplierName: string;
+  initialQuantity: number;
 };
 
 interface InventoryItemSheetProps {
@@ -47,6 +48,7 @@ interface InventoryItemSheetProps {
 
 const createInitialFormData = (
   type: InventoryItem["type"],
+  initialPartQuantity: number,
 ): InventoryItemFormData => ({
   name: "",
   description: "",
@@ -55,6 +57,7 @@ const createInitialFormData = (
   costPrice: 0,
   salePrice: 0,
   supplierName: "",
+  initialQuantity: type === "part" ? initialPartQuantity : 0,
 });
 
 export function InventoryItemSheet({
@@ -67,7 +70,7 @@ export function InventoryItemSheet({
 }: InventoryItemSheetProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<InventoryItemFormData>(() =>
-    createInitialFormData(initialType),
+    createInitialFormData(initialType, initialPartQuantity),
   );
   const [errors, setErrors] = useState<ValidationErrors>({});
 
@@ -85,10 +88,11 @@ export function InventoryItemSheet({
             costPrice: item.costPrice,
             salePrice: item.salePrice,
             supplierName: item.supplierName ?? "",
+            initialQuantity: item.currentQuantity,
           }
-        : createInitialFormData(initialType),
+        : createInitialFormData(initialType, initialPartQuantity),
     );
-  }, [initialType, item, open]);
+  }, [initialPartQuantity, initialType, item, open]);
 
   const createMutation = useMutation({
     mutationFn: async (data: InventoryItemFormData) =>
@@ -97,7 +101,7 @@ export function InventoryItemSheet({
         description: data.description,
         type: data.type,
         minQuantity: data.minQuantity,
-        currentQuantity: data.type === "part" ? initialPartQuantity : 999,
+        currentQuantity: data.type === "part" ? data.initialQuantity : 999,
         costPrice: data.costPrice,
         salePrice: data.salePrice,
         supplierName: data.supplierName,
@@ -167,19 +171,19 @@ export function InventoryItemSheet({
         <SheetHeader>
           <SheetTitle>
             {item ? "Editar" : "Novo"}{" "}
-            {formData.type === "part" ? "Item no Estoque" : "Servico"}
+            {formData.type === "part" ? "Item no Estoque" : "Serviço"}
           </SheetTitle>
           <SheetDescription>
             {formData.type === "part"
-              ? "Cadastre pecas e insumos para gerenciar seu estoque."
-              : "Cadastre servicos e mao de obra para suas ordens de servico."}
+              ? "Cadastre peças e insumos para gerenciar seu estoque."
+              : "Cadastre serviços e mão de obra para suas ordens de serviço."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="grid gap-4 py-6">
           <div className="grid gap-2">
             <Label htmlFor="inventory-item-name">
-              Nome do {formData.type === "part" ? "Produto" : "Servico"}
+              Nome do {formData.type === "part" ? "Produto" : "Serviço"}
             </Label>
             <Input
               id="inventory-item-name"
@@ -187,14 +191,14 @@ export function InventoryItemSheet({
               placeholder={
                 formData.type === "part"
                   ? "Ex: Tela iPhone 11"
-                  : "Ex: Mao de obra Drone"
+                  : "Ex: Mão de obra para drone"
               }
               onChange={(event) => updateField("name", event.target.value)}
             />
             {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="inventory-item-description">Descricao</Label>
+            <Label htmlFor="inventory-item-description">Descrição</Label>
             <Textarea
               id="inventory-item-description"
               value={formData.description}
@@ -219,7 +223,7 @@ export function InventoryItemSheet({
 
           {formData.type === "part" && (
             <div className="grid gap-2">
-              <Label htmlFor="inventory-item-min">Qtd. Minima (Alerta)</Label>
+              <Label htmlFor="inventory-item-min">Qtd. mínima (alerta)</Label>
               <div className="relative">
                 <Box className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -238,10 +242,39 @@ export function InventoryItemSheet({
             </div>
           )}
 
+          {formData.type === "part" && !item && (
+            <div className="grid gap-2">
+              <Label htmlFor="inventory-item-initial-quantity">
+                Quantidade inicial em estoque (opcional)
+              </Label>
+              <Input
+                id="inventory-item-initial-quantity"
+                type="number"
+                min="0"
+                step="1"
+                value={formData.initialQuantity}
+                onChange={(event) =>
+                  updateField(
+                    "initialQuantity",
+                    Math.max(0, Math.trunc(Number(event.target.value)) || 0),
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe em 0 para cadastrar sem estoque disponível.
+              </p>
+              {errors.initialQuantity && (
+                <p className="text-xs text-destructive">
+                  {errors.initialQuantity}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="inventory-item-cost">
-                {formData.type === "part" ? "Preco de Custo" : "Custo Estimado"}
+                {formData.type === "part" ? "Preço de custo" : "Custo estimado"}
               </Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -261,7 +294,7 @@ export function InventoryItemSheet({
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="inventory-item-sale">Preco de Venda</Label>
+              <Label htmlFor="inventory-item-sale">Preço de venda</Label>
               <div className="relative">
                 <TrendingUp className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
                 <Input
@@ -295,7 +328,7 @@ export function InventoryItemSheet({
             disabled={isSaving}
           >
             <Save className="h-4 w-4" />
-            {isSaving ? "Salvando..." : item ? "Salvar Alteracoes" : "Cadastrar"}
+            {isSaving ? "Salvando..." : item ? "Salvar alterações" : "Cadastrar"}
           </Button>
         </SheetFooter>
       </SheetContent>

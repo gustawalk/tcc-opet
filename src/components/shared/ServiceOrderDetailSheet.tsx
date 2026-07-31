@@ -56,6 +56,17 @@ const PdfPreviewDialog = lazy(() =>
   ),
 );
 
+function PdfPreviewLoading() {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+      <div className="flex items-center gap-3 rounded-lg border bg-background px-5 py-4 text-sm shadow-lg">
+        <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
+        Preparando visualização do PDF...
+      </div>
+    </div>
+  );
+}
+
 interface ServiceOrderDetailSheetProps {
   orderId: string | null;
   open: boolean;
@@ -429,7 +440,7 @@ export function ServiceOrderDetailSheet({
         if (!open) onClose();
       }}
     >
-      <SheetContent className="sm:max-w-xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto px-4 sm:px-6">
         <SheetHeader>
           <div className="flex justify-between items-start pt-4">
             <div className="space-y-1">
@@ -467,7 +478,7 @@ export function ServiceOrderDetailSheet({
             className="mt-8 space-y-6"
             aria-label="Carregando ordem de serviço"
           >
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div className="space-y-2" key={index}>
                   <Skeleton className="h-3 w-20" />
@@ -494,7 +505,7 @@ export function ServiceOrderDetailSheet({
           </div>
         ) : order ? (
           <div className="mt-8 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">
                   Cliente
@@ -582,7 +593,7 @@ export function ServiceOrderDetailSheet({
                   <p className="text-xs text-muted-foreground font-semibold uppercase flex items-center gap-2">
                     <ClipboardCheck className="h-4 w-4" /> Checklist
                   </p>
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 border rounded-md p-3 bg-muted/20">
+                  <div className="grid grid-cols-1 gap-2 border rounded-md bg-muted/20 p-3 sm:grid-cols-2 sm:gap-x-4">
                     {checklistItems.map((item) => (
                       <div key={item.id} className="flex items-center gap-2">
                         {item.checked ? (
@@ -777,7 +788,7 @@ export function ServiceOrderDetailSheet({
         </SheetFooter>
       </SheetContent>
       {pdfPreview && (
-        <Suspense fallback={null}>
+          <Suspense fallback={<PdfPreviewLoading />}>
           <PdfPreviewDialog
             preview={pdfPreview}
             onClose={() => setPdfPreview(null)}

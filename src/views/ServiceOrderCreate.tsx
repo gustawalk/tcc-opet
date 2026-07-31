@@ -324,6 +324,7 @@ export function ServiceOrderCreate() {
           queryKey: ["service-order-attachments"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }),
+        queryClient.invalidateQueries({ queryKey: ["financial-report"] }),
         queryClient.invalidateQueries({ queryKey: ["inventory-lookup"] }),
       ]);
       toastSuccess("Ordem de serviço criada com sucesso.");
@@ -336,8 +337,8 @@ export function ServiceOrderCreate() {
   };
 
   return (
-    <form className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
-      <div className="flex items-center gap-4">
+    <form className="mx-auto flex max-w-5xl flex-col gap-4 animate-in fade-in duration-200 sm:gap-6" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+      <div className="flex items-start gap-3 sm:items-center sm:gap-4">
         <Button
           variant="ghost"
           size="icon"
@@ -347,7 +348,7 @@ export function ServiceOrderCreate() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Nova Ordem de Serviço
           </h2>
           <p className="text-muted-foreground mt-1">
@@ -575,7 +576,7 @@ export function ServiceOrderCreate() {
             </CardContent>
           </Card>
         </div>
-        <div className="grid gap-6 md:col-span-3 md:grid-cols-[1fr_1.25fr_1fr]">
+        <div className="grid gap-4 md:col-span-3 md:grid-cols-[1fr_1.25fr_1fr] md:gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex gap-2 text-lg">
@@ -718,11 +719,11 @@ export function ServiceOrderCreate() {
             )}
           </CardContent>
         </Card>
-        <div className="md:col-span-3 flex justify-end">
+        <div className="flex justify-stretch md:col-span-3 md:justify-end">
           <Button
             onClick={handleSave}
             disabled={isSubmitting || lookupLoading || lookupError}
-            className="gap-2"
+            className="w-full gap-2 sm:w-auto"
           >
             <Save className="h-4 w-4" />
             {isSubmitting ? "Criando..." : "Criar OS"}

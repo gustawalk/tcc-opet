@@ -380,9 +380,12 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             id TEXT PRIMARY KEY,
             service_order_id TEXT NOT NULL,
             inventory_item_id TEXT NOT NULL,
+            inventory_item_name TEXT NOT NULL DEFAULT '',
+            item_type TEXT NOT NULL DEFAULT '',
             quantity INTEGER NOT NULL,
             unit_cost REAL NOT NULL,
             unit_price REAL NOT NULL,
+            stock_restored BOOLEAN NOT NULL DEFAULT 0,
             FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE,
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
@@ -493,6 +496,28 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             }
         }
     }
+
+    // Preserve the catalog identity used by an OS even when the item is later renamed or retyped.
+    for migration in &[
+        "ALTER TABLE service_order_parts ADD COLUMN inventory_item_name TEXT NOT NULL DEFAULT '';",
+        "ALTER TABLE service_order_parts ADD COLUMN item_type TEXT NOT NULL DEFAULT '';",
+        "ALTER TABLE service_order_parts ADD COLUMN stock_restored BOOLEAN NOT NULL DEFAULT 0;",
+    ] {
+        if let Err(error) = conn.execute_batch(migration) {
+            if !error.to_string().contains("duplicate column") {
+                eprintln!(
+                    "[MIGRATION WARNING] Could not run service order part migration '{}': {error}",
+                    migration.trim()
+                );
+            }
+        }
+    }
+    conn.execute_batch(
+        "UPDATE service_order_parts
+         SET inventory_item_name = (SELECT name FROM inventory_items WHERE id = inventory_item_id),
+             item_type = (SELECT type FROM inventory_items WHERE id = inventory_item_id)
+         WHERE inventory_item_name = '' OR item_type = '';",
+    )?;
 
     // Migration: add columns to users if missing from intermediate schema
     for migration in &[

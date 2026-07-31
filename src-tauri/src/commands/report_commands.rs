@@ -9,10 +9,16 @@ use tauri::command;
 pub fn get_financial_report(
     start_date: Option<String>,
     end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
 ) -> Result<FinancialReport, AppError> {
-    Ok(FinancialReportRepository::get_report(
+    Ok(FinancialReportRepository::get_report_filtered(
         start_date.as_deref(),
         end_date.as_deref(),
+        technician_id.as_deref(),
+        ranking_metric.as_deref(),
+        ranking_limit,
     )?)
 }
 
@@ -24,9 +30,18 @@ fn csv_escape(value: &str) -> String {
 pub fn export_financial_report_csv(
     start_date: Option<String>,
     end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
     destination: String,
 ) -> Result<(), AppError> {
-    let report = FinancialReportRepository::get_report(start_date.as_deref(), end_date.as_deref())?;
+    let report = FinancialReportRepository::get_report_filtered(
+        start_date.as_deref(),
+        end_date.as_deref(),
+        technician_id.as_deref(),
+        ranking_metric.as_deref(),
+        ranking_limit,
+    )?;
     let mut csv = String::from(
         "Período inicial,Período final,Faturamento,Custo,Lucro,Ticket médio,OS finalizadas,Novos clientes,Novas OS,Taxa de conclusão,OS canceladas,Taxa de cancelamento,Tempo médio de conclusão (horas),Clientes recorrentes,Descontos concedidos\n",
     );
@@ -59,7 +74,7 @@ pub fn export_financial_report_csv(
             item.count,
         ));
     }
-    csv.push_str("\nCategoria,Faturamento,Custo,Lucro,Quantidade\n");
+    csv.push_str("\nCategoria,Faturamento,Custo,Lucro,OS finalizadas\n");
     for item in report.by_item_type {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
@@ -70,7 +85,14 @@ pub fn export_financial_report_csv(
             item.count,
         ));
     }
-    csv.push_str("\nItens e serviços mais vendidos,Faturamento,Custo,Lucro,Quantidade\n");
+    let ranking_label = if report.ranking_metric == "quantity" {
+        "Itens e serviços mais vendidos por quantidade"
+    } else {
+        "Itens e serviços mais vendidos por faturamento"
+    };
+    csv.push_str(&format!(
+        "\n{ranking_label},Faturamento,Custo,Lucro,Quantidade\n"
+    ));
     for item in report.top_items {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
@@ -102,6 +124,15 @@ pub fn export_financial_report_csv(
 pub fn preview_financial_report_pdf(
     start_date: Option<String>,
     end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
 ) -> Result<PdfPreview, AppError> {
-    preview_report_pdf(start_date.as_deref(), end_date.as_deref())
+    preview_report_pdf(
+        start_date.as_deref(),
+        end_date.as_deref(),
+        technician_id.as_deref(),
+        ranking_metric.as_deref(),
+        ranking_limit,
+    )
 }

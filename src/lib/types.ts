@@ -240,6 +240,8 @@ export interface FinancialReport {
   averageTurnaroundHours: number;
   returningCustomers: number;
   totalDiscounts: number;
+  rankingMetric: "revenue" | "quantity";
+  rankingLimit: number;
   byTechnician: FinancialBreakdown[];
   byItemType: FinancialBreakdown[];
   topItems: FinancialBreakdown[];

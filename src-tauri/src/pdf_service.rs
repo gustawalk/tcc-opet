@@ -247,8 +247,17 @@ pub fn preview_service_order_pdf(service_order_id: &str) -> Result<PdfPreview, A
 pub fn preview_financial_report_pdf(
     start_date: Option<&str>,
     end_date: Option<&str>,
+    technician_id: Option<&str>,
+    ranking_metric: Option<&str>,
+    ranking_limit: Option<i32>,
 ) -> Result<PdfPreview, AppError> {
-    let report = FinancialReportRepository::get_report(start_date, end_date)?;
+    let report = FinancialReportRepository::get_report_filtered(
+        start_date,
+        end_date,
+        technician_id,
+        ranking_metric,
+        ranking_limit,
+    )?;
     let mut context = Context::new();
     context.insert("start_date", &report.start_date);
     context.insert("end_date", &report.end_date);
@@ -274,6 +283,15 @@ pub fn preview_financial_report_pdf(
     );
     context.insert("returning_customers", &report.returning_customers);
     context.insert("total_discounts", &format_currency(report.total_discounts));
+    context.insert(
+        "ranking_label",
+        if report.ranking_metric == "quantity" {
+            "Quantidade vendida"
+        } else {
+            "Faturamento"
+        },
+    );
+    context.insert("ranking_limit", &report.ranking_limit);
     context.insert(
         "by_technician",
         &report

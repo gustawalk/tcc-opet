@@ -29,10 +29,10 @@ const menuItems = [
   { icon: Wrench, label: "Ordens de Serviço", path: "/os" },
   { icon: Users, label: "Clientes", path: "/customers" },
   { icon: Package, label: "Estoque", path: "/inventory" },
-  { icon: ClipboardList, label: "Templates", path: "/templates" },
+  { icon: ClipboardList, label: "Modelos de checklist", path: "/templates" },
   { icon: ChartNoAxesCombined, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
-  { icon: User, label: "Usuários", path: "/users" }
+  { icon: User, label: "Funcionários", path: "/users" }
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
@@ -78,7 +78,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2">
               <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>
                 <Plus />
-                Nova OS</Button>
+                Nova Ordem</Button>
             </div>
           </header>
           <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 sm:p-6 lg:p-10">

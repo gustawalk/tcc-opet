@@ -631,7 +631,7 @@ export function ServiceOrderDetailSheet({
 
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground font-semibold uppercase">
-                Peças & Mão de Obra
+                Peças e mão de obra
               </p>
               <div className="rounded-md border overflow-hidden">
                 <Table>
@@ -639,7 +639,7 @@ export function ServiceOrderDetailSheet({
                     <TableRow>
                       <TableHead className="h-8 text-[10px]">Item</TableHead>
                       <TableHead className="h-8 text-center text-[10px]">
-                        Qtd
+                        Quantidade
                       </TableHead>
                       <TableHead className="h-8 text-right text-[10px]">
                         Valor
@@ -783,7 +783,7 @@ export function ServiceOrderDetailSheet({
             {pdfMutation.isPending && (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             )}
-            {pdfMutation.isPending ? "Gerando PDF..." : "Gerar PDF da OS"}
+            {pdfMutation.isPending ? "Gerando PDF..." : "Gerar PDF da ordem"}
           </Button>
         </SheetFooter>
       </SheetContent>

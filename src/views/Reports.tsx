@@ -686,14 +686,14 @@ export function Reports() {
                   <CardHeader>
                     <CardTitle>Por Técnico</CardTitle>
                     <CardDescription>
-                      Resultado por responsável pela OS.
+                      Resultado por responsável pela ordem.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <BreakdownTable
                       items={report.byTechnician}
                       label="Técnico"
-                      countLabel="OS"
+                      countLabel="Ordens"
                     />
                   </CardContent>
                 </Card>
@@ -701,14 +701,14 @@ export function Reports() {
                   <CardHeader>
                     <CardTitle>Por Categoria</CardTitle>
                     <CardDescription>
-                      Peças e serviços utilizados nas OS.
+                      Peças e serviços utilizados nas ordens.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <BreakdownTable
                       items={report.byItemType}
                       label="Categoria"
-                      countLabel="OS"
+                      countLabel="Ordens"
                     />
                   </CardContent>
                 </Card>
@@ -716,7 +716,7 @@ export function Reports() {
                   <CardHeader>
                     <CardTitle>Itens e Serviços Mais Vendidos</CardTitle>
                     <CardDescription>
-                      Top {report.rankingLimit} por {report.rankingMetric === "quantity" ? "quantidade vendida" : "faturamento"} nas OS finalizadas.
+                      Top {report.rankingLimit} por {report.rankingMetric === "quantity" ? "quantidade vendida" : "faturamento"} nas ordens finalizadas.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -746,7 +746,7 @@ export function Reports() {
                           </TableHead>
                           <TableHead className="text-right">Lucro</TableHead>
                           <TableHead className="text-right">
-                            OS finalizadas
+                            Ordens finalizadas
                           </TableHead>
                         </TableRow>
                       </TableHeader>

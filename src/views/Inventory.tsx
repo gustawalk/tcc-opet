@@ -12,6 +12,7 @@ import {
   Edit,
   Trash2,
   History,
+  Copy,
 } from "lucide-react";
 import {
   Card,
@@ -64,6 +65,14 @@ import { Copyable } from "@/components/shared/Copyable";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
+import {
+  currencyInputToNumber,
+  formatCurrencyInput,
+  integerInputToNumber,
+  normalizeCurrencyInput,
+  normalizeIntegerInput,
+  sanitizeIntegerInput,
+} from "@/lib/numeric-input";
 
 const fetchInventory = async (): Promise<InventoryItem[]> => {
   return await invoke<InventoryItem[]>("get_inventory_items");
@@ -81,6 +90,7 @@ export function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [duplicateItem, setDuplicateItem] = useState<InventoryItem | null>(null);
   const [createType, setCreateType] = useState<InventoryItem["type"]>("part");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [restockErrors, setRestockErrors] = useState<ValidationErrors>({});
@@ -88,14 +98,14 @@ export function Inventory() {
 
   // Restock state
   const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
-  const [restockQuantity, setRestockQuantity] = useState(1);
+  const [restockQuantity, setRestockQuantity] = useState("1");
   const [restockUnitCost, setRestockUnitCost] = useState("");
   const [restockReason, setRestockReason] = useState("");
-  const [inactiveDays, setInactiveDays] = useState(90);
+  const [inactiveDays, setInactiveDays] = useState("90");
 
   // Remove state
   const [removeItem, setRemoveItem] = useState<InventoryItem | null>(null);
-  const [removeQuantity, setRemoveQuantity] = useState(1);
+  const [removeQuantity, setRemoveQuantity] = useState("1");
 
   // History state
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
@@ -128,7 +138,7 @@ export function Inventory() {
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRestockItem(null);
-      setRestockQuantity(1);
+      setRestockQuantity("1");
       setRestockUnitCost("");
       setRestockReason("");
     },
@@ -144,7 +154,7 @@ export function Inventory() {
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRemoveItem(null);
-      setRemoveQuantity(1);
+      setRemoveQuantity("1");
     },
     onError: (err) => toastError(err, "Erro ao remover estoque."),
   });
@@ -157,7 +167,10 @@ export function Inventory() {
 
   const { data: insights, isLoading: isInsightsLoading, error: insightsError } = useQuery({
     queryKey: ["inventory-insights", inactiveDays],
-    queryFn: () => invoke<InventoryInsights>("get_inventory_insights", { inactiveDays }),
+    queryFn: () =>
+      invoke<InventoryInsights>("get_inventory_insights", {
+        inactiveDays: integerInputToNumber(inactiveDays) ?? 0,
+      }),
   });
 
   const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
@@ -260,12 +273,21 @@ export function Inventory() {
 
   const handleAddItem = (type: "part" | "service" = "part") => {
     setSelectedItem(null);
+    setDuplicateItem(null);
     setCreateType(type);
     setIsSheetOpen(true);
   };
 
   const handleEditItem = (item: InventoryItem) => {
+    setDuplicateItem(null);
     setSelectedItem(item);
+    setIsSheetOpen(true);
+  };
+
+  const handleDuplicateItem = (item: InventoryItem) => {
+    setSelectedItem(null);
+    setDuplicateItem(item);
+    setCreateType(item.type);
     setIsSheetOpen(true);
   };
 
@@ -381,7 +403,7 @@ export function Inventory() {
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="text-base">Insights de Estoque</CardTitle><CardDescription>Inatividade e curva ABC pelo valor em estoque: quantidade atual × custo médio.</CardDescription></div>
-            <div className="flex items-center gap-2"><Label htmlFor="inactive-days" className="text-xs whitespace-nowrap">Sem movimento há</Label><Input id="inactive-days" type="number" min="0" className="h-8 w-20" value={inactiveDays} onChange={(event) => setInactiveDays(Math.max(0, parseInt(event.target.value) || 0))} /><span className="text-xs text-muted-foreground">dias</span></div>
+            <div className="flex items-center gap-2"><Label htmlFor="inactive-days" className="text-xs whitespace-nowrap">Sem movimento há</Label><Input id="inactive-days" inputMode="numeric" className="h-8 w-20" value={inactiveDays} onChange={(event) => setInactiveDays(sanitizeIntegerInput(event.target.value))} onBlur={(event) => setInactiveDays(normalizeIntegerInput(event.target.value))} /><span className="text-xs text-muted-foreground">dias</span></div>
           </div>
         </CardHeader>
         <CardContent>
@@ -399,7 +421,7 @@ export function Inventory() {
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Inventário de Peças</CardTitle>
+                <CardTitle>Estoque de Peças</CardTitle>
                 <CardDescription>Peças e componentes físicos cadastrados.</CardDescription>
               </div>
               <div className="relative w-full md:w-72">
@@ -472,19 +494,22 @@ export function Inventory() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => { setRestockItem(item); setRestockQuantity(1); }}>
-                                <PackagePlus className="mr-2 h-4 w-4" /> Adicionar
+                              <DropdownMenuItem onClick={() => { setRestockItem(item); setRestockQuantity("1"); }}>
+                              <PackagePlus className="mr-2 h-4 w-4" /> Adicionar ao estoque
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => { setRemoveItem(item); setRemoveQuantity(1); }} disabled={item.currentQuantity < 1}>
-                                <Package className="mr-2 h-4 w-4" /> Remover
+                              <DropdownMenuItem onClick={() => { setRemoveItem(item); setRemoveQuantity("1"); }} disabled={item.currentQuantity < 1}>
+                              <Package className="mr-2 h-4 w-4" /> Retirar do estoque
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => { setHistoryItem(item); setIsHistoryOpen(true); }}>
                                 <History className="mr-2 h-4 w-4" /> Histórico
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEditItem(item)}>
-                                <Edit className="mr-2 h-4 w-4" /> Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                               <DropdownMenuItem onClick={() => handleEditItem(item)}>
+                                 <Edit className="mr-2 h-4 w-4" /> Editar
+                               </DropdownMenuItem>
+                               <DropdownMenuItem onClick={() => handleDuplicateItem(item)}>
+                                 <Copy className="mr-2 h-4 w-4" /> Duplicar
+                               </DropdownMenuItem>
+                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => handleDeleteItem(item.id)}
@@ -521,7 +546,7 @@ export function Inventory() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader column="name" label="Serviço / Mão de Obra" sortConfig={sortConfig} onSort={cycleSort} />
+                    <SortableHeader column="name" label="Serviço / Mão de obra" sortConfig={sortConfig} onSort={cycleSort} />
                     <SortableHeader column="costPrice" label="Custo Estimado" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
                     <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
@@ -561,10 +586,13 @@ export function Inventory() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleEditItem(item)}>
-                                <Edit className="mr-2 h-4 w-4" /> Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                               <DropdownMenuItem onClick={() => handleEditItem(item)}>
+                                 <Edit className="mr-2 h-4 w-4" /> Editar
+                               </DropdownMenuItem>
+                               <DropdownMenuItem onClick={() => handleDuplicateItem(item)}>
+                                 <Copy className="mr-2 h-4 w-4" /> Duplicar
+                               </DropdownMenuItem>
+                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => handleDeleteItem(item.id)}
@@ -603,13 +631,13 @@ export function Inventory() {
             <Label htmlFor="restock-qty">Quantidade a adicionar</Label>
             <Input
               id="restock-qty"
-              type="number"
-              min="1"
               className="mt-2"
               value={restockQuantity}
-              onChange={(e) => setRestockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              inputMode="numeric"
+              onChange={(event) => setRestockQuantity(sanitizeIntegerInput(event.target.value))}
+              onBlur={(event) => setRestockQuantity(normalizeIntegerInput(event.target.value))}
             />
-            <div className="grid gap-2"><Label htmlFor="restock-cost">Custo unitário (opcional)</Label><Input id="restock-cost" type="number" min="0.01" step="0.01" value={restockUnitCost} placeholder={`Atual: ${formatCurrency(restockItem?.costPrice ?? 0)}`} onChange={(event) => setRestockUnitCost(event.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="restock-cost">Custo unitário (opcional)</Label><Input id="restock-cost" inputMode="decimal" value={restockUnitCost} placeholder={`Atual: ${formatCurrency(restockItem?.costPrice ?? 0)}`} onChange={(event) => setRestockUnitCost(formatCurrencyInput(event.target.value))} onBlur={(event) => setRestockUnitCost(normalizeCurrencyInput(event.target.value))} /></div>
             <div className="grid gap-2"><Label htmlFor="restock-reason">Motivo (opcional)</Label><Input id="restock-reason" value={restockReason} placeholder="Ex.: Nota fiscal 123" onChange={(event) => setRestockReason(event.target.value)} /></div>
           </div>
           <DialogFooter>
@@ -619,12 +647,11 @@ export function Inventory() {
             <Button
               onClick={() => {
                 const r = quantitySchema.safeParse({ quantity: restockQuantity });
-                const fe = parseErrors(r);
-                if (fe) { setRestockErrors(fe); return; }
-                const unitCost = restockUnitCost.trim() ? Number(restockUnitCost) : undefined;
-                if (unitCost !== undefined && (!Number.isFinite(unitCost) || unitCost <= 0)) { setRestockErrors({ unitCost: "Informe um custo unitário maior que zero." }); return; }
+                if (!r.success) { setRestockErrors(parseErrors(r) ?? {}); return; }
+                const unitCostValue = currencyInputToNumber(restockUnitCost);
+                const unitCost = unitCostValue && unitCostValue > 0 ? unitCostValue : undefined;
                 setRestockErrors({});
-                if (restockItem) restockMutation.mutate({ id: restockItem.id, quantity: restockQuantity, unitCost, reason: restockReason.trim() || undefined });
+                if (restockItem) restockMutation.mutate({ id: restockItem.id, quantity: r.data.quantity, unitCost, reason: restockReason.trim() || undefined });
               }}
               disabled={restockMutation.isPending}
               className="gap-2"
@@ -645,15 +672,14 @@ export function Inventory() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="remove-qty">Quantidade a remover</Label>
+            <Label htmlFor="remove-qty">Quantidade a retirar</Label>
             <Input
               id="remove-qty"
-              type="number"
-              min="1"
-              max={removeItem?.currentQuantity ?? 1}
               className="mt-2"
               value={removeQuantity}
-              onChange={(e) => setRemoveQuantity(Math.max(1, Math.min(removeItem?.currentQuantity ?? 1, parseInt(e.target.value) || 1)))}
+              inputMode="numeric"
+              onChange={(event) => setRemoveQuantity(sanitizeIntegerInput(event.target.value))}
+              onBlur={(event) => setRemoveQuantity(normalizeIntegerInput(event.target.value))}
             />
           </div>
           <DialogFooter>
@@ -662,10 +688,9 @@ export function Inventory() {
             <Button
               onClick={() => {
                 const r = quantitySchema.safeParse({ quantity: removeQuantity });
-                const fe = parseErrors(r);
-                if (fe) { setRemoveErrors(fe); return; }
+                if (!r.success) { setRemoveErrors(parseErrors(r) ?? {}); return; }
                 setRemoveErrors({});
-                if (removeItem) removeStockMutation.mutate({ id: removeItem.id, quantity: removeQuantity });
+                if (removeItem) removeStockMutation.mutate({ id: removeItem.id, quantity: r.data.quantity });
               }}
               disabled={removeStockMutation.isPending}
               variant="destructive"
@@ -738,10 +763,14 @@ export function Inventory() {
         open={isSheetOpen}
         onOpenChange={(open) => {
           setIsSheetOpen(open);
-          if (!open) setSelectedItem(null);
+          if (!open) {
+            setSelectedItem(null);
+            setDuplicateItem(null);
+          }
         }}
         initialType={createType}
         item={selectedItem}
+        duplicateItem={duplicateItem}
       />
 
       {confirmDeleteId && (

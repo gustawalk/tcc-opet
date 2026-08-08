@@ -23,18 +23,31 @@ import {
   ValidationErrors,
 } from "@/lib/validation";
 import { InventoryItem } from "@/lib/types";
+import {
+  formatCurrencyInput,
+  formatCurrencyInputValue,
+  normalizeCurrencyInput,
+  normalizeIntegerInput,
+  sanitizeIntegerInput,
+} from "@/lib/numeric-input";
+import { isUnchangedDuplicate } from "@/lib/inventory-duplicate";
 
 type InventoryItemFormData = Pick<
   InventoryItem,
-  | "name"
-  | "description"
-  | "type"
-  | "minQuantity"
-  | "costPrice"
-  | "salePrice"
+  "name" | "description" | "type"
 > & {
   supplierName: string;
+  minQuantity: string;
+  initialQuantity: string;
+  costPrice: string;
+  salePrice: string;
+};
+
+type InventoryItemPayload = Omit<InventoryItemFormData, "minQuantity" | "initialQuantity" | "costPrice" | "salePrice"> & {
+  minQuantity: number;
   initialQuantity: number;
+  costPrice: number;
+  salePrice: number;
 };
 
 interface InventoryItemSheetProps {
@@ -43,6 +56,7 @@ interface InventoryItemSheetProps {
   initialType?: InventoryItem["type"];
   initialPartQuantity?: number;
   item?: InventoryItem | null;
+  duplicateItem?: InventoryItem | null;
   onCreated?: (item: InventoryItem) => void;
 }
 
@@ -53,11 +67,11 @@ const createInitialFormData = (
   name: "",
   description: "",
   type,
-  minQuantity: type === "part" ? 5 : 0,
-  costPrice: 0,
-  salePrice: 0,
+  minQuantity: String(type === "part" ? 5 : 0),
+  costPrice: formatCurrencyInputValue(0),
+  salePrice: formatCurrencyInputValue(0),
   supplierName: "",
-  initialQuantity: type === "part" ? initialPartQuantity : 0,
+  initialQuantity: String(type === "part" ? initialPartQuantity : 0),
 });
 
 export function InventoryItemSheet({
@@ -66,6 +80,7 @@ export function InventoryItemSheet({
   initialType = "part",
   initialPartQuantity = 0,
   item = null,
+  duplicateItem = null,
   onCreated,
 }: InventoryItemSheetProps) {
   const queryClient = useQueryClient();
@@ -73,29 +88,49 @@ export function InventoryItemSheet({
     createInitialFormData(initialType, initialPartQuantity),
   );
   const [errors, setErrors] = useState<ValidationErrors>({});
+  const [duplicateConfirmationOpen, setDuplicateConfirmationOpen] =
+    useState(false);
+  const [pendingDuplicate, setPendingDuplicate] =
+    useState<InventoryItemPayload | null>(null);
+
+  const isEditing = item !== null;
+  const isDuplicating = duplicateItem !== null;
 
   useEffect(() => {
     if (!open) return;
 
     setErrors({});
+    setDuplicateConfirmationOpen(false);
+    setPendingDuplicate(null);
     setFormData(
       item
         ? {
             name: item.name,
             description: item.description,
             type: item.type,
-            minQuantity: item.minQuantity,
-            costPrice: item.costPrice,
-            salePrice: item.salePrice,
+            minQuantity: String(item.minQuantity),
+            costPrice: formatCurrencyInputValue(item.costPrice),
+            salePrice: formatCurrencyInputValue(item.salePrice),
             supplierName: item.supplierName ?? "",
-            initialQuantity: item.currentQuantity,
+            initialQuantity: String(item.currentQuantity),
           }
-        : createInitialFormData(initialType, initialPartQuantity),
+        : duplicateItem
+          ? {
+              name: duplicateItem.name,
+              description: duplicateItem.description,
+              type: duplicateItem.type,
+              minQuantity: String(duplicateItem.minQuantity),
+              costPrice: formatCurrencyInputValue(duplicateItem.costPrice),
+              salePrice: formatCurrencyInputValue(duplicateItem.salePrice),
+              supplierName: duplicateItem.supplierName ?? "",
+              initialQuantity: "0",
+            }
+          : createInitialFormData(initialType, initialPartQuantity),
     );
-  }, [initialPartQuantity, initialType, item, open]);
+  }, [duplicateItem, initialPartQuantity, initialType, item, open]);
 
   const createMutation = useMutation({
-    mutationFn: async (data: InventoryItemFormData) =>
+    mutationFn: async (data: InventoryItemPayload) =>
       invoke<InventoryItem>("create_inventory_item", {
         name: data.name,
         description: data.description,
@@ -108,7 +143,7 @@ export function InventoryItemSheet({
       }),
   });
   const updateMutation = useMutation({
-    mutationFn: async (data: InventoryItemFormData) => {
+    mutationFn: async (data: InventoryItemPayload) => {
       if (!item) return;
       await invoke("update_inventory_item", {
         id: item.id,
@@ -127,18 +162,41 @@ export function InventoryItemSheet({
     setErrors((current) => clearFieldError(current, field));
   };
 
+  const closeDuplicateConfirmation = () => {
+    setDuplicateConfirmationOpen(false);
+    setPendingDuplicate(null);
+  };
+
+  const createItem = async (data: InventoryItemPayload) => {
+    const created = await createMutation.mutateAsync(data);
+    queryClient.setQueryData<InventoryItem[]>(["inventory"], (items = []) => [
+      created,
+      ...items.filter((entry) => entry.id !== created.id),
+    ]);
+    queryClient.setQueryData<InventoryItem[]>(
+      ["inventory-lookup"],
+      (items = []) => [created, ...items.filter((entry) => entry.id !== created.id)],
+    );
+    await queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
+    onCreated?.(created);
+    toastSuccess(
+      isDuplicating ? "Item duplicado com sucesso." : "Item criado com sucesso.",
+    );
+    onOpenChange(false);
+  };
+
   const handleSave = async () => {
     if (isSaving) return;
-    const fieldErrors = parseErrors(inventoryItemSchema.safeParse(formData));
-    if (fieldErrors) {
-      setErrors(fieldErrors);
+    const result = inventoryItemSchema.safeParse(formData);
+    if (!result.success) {
+      setErrors(parseErrors(result) ?? {});
       return;
     }
 
     setErrors({});
     try {
-      if (item) {
-        await updateMutation.mutateAsync(formData);
+      if (isEditing) {
+        await updateMutation.mutateAsync({ ...formData, ...result.data });
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["inventory"] }),
           queryClient.invalidateQueries({ queryKey: ["inventory-lookup"] }),
@@ -146,31 +204,27 @@ export function InventoryItemSheet({
         ]);
         toastSuccess("Item atualizado com sucesso.");
       } else {
-        const created = await createMutation.mutateAsync(formData);
-        queryClient.setQueryData<InventoryItem[]>(["inventory"], (items = []) => [
-          created,
-          ...items.filter((entry) => entry.id !== created.id),
-        ]);
-        queryClient.setQueryData<InventoryItem[]>(
-          ["inventory-lookup"],
-          (items = []) => [created, ...items.filter((entry) => entry.id !== created.id)],
-        );
-        await queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
-        onCreated?.(created);
-        toastSuccess("Item criado com sucesso.");
+        const data = { ...formData, ...result.data };
+        if (duplicateItem && isUnchangedDuplicate(data, duplicateItem)) {
+          setPendingDuplicate(data);
+          setDuplicateConfirmationOpen(true);
+          return;
+        }
+        await createItem(data);
       }
-      onOpenChange(false);
+      if (isEditing) onOpenChange(false);
     } catch (error) {
-      toastError(error, item ? "Erro ao atualizar item." : "Erro ao criar item.");
+      toastError(error, isEditing ? "Erro ao atualizar item." : "Erro ao criar item.");
     }
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>
-            {item ? "Editar" : "Novo"}{" "}
+            {isEditing ? "Editar" : isDuplicating ? "Duplicar" : "Novo"}{" "}
             {formData.type === "part" ? "Item no Estoque" : "Serviço"}
           </SheetTitle>
           <SheetDescription>
@@ -223,17 +277,16 @@ export function InventoryItemSheet({
 
           {formData.type === "part" && (
             <div className="grid gap-2">
-              <Label htmlFor="inventory-item-min">Qtd. mínima (alerta)</Label>
+              <Label htmlFor="inventory-item-min">Quantidade mínima (alerta)</Label>
               <div className="relative">
                 <Box className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="inventory-item-min"
-                  type="number"
                   className="pl-9"
                   value={formData.minQuantity}
-                  onChange={(event) =>
-                    updateField("minQuantity", parseInt(event.target.value) || 0)
-                  }
+                  inputMode="numeric"
+                  onChange={(event) => updateField("minQuantity", sanitizeIntegerInput(event.target.value))}
+                  onBlur={(event) => updateField("minQuantity", normalizeIntegerInput(event.target.value))}
                 />
               </div>
               {errors.minQuantity && (
@@ -249,16 +302,10 @@ export function InventoryItemSheet({
               </Label>
               <Input
                 id="inventory-item-initial-quantity"
-                type="number"
-                min="0"
-                step="1"
                 value={formData.initialQuantity}
-                onChange={(event) =>
-                  updateField(
-                    "initialQuantity",
-                    Math.max(0, Math.trunc(Number(event.target.value)) || 0),
-                  )
-                }
+                inputMode="numeric"
+                onChange={(event) => updateField("initialQuantity", sanitizeIntegerInput(event.target.value))}
+                onBlur={(event) => updateField("initialQuantity", normalizeIntegerInput(event.target.value))}
               />
               <p className="text-xs text-muted-foreground">
                 Deixe em 0 para cadastrar sem estoque disponível.
@@ -280,13 +327,11 @@ export function InventoryItemSheet({
                 <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="inventory-item-cost"
-                  type="number"
-                  step="0.01"
                   className="pl-9"
                   value={formData.costPrice}
-                  onChange={(event) =>
-                    updateField("costPrice", parseFloat(event.target.value) || 0)
-                  }
+                  inputMode="decimal"
+                  onChange={(event) => updateField("costPrice", formatCurrencyInput(event.target.value))}
+                  onBlur={(event) => updateField("costPrice", normalizeCurrencyInput(event.target.value))}
                 />
               </div>
               {errors.costPrice && (
@@ -299,15 +344,16 @@ export function InventoryItemSheet({
                 <TrendingUp className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
                 <Input
                   id="inventory-item-sale"
-                  type="number"
-                  step="0.01"
                   className="pl-9"
                   value={formData.salePrice}
-                  onChange={(event) =>
-                    updateField("salePrice", parseFloat(event.target.value) || 0)
-                  }
+                  inputMode="decimal"
+                  onChange={(event) => updateField("salePrice", formatCurrencyInput(event.target.value))}
+                  onBlur={(event) => updateField("salePrice", normalizeCurrencyInput(event.target.value))}
                 />
               </div>
+              {errors.salePrice && (
+                <p className="text-xs text-destructive">{errors.salePrice}</p>
+              )}
             </div>
           </div>
         </div>
@@ -328,10 +374,58 @@ export function InventoryItemSheet({
             disabled={isSaving}
           >
             <Save className="h-4 w-4" />
-            {isSaving ? "Salvando..." : item ? "Salvar alterações" : "Cadastrar"}
+            {isSaving
+              ? "Salvando..."
+              : isEditing
+                ? "Salvar alterações"
+                : isDuplicating
+                  ? "Duplicar"
+                  : "Cadastrar"}
           </Button>
         </SheetFooter>
+      {duplicateConfirmationOpen && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col gap-6 bg-background p-6"
+          role="alert"
+        >
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">Nenhuma informação foi alterada</h2>
+            <p className="text-sm text-muted-foreground">
+              {formData.type === "part"
+                ? "O novo cadastro será idêntico ao item original, com estoque inicial zero."
+                : "O novo cadastro será idêntico ao serviço original."}{" "}
+              Deseja duplicar mesmo assim?
+            </p>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeDuplicateConfirmation}
+              disabled={isSaving}
+            >
+              Voltar e editar
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (!pendingDuplicate || isSaving) return;
+                try {
+                  await createItem(pendingDuplicate);
+                  closeDuplicateConfirmation();
+                } catch (error) {
+                  toastError(error, "Erro ao duplicar item.");
+                }
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? "Duplicando..." : "Duplicar mesmo assim"}
+            </Button>
+          </div>
+        </div>
+      )}
       </SheetContent>
     </Sheet>
+    </>
   );
 }

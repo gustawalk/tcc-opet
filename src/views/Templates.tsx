@@ -41,6 +41,7 @@ import { useSort } from "@/hooks/useSort";
 import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
+import { ChecklistTemplateDetailSheet } from "@/components/shared/ChecklistTemplateDetailSheet";
 
 const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
   return await invoke("get_checklist_templates");
@@ -50,6 +51,7 @@ export function Templates() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
+  const [detailTemplate, setDetailTemplate] = useState<ChecklistTemplate | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { sortConfig, cycleSort } = useSort();
   const queryClient = useQueryClient();
@@ -126,8 +128,8 @@ export function Templates() {
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
         <AlertTriangle className="h-12 w-12 text-destructive" />
-        <h3 className="text-xl font-bold">Erro ao carregar templates</h3>
-        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar os templates. Tente novamente.</p>
+        <h3 className="text-xl font-bold">Erro ao carregar modelos de checklist</h3>
+        <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar os modelos de checklist. Tente novamente.</p>
         <Button onClick={() => refetch()}>Tentar Novamente</Button>
       </div>
     );
@@ -137,13 +139,13 @@ export function Templates() {
     <div className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Templates</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Modelos de checklist</h2>
           <p className="text-muted-foreground mt-1">
             Gerencie modelos de checklists para suas ordens de serviço.
           </p>
         </div>
         <Button onClick={handleAddTemplate} className="gap-2">
-          <Plus className="h-4 w-4" /> Novo Template
+          <Plus className="h-4 w-4" /> Novo modelo
         </Button>
       </div>
 
@@ -157,7 +159,7 @@ export function Templates() {
             <div className="relative w-full md:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar template..."
+                placeholder="Buscar modelo..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -188,12 +190,16 @@ export function Templates() {
                   ))
                 ) : filteredTemplates.length > 0 ? (
                   filteredTemplates.map((template) => (
-                    <TableRow key={template.id}>
+                    <TableRow
+                      key={template.id}
+                      className="cursor-pointer"
+                      onClick={() => setDetailTemplate(template)}
+                    >
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <ClipboardList className="h-4 w-4 text-primary" />
-                          {template.title}
-                        </div>
+                          <div className="flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            {template.title}
+                          </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{template.items.length} itens</Badge>
@@ -201,7 +207,10 @@ export function Templates() {
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                         {template.createdAt ? new Date(template.createdAt).toLocaleDateString('pt-BR') : '-'}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className="text-right"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -228,7 +237,7 @@ export function Templates() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                      Nenhum template encontrado.
+                      Nenhum modelo encontrado.
                     </TableCell>
                   </TableRow>
                 )}
@@ -246,6 +255,11 @@ export function Templates() {
         }}
         template={selectedTemplate}
       />
+      <ChecklistTemplateDetailSheet
+        template={detailTemplate}
+        open={detailTemplate !== null}
+        onClose={() => setDetailTemplate(null)}
+      />
 
       {confirmDeleteId && (
         <div
@@ -256,9 +270,9 @@ export function Templates() {
             className="bg-background border rounded-lg shadow-lg p-6 max-w-md space-y-4 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold">Excluir template</h3>
+            <h3 className="text-lg font-semibold">Excluir modelo de checklist</h3>
             <p className="text-sm text-muted-foreground">
-              Esta ação não pode ser desfeita. Deseja realmente excluir este template?
+              Esta ação não pode ser desfeita. Deseja realmente excluir este modelo?
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>

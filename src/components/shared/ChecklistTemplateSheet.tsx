@@ -96,11 +96,11 @@ export function ChecklistTemplateSheet({
           ],
         );
         onCreated?.(created);
-        toastSuccess("Template criado com sucesso.");
+        toastSuccess("Modelo de checklist criado com sucesso.");
       }
       onOpenChange(false);
     } catch (error) {
-      toastError(error, "Erro ao salvar template.");
+      toastError(error, "Erro ao salvar modelo de checklist.");
     } finally {
       setIsSaving(false);
     }
@@ -110,15 +110,15 @@ export function ChecklistTemplateSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full flex-col sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{template ? "Editar Template" : "Novo Template"}</SheetTitle>
+          <SheetTitle>{template ? "Editar modelo" : "Novo modelo"}</SheetTitle>
           <SheetDescription>
-            Crie uma lista de verificacao para ser preenchida na entrada de aparelhos.
+            Crie uma lista de verificação para a entrada de aparelhos.
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex flex-1 flex-col gap-6 overflow-hidden py-6">
           <div className="grid gap-2">
-            <Label htmlFor="checklist-template-title">Titulo do Template</Label>
+            <Label htmlFor="checklist-template-title">Título do modelo</Label>
             <Input
               id="checklist-template-title"
               value={title}
@@ -220,7 +220,7 @@ export function ChecklistTemplateSheet({
           </Button>
           <Button type="button" className="w-full gap-2" onClick={handleSave} disabled={isSaving}>
             <Save className="h-4 w-4" />
-            {isSaving ? "Salvando..." : template ? "Salvar Alteracoes" : "Criar Template"}
+            {isSaving ? "Salvando..." : template ? "Salvar alterações" : "Criar modelo"}
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -39,6 +39,11 @@ import {
   ValidationErrors,
 } from "@/lib/validation";
 import { formatCurrency } from "@/lib/formatters";
+import {
+  decimalInputToNumber,
+  normalizeDecimalInput,
+  sanitizeDecimalInput,
+} from "@/lib/numeric-input";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   ChecklistItem,
@@ -124,7 +129,11 @@ export function ServiceOrderEditorSheet({
   const items = itemsQuery.data ?? [];
   const checklist = checklistQuery.data ?? [];
   const attachments = attachmentsQuery.data ?? [];
-  const discount = Math.max(0, Math.min(100, Number(discountInput) || 0));
+  const discountValue = decimalInputToNumber(discountInput);
+  const discount =
+    discountValue !== undefined && discountValue >= 0 && discountValue <= 100
+      ? discountValue
+      : 0;
   const total = items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
@@ -251,7 +260,7 @@ export function ServiceOrderEditorSheet({
       );
       await invalidateOrder();
       if (selected.length)
-        toastSuccess(`${selected.length} anexo(s) adicionado(s) à OS.`);
+        toastSuccess(`${selected.length} anexo(s) adicionado(s) à ordem.`);
     } catch (error) {
       toastError(error, "Erro ao selecionar anexos.");
     } finally {
@@ -289,14 +298,12 @@ export function ServiceOrderEditorSheet({
   };
   const saveEdit = async (confirmedCancellation = false) => {
     if (!order || isSaving) return;
-    const fieldErrors = parseErrors(
-      editServiceOrderSchema.safeParse({
-        description: editDescription,
-        discount,
-      }),
-    );
-    if (fieldErrors) {
-      setEditErrors(fieldErrors);
+    const result = editServiceOrderSchema.safeParse({
+      description: editDescription,
+      discount: discountInput,
+    });
+    if (!result.success) {
+      setEditErrors(parseErrors(result) ?? {});
       return;
     }
     if (
@@ -313,7 +320,7 @@ export function ServiceOrderEditorSheet({
         request: {
           id: order.id,
           description: editDescription,
-          discountPercent: discount,
+          discountPercent: result.data.discount ?? 0,
           status: editStatus,
           restoreStock: editStatus === "Cancelada",
           checklist,
@@ -369,7 +376,7 @@ export function ServiceOrderEditorSheet({
                   Editar - {order?.displayId ?? "Carregando..."}
                 </SheetTitle>
                 <SheetDescription>
-                  Atualize os dados, checklist, status e itens desta OS.
+                  Atualize os dados, checklist, status e itens desta ordem.
                 </SheetDescription>
               </div>
               <Button
@@ -485,14 +492,14 @@ export function ServiceOrderEditorSheet({
                     ))
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Esta OS não possui checklist.
+                      Esta ordem não possui checklist.
                     </p>
                   )}
                 </div>
                 <Separator />
                 {inventoryQuery.isError || itemsQuery.isError ? (
                   <p className="text-sm text-destructive">
-                    Não foi possível carregar os itens ou o inventário.
+                    Não foi possível carregar os itens ou o estoque.
                   </p>
                 ) : (
                   <ServiceOrderItemsEditor
@@ -577,15 +584,24 @@ export function ServiceOrderEditorSheet({
                   <div className="flex items-center gap-2">
                     <Label>Desconto</Label>
                     <Input
-                      type="number"
-                      min="0"
-                      max="100"
                       className="w-20"
                       value={discountInput}
-                      onChange={(event) => setDiscountInput(event.target.value)}
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        setDiscountInput(sanitizeDecimalInput(event.target.value));
+                        setEditErrors(clearFieldError(editErrors, "discount"));
+                      }}
+                      onBlur={(event) =>
+                        setDiscountInput(normalizeDecimalInput(event.target.value))
+                      }
                     />
                     <span>%</span>
                   </div>
+                  {editErrors.discount && (
+                    <p className="text-xs text-destructive">
+                      {editErrors.discount}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center justify-end gap-2 text-right">
                     {discount > 0 && (
                       <span className="text-sm text-muted-foreground line-through">
@@ -641,9 +657,9 @@ export function ServiceOrderEditorSheet({
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar ordem de serviço</AlertDialogTitle>
             <AlertDialogDescription>
-              Ao cancelar esta OS, o estoque das peças físicas será restaurado.
+              Ao cancelar esta ordem, o estoque das peças físicas será restaurado.
               Os itens permanecerão registrados e serão baixados novamente se a
-              OS for reativada. Deseja continuar?
+              ordem for reativada. Deseja continuar?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

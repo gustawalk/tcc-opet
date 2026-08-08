@@ -37,8 +37,8 @@ export const formatName = (value: string) => {
   const trimmed = value.replace(/\s+/g, " ").trim();
   return trimmed
     .split(" ")
-    .map((word) =>
-      word.length > 3
+    .map((word, index) =>
+      index === 0 || word.length > 3
         ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
         : word.toLowerCase()
     )

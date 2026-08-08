@@ -63,6 +63,12 @@ jobs:
       - name: Build frontend
         run: yarn build
 
-      - name: Test Rust backend
+      - name: Test frontend
+        run: yarn test
+
+      - name: Install Rust coverage tool
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Test Rust backend with coverage
         working-directory: src-tauri
-        run: cargo test
+        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 75

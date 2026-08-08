@@ -306,7 +306,14 @@ pub(crate) fn delete_attachment_with_paths(
 pub fn read_attachment_as_data_url(id: &str) -> Result<String, AppError> {
     let attachment = ServiceOrderAttachmentRepository::get_by_id(id)?
         .ok_or_else(|| not_found("Attachment", "Anexo"))?;
-    let bytes = read_stored_attachment(&attachments_dir(), &attachment)?;
+    read_attachment_as_data_url_with_paths(&attachment, &attachments_dir())
+}
+
+pub(crate) fn read_attachment_as_data_url_with_paths(
+    attachment: &ServiceOrderAttachment,
+    storage_dir: &Path,
+) -> Result<String, AppError> {
+    let bytes = read_stored_attachment(storage_dir, &attachment)?;
     Ok(format!(
         "data:{};base64,{}",
         attachment.mime_type,
@@ -317,9 +324,17 @@ pub fn read_attachment_as_data_url(id: &str) -> Result<String, AppError> {
 pub fn export_attachment(id: &str, destination: &Path) -> Result<(), AppError> {
     let attachment = ServiceOrderAttachmentRepository::get_by_id(id)?
         .ok_or_else(|| not_found("Attachment", "Anexo"))?;
+    export_attachment_with_paths(&attachment, &attachments_dir(), destination)
+}
+
+pub(crate) fn export_attachment_with_paths(
+    attachment: &ServiceOrderAttachment,
+    storage_dir: &Path,
+    destination: &Path,
+) -> Result<(), AppError> {
     fs::write(
         destination,
-        read_stored_attachment(&attachments_dir(), &attachment)?,
+        read_stored_attachment(storage_dir, &attachment)?,
     )
     .map_err(|error| {
         AppError::new(
@@ -479,6 +494,14 @@ mod tests {
             read_stored_attachment(&storage, &attachment).unwrap(),
             b"\x89PNG\r\n\x1a\n"
         );
+        assert!(
+            read_attachment_as_data_url_with_paths(&attachment, &storage)
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        let exported = temp_dir.join("exported.png");
+        export_attachment_with_paths(&attachment, &storage, &exported).unwrap();
+        assert_eq!(fs::read(exported).unwrap(), b"\x89PNG\r\n\x1a\n");
         delete_attachment_with_paths(&conn, &attachment.id, &storage).unwrap();
         assert!(!storage.join(&attachment.storage_name).exists());
         let _ = fs::remove_dir_all(temp_dir);
@@ -492,6 +515,90 @@ mod tests {
         fs::write(&source, b"not-an-image").unwrap();
 
         assert!(validate_attachment_file(&source).is_err());
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn encryption_rejects_invalid_or_tampered_envelopes() {
+        let attachment = ServiceOrderAttachment::new(
+            "order-1".to_string(),
+            "entrada.png".to_string(),
+            "stored-file".to_string(),
+            "image/png".to_string(),
+            8,
+        );
+        let bytes = b"\x89PNG\r\n\x1a\n";
+        let envelope = encrypt_attachment_bytes(&attachment, bytes).unwrap();
+
+        assert_eq!(
+            decrypt_attachment_bytes(&attachment, &envelope).unwrap(),
+            bytes
+        );
+        assert!(decrypt_attachment_bytes(&attachment, b"plaintext").is_err());
+        assert!(decrypt_attachment_bytes(&attachment, ENVELOPE_MAGIC).is_err());
+
+        let mut tampered = envelope;
+        *tampered.last_mut().unwrap() ^= 1;
+        assert!(decrypt_attachment_bytes(&attachment, &tampered).is_err());
+
+        let mut mismatched = attachment.clone();
+        mismatched.size_bytes = 9;
+        assert!(decrypt_attachment_bytes(
+            &mismatched,
+            &encrypt_attachment_bytes(&attachment, bytes).unwrap()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn validates_attachment_file_type_and_metadata() {
+        let temp_dir = std::env::temp_dir().join(format!("tcc-opet-attachment-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let error = validate_attachment_file(&temp_dir).unwrap_err();
+        assert_eq!(error.en, "Attachment must be a regular file.");
+
+        let source = temp_dir.join("entrada.png");
+        fs::write(&source, b"\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(validate_attachment_file(&source).unwrap().0, "image/png");
+        assert!(validate_attachment_file(&temp_dir.join("missing.png")).is_err());
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn migrates_plaintext_legacy_attachment_to_an_encrypted_envelope() {
+        let conn = setup_db();
+        let customer = Customer::new(
+            "Ana".to_string(),
+            "41999999999".to_string(),
+            "ana@example.com".to_string(),
+            "Rua A".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &customer).unwrap();
+        let mut order = ServiceOrder::new(customer.id, "iPhone".to_string(), "Falha".to_string());
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        let temp_dir =
+            std::env::temp_dir().join(format!("tcc-opet-legacy-attachment-{}", Uuid::new_v4()));
+        let storage = temp_dir.join("storage");
+        fs::create_dir_all(&storage).unwrap();
+        let attachment = ServiceOrderAttachment::new(
+            order.id,
+            "entrada.png".to_string(),
+            "legacy.png".to_string(),
+            "image/png".to_string(),
+            8,
+        );
+        ServiceOrderAttachmentRepository::create_with_conn(&conn, &attachment).unwrap();
+        fs::write(storage.join(&attachment.storage_name), b"\x89PNG\r\n\x1a\n").unwrap();
+
+        migrate_legacy_attachments(&conn, &storage).unwrap();
+
+        let stored = fs::read(storage.join(&attachment.storage_name)).unwrap();
+        assert!(stored.starts_with(ENVELOPE_MAGIC));
+        assert_eq!(
+            read_stored_attachment(&storage, &attachment).unwrap(),
+            b"\x89PNG\r\n\x1a\n"
+        );
         let _ = fs::remove_dir_all(temp_dir);
     }
 }

@@ -258,6 +258,16 @@ pub fn preview_financial_report_pdf(
         ranking_metric,
         ranking_limit,
     )?;
+    let html = build_financial_report_html(&report)?;
+    create_pdf_preview(
+        "relatorio-financeiro.pdf".to_string(),
+        render_html_to_pdf_bytes(&html)?,
+    )
+}
+
+fn build_financial_report_html(
+    report: &crate::repositories::financial_report_repo::FinancialReport,
+) -> Result<String, AppError> {
     let mut context = Context::new();
     context.insert("start_date", &report.start_date);
     context.insert("end_date", &report.end_date);
@@ -359,11 +369,7 @@ pub fn preview_financial_report_pdf(
         "generated_at",
         &Local::now().format("%d/%m/%Y %H:%M").to_string(),
     );
-    let html = Tera::one_off(FINANCIAL_REPORT_TEMPLATE, &context, true).map_err(pdf_error)?;
-    create_pdf_preview(
-        "relatorio-financeiro.pdf".to_string(),
-        render_html_to_pdf_bytes(&html)?,
-    )
+    Tera::one_off(FINANCIAL_REPORT_TEMPLATE, &context, true).map_err(pdf_error)
 }
 
 fn preview_working_dir() -> Result<PathBuf, AppError> {
@@ -478,6 +484,9 @@ mod tests {
     use crate::models::inventory_item::InventoryItem;
     use crate::models::service_order::ServiceOrder;
     use crate::repositories::customer_repo::CustomerRepository;
+    use crate::repositories::financial_report_repo::{
+        FinancialBreakdown, FinancialMonth, FinancialReport,
+    };
     use crate::repositories::inventory_repo::InventoryRepository;
     use crate::test_helpers::setup_db;
 
@@ -546,5 +555,50 @@ mod tests {
 
         discard_pdf_preview(&preview.token);
         assert!(get_pdf_preview(&preview.token).is_err());
+    }
+
+    #[test]
+    fn renders_financial_report_html_without_requiring_chromium() {
+        let breakdown = FinancialBreakdown {
+            label: "Técnica Ana".to_string(),
+            revenue: 1234.5,
+            cost: 400.0,
+            profit: 834.5,
+            count: 3,
+        };
+        let report = FinancialReport {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-31".to_string(),
+            total_revenue: 1234.5,
+            total_cost: 400.0,
+            net_profit: 834.5,
+            average_ticket: 411.5,
+            finalized_orders: 3,
+            new_customers: 2,
+            new_orders: 4,
+            completion_rate: 75.0,
+            cancelled_orders: 1,
+            cancellation_rate: 25.0,
+            average_turnaround_hours: 12.5,
+            returning_customers: 1,
+            total_discounts: 50.0,
+            ranking_metric: "quantity".to_string(),
+            ranking_limit: 5,
+            by_technician: vec![breakdown.clone()],
+            by_item_type: vec![breakdown.clone()],
+            top_items: vec![breakdown],
+            by_month: vec![FinancialMonth {
+                month: "2026-01".to_string(),
+                revenue: 1234.5,
+                profit: 834.5,
+                order_count: 3,
+            }],
+        };
+
+        let html = build_financial_report_html(&report).unwrap();
+
+        assert!(html.contains("Técnica Ana"));
+        assert!(html.contains("R$ 1.234,50"));
+        assert!(html.contains("Quantidade vendida"));
     }
 }

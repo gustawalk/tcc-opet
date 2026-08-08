@@ -22,7 +22,13 @@ fn validate_inventory_values(
             "O tipo do item deve ser peça ou serviço.",
         ));
     }
-    if min_quantity < 0 || current_quantity < 0 || cost_price < 0.0 || sale_price < 0.0 {
+    if min_quantity < 0
+        || current_quantity < 0
+        || !cost_price.is_finite()
+        || !sale_price.is_finite()
+        || cost_price < 0.0
+        || sale_price < 0.0
+    {
         return Err(crate::error::business_error(
             "Inventory quantities and prices cannot be negative.",
             "Quantidades e preços do inventário não podem ser negativos.",
@@ -143,7 +149,7 @@ pub fn restock_inventory_item(
     reason: Option<String>,
 ) -> Result<(), AppError> {
     validate_stock_change(&id, quantity, false)?;
-    if unit_cost.is_some_and(|cost| cost <= 0.0) {
+    if unit_cost.is_some_and(|cost| !cost.is_finite() || cost <= 0.0) {
         return Err(crate::error::business_error(
             "Restock unit cost must be greater than zero.",
             "O custo unitário da reposição deve ser maior que zero.",
@@ -208,5 +214,12 @@ mod tests {
             err.pt,
             "Quantidades e preços do inventário não podem ser negativos."
         );
+    }
+
+    #[test]
+    fn rejects_invalid_inventory_types_and_non_finite_prices() {
+        assert!(validate_inventory_values("other", 0, 0, 1.0, 1.0).is_err());
+        assert!(validate_inventory_values("part", 0, 0, f64::NAN, 1.0).is_err());
+        assert!(validate_inventory_values("part", 0, 0, 1.0, f64::INFINITY).is_err());
     }
 }

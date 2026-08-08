@@ -6,7 +6,10 @@ use uuid::Uuid;
 /// Initialize seed data - seeds missing tables independently
 pub fn initialize_seed_data() -> Result<(), String> {
     let conn = get_db().map_err(|e| e.to_string())?;
+    initialize_seed_data_with_conn(&conn)
+}
 
+fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), String> {
     println!("[SEED] Checking seed data requirements...");
 
     // Seed users first (needed for service orders)
@@ -827,4 +830,78 @@ fn seed_checklist_templates(conn: &rusqlite::Connection) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::setup_db;
+
+    #[test]
+    fn seed_routines_populate_a_complete_demo_dataset() {
+        let conn = setup_db();
+
+        initialize_seed_data_with_conn(&conn).unwrap();
+        // Re-running initialization exercises the idempotent skip paths.
+        initialize_seed_data_with_conn(&conn).unwrap();
+
+        let users: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .unwrap();
+        let customers: i64 = conn
+            .query_row("SELECT COUNT(*) FROM customers", [], |row| row.get(0))
+            .unwrap();
+        let orders: i64 = conn
+            .query_row("SELECT COUNT(*) FROM service_orders", [], |row| row.get(0))
+            .unwrap();
+        let finalized: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM service_orders WHERE status = 'Finalizada' AND closed_at IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let parts: i64 = conn
+            .query_row("SELECT COUNT(*) FROM service_order_parts", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let snapshots: i64 = conn
+            .query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let templates: i64 = conn
+            .query_row("SELECT COUNT(*) FROM checklist_templates", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let template_items: i64 = conn
+            .query_row("SELECT COUNT(*) FROM template_items", [], |row| row.get(0))
+            .unwrap();
+        let checklist_items: i64 = conn
+            .query_row("SELECT COUNT(*) FROM service_order_checklists", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        assert_eq!(users, 3);
+        assert_eq!(customers, 10);
+        assert_eq!(orders, 28);
+        assert_eq!(finalized, 12);
+        assert!(parts >= 55);
+        assert_eq!(snapshots, 1);
+        assert_eq!(templates, 5);
+        assert_eq!(template_items, 40);
+        assert!(checklist_items > 0);
+
+        conn.execute("DELETE FROM financial_snapshots", []).unwrap();
+        seed_financial_snapshots(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM financial_snapshots", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            30
+        );
+    }
 }

@@ -26,22 +26,7 @@ fn csv_escape(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
-#[command]
-pub fn export_financial_report_csv(
-    start_date: Option<String>,
-    end_date: Option<String>,
-    technician_id: Option<String>,
-    ranking_metric: Option<String>,
-    ranking_limit: Option<i32>,
-    destination: String,
-) -> Result<(), AppError> {
-    let report = FinancialReportRepository::get_report_filtered(
-        start_date.as_deref(),
-        end_date.as_deref(),
-        technician_id.as_deref(),
-        ranking_metric.as_deref(),
-        ranking_limit,
-    )?;
+fn financial_report_csv(report: &FinancialReport) -> String {
     let mut csv = String::from(
         "Período inicial,Período final,Faturamento,Custo,Lucro,Ticket médio,OS finalizadas,Novos clientes,Novas OS,Taxa de conclusão,OS canceladas,Taxa de cancelamento,Tempo médio de conclusão (horas),Clientes recorrentes,Descontos concedidos\n",
     );
@@ -64,7 +49,7 @@ pub fn export_financial_report_csv(
         report.total_discounts,
     ));
     csv.push_str("Técnico,Faturamento,Custo,Lucro,OS finalizadas\n");
-    for item in report.by_technician {
+    for item in &report.by_technician {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
             csv_escape(&item.label),
@@ -75,7 +60,7 @@ pub fn export_financial_report_csv(
         ));
     }
     csv.push_str("\nCategoria,Faturamento,Custo,Lucro,OS finalizadas\n");
-    for item in report.by_item_type {
+    for item in &report.by_item_type {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
             csv_escape(&item.label),
@@ -93,7 +78,7 @@ pub fn export_financial_report_csv(
     csv.push_str(&format!(
         "\n{ranking_label},Faturamento,Custo,Lucro,Quantidade\n"
     ));
-    for item in report.top_items {
+    for item in &report.top_items {
         csv.push_str(&format!(
             "{},{:.2},{:.2},{:.2},{}\n",
             csv_escape(&item.label),
@@ -103,6 +88,26 @@ pub fn export_financial_report_csv(
             item.count,
         ));
     }
+    csv
+}
+
+#[command]
+pub fn export_financial_report_csv(
+    start_date: Option<String>,
+    end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
+    destination: String,
+) -> Result<(), AppError> {
+    let report = FinancialReportRepository::get_report_filtered(
+        start_date.as_deref(),
+        end_date.as_deref(),
+        technician_id.as_deref(),
+        ranking_metric.as_deref(),
+        ranking_limit,
+    )?;
+    let csv = financial_report_csv(&report);
     if let Some(parent) = Path::new(&destination).parent() {
         fs::create_dir_all(parent).map_err(|error| {
             AppError::new(
@@ -118,6 +123,56 @@ pub fn export_financial_report_csv(
         )
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repositories::financial_report_repo::{FinancialBreakdown, FinancialMonth};
+
+    #[test]
+    fn renders_escaped_csv_with_quantity_ranking() {
+        let breakdown = FinancialBreakdown {
+            label: "Técnica \"Ana\"".to_string(),
+            revenue: 120.0,
+            cost: 50.0,
+            profit: 70.0,
+            count: 2,
+        };
+        let report = FinancialReport {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-31".to_string(),
+            total_revenue: 120.0,
+            total_cost: 50.0,
+            net_profit: 70.0,
+            average_ticket: 60.0,
+            finalized_orders: 2,
+            new_customers: 1,
+            new_orders: 3,
+            completion_rate: 66.67,
+            cancelled_orders: 1,
+            cancellation_rate: 33.33,
+            average_turnaround_hours: 24.0,
+            returning_customers: 1,
+            total_discounts: 10.0,
+            ranking_metric: "quantity".to_string(),
+            ranking_limit: 5,
+            by_technician: vec![breakdown.clone()],
+            by_item_type: vec![breakdown.clone()],
+            top_items: vec![breakdown],
+            by_month: vec![FinancialMonth {
+                month: "2026-01".to_string(),
+                revenue: 120.0,
+                profit: 70.0,
+                order_count: 2,
+            }],
+        };
+
+        let csv = financial_report_csv(&report);
+
+        assert!(csv.contains("\"Técnica \"\"Ana\"\"\",120.00,50.00,70.00,2"));
+        assert!(csv.contains("Itens e serviços mais vendidos por quantidade"));
+    }
 }
 
 #[command]

@@ -44,6 +44,10 @@ import {
   Theme,
 } from "@/lib/theme";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  "error sending request for url (https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json)": "Não foi possível verificar as atualizações."
+}
+
 const fetchSettings = async (): Promise<Settings> => {
   return await invoke<Settings>("get_settings");
 };
@@ -154,13 +158,20 @@ export function Settings() {
 
   const updateCheckMutation = useMutation({
     mutationFn: async () => {
-      const update = await check();
-      if (update) {
-        setUpdateInfo({ available: true, version: update.version });
-        setPendingUpdate(update);
-      } else {
-        setUpdateInfo({ available: false });
-        toastSuccess("Você já está usando a versão mais recente.");
+      try {
+        const update = await check();
+        if (update) {
+          setUpdateInfo({ available: true, version: update.version });
+          setPendingUpdate(update);
+        } else {
+          setUpdateInfo({ available: false });
+          toastSuccess("Você já está usando a versão mais recente.");
+        }
+      } catch (err) {
+        const errorMessage = String(err);
+        if (errorMessage in ERROR_MESSAGES) {
+          toastError(ERROR_MESSAGES[errorMessage])
+        }
       }
     },
     onError: (err) => {
@@ -369,19 +380,19 @@ export function Settings() {
               <div className="flex-1 space-y-4">
                 <div className="grid gap-2">
                   <Label htmlFor="name">Razão Social</Label>
-                  <Input 
-                    id="name" 
-                    value={localSettings.companyName} 
-                    onChange={(e) => { setLocalSettings({...localSettings, companyName: e.target.value}); setErrors(clearFieldError(errors, "companyName")); }}
+                  <Input
+                    id="name"
+                    value={localSettings.companyName}
+                    onChange={(e) => { setLocalSettings({ ...localSettings, companyName: e.target.value }); setErrors(clearFieldError(errors, "companyName")); }}
                   />
                   {errors.companyName && <p className="text-xs text-destructive">{errors.companyName}</p>}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="cnpj">CNPJ</Label>
-                  <Input 
-                    id="cnpj" 
-                    value={localSettings.cnpj} 
-                    onChange={(e) => { setLocalSettings({...localSettings, cnpj: formatCNPJ(e.target.value)}); setErrors(clearFieldError(errors, "cnpj")); }}
+                  <Input
+                    id="cnpj"
+                    value={localSettings.cnpj}
+                    onChange={(e) => { setLocalSettings({ ...localSettings, cnpj: formatCNPJ(e.target.value) }); setErrors(clearFieldError(errors, "cnpj")); }}
                   />
                   {errors.cnpj && <p className="text-xs text-destructive">{errors.cnpj}</p>}
                 </div>
@@ -389,11 +400,11 @@ export function Settings() {
                   <Label htmlFor="address">Endereço Completo</Label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="address" 
+                    <Input
+                      id="address"
                       className="pl-9"
-                      value={localSettings.address} 
-                      onChange={(e) => { setLocalSettings({...localSettings, address: e.target.value}); setErrors(clearFieldError(errors, "address")); }}
+                      value={localSettings.address}
+                      onChange={(e) => { setLocalSettings({ ...localSettings, address: e.target.value }); setErrors(clearFieldError(errors, "address")); }}
                     />
                   </div>
                   {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}

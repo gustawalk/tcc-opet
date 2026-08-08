@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DashboardData } from "@/lib/types";
+import { DashboardData, InventoryAlert } from "@/lib/types";
 import { formatCurrency } from "@/lib/formatters";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { toastError, toastSuccess } from "@/lib/errors";
@@ -43,6 +43,18 @@ import { toastError, toastSuccess } from "@/lib/errors";
 const fetchDashboardData = async (): Promise<DashboardData> => {
   return await invoke<DashboardData>("get_dashboard_data");
 };
+
+export function prioritizeInventoryAlerts(alerts: InventoryAlert[]) {
+  return [...alerts].sort((left, right) => {
+    const leftPriority = left.currentStock === 0 ? 0 : 1;
+    const rightPriority = right.currentStock === 0 ? 0 : 1;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+    const leftRatio = left.currentStock / Math.max(left.minStock, 1);
+    const rightRatio = right.currentStock / Math.max(right.minStock, 1);
+    return leftRatio - rightRatio || left.name.localeCompare(right.name, "pt-BR");
+  });
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -107,7 +119,8 @@ export function Dashboard() {
     );
   }
 
-  const { summary, recentOrders, inventoryAlerts, statusCounts } = data;
+  const { summary, recentOrders, inventoryAlerts, inventoryAlertSummary, statusCounts } = data;
+  const prioritizedInventoryAlerts = prioritizeInventoryAlerts(inventoryAlerts);
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-200">
@@ -303,14 +316,20 @@ export function Dashboard() {
             </CardFooter>
           </Card>
 
+          {prioritizedInventoryAlerts.length > 0 && (
           <Card className="border-destructive/20 bg-destructive/5">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2 text-destructive">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-destructive">
                 <AlertTriangle className="h-5 w-5" /> Alertas de Estoque
+                <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                  <span>{inventoryAlertSummary.outOfStock} sem estoque</span>
+                  <span aria-hidden="true" className="size-1 rounded-full bg-current" />
+                  <span>{inventoryAlertSummary.lowStock} em alerta</span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {inventoryAlerts.map((alert) => (
+              {prioritizedInventoryAlerts.map((alert) => (
                 <div key={alert.id} className="flex flex-col gap-1">
                   <div className="flex justify-between text-sm">
                     <span className="font-medium">{alert.name}</span>
@@ -346,6 +365,7 @@ export function Dashboard() {
               </Button>
             </CardFooter>
           </Card>
+          )}
         </div>
       </div>
     </div>

@@ -53,6 +53,14 @@ pub struct InventoryAlert {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InventoryAlertSummary {
+    #[serde(rename = "outOfStock")]
+    pub out_of_stock: i32,
+    #[serde(rename = "lowStock")]
+    pub low_stock: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusCount {
     pub status: String,
     pub count: i32,
@@ -64,6 +72,7 @@ pub struct DashboardData {
     pub summary: FinancialSummary,
     pub recent_orders: Vec<RecentOS>,
     pub inventory_alerts: Vec<InventoryAlert>,
+    pub inventory_alert_summary: InventoryAlertSummary,
     pub status_counts: Vec<StatusCount>,
 }
 
@@ -178,11 +187,33 @@ impl DashboardRepository {
             .collect::<Result<Vec<_>, _>>()?;
 
         // 4. Inventory Alerts
+        let mut alert_summary_stmt = conn.prepare(
+            "SELECT
+                COALESCE(SUM(CASE WHEN current_quantity = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN current_quantity > 0 THEN 1 ELSE 0 END), 0)
+              FROM inventory_items
+              WHERE type = 'part'
+                AND current_quantity <= min_quantity
+                AND deleted_at IS NULL",
+        )?;
+        let inventory_alert_summary = alert_summary_stmt.query_row([], |row| {
+            Ok(InventoryAlertSummary {
+                out_of_stock: row.get(0)?,
+                low_stock: row.get(1)?,
+            })
+        })?;
+
         let mut stmt = conn.prepare(
-            "SELECT id, name, current_quantity, min_quantity 
-             FROM inventory_items 
-             WHERE current_quantity < min_quantity AND deleted_at IS NULL
-             LIMIT 3",
+            "SELECT id, name, current_quantity, min_quantity
+              FROM inventory_items
+              WHERE type = 'part'
+                AND current_quantity <= min_quantity
+                AND deleted_at IS NULL
+              ORDER BY
+                CASE WHEN current_quantity = 0 THEN 0 ELSE 1 END,
+                CAST(current_quantity AS REAL) / CASE WHEN min_quantity > 0 THEN min_quantity ELSE 1 END,
+                name COLLATE NOCASE
+              LIMIT 3",
         )?;
         let inventory_alerts = stmt
             .query_map([], |row| {
@@ -219,6 +250,7 @@ impl DashboardRepository {
             },
             recent_orders,
             inventory_alerts,
+            inventory_alert_summary,
             status_counts,
         })
     }
@@ -292,8 +324,26 @@ mod tests {
     }
 
     #[test]
-    fn inventory_alerts_only_include_items_below_minimum() {
+    fn inventory_alerts_include_empty_stock_and_prioritize_it_before_low_stock() {
         let conn = setup_db();
+        let empty_with_zero_minimum = InventoryItem::new(
+            "Bateria esgotada".to_string(),
+            "Peça".to_string(),
+            "part".to_string(),
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+        let empty = InventoryItem::new(
+            "Tela esgotada".to_string(),
+            "Peça".to_string(),
+            "part".to_string(),
+            3,
+            0,
+            10.0,
+            20.0,
+        );
         let low = InventoryItem::new(
             "Conector".to_string(),
             "Peça".to_string(),
@@ -312,13 +362,37 @@ mod tests {
             10.0,
             20.0,
         );
+        let service = InventoryItem::new(
+            "Mão de obra".to_string(),
+            "Serviço".to_string(),
+            "service".to_string(),
+            99,
+            0,
+            10.0,
+            20.0,
+        );
+        InventoryRepository::create_with_conn(&conn, &empty_with_zero_minimum).unwrap();
+        InventoryRepository::create_with_conn(&conn, &empty).unwrap();
         InventoryRepository::create_with_conn(&conn, &low).unwrap();
         InventoryRepository::create_with_conn(&conn, &ok).unwrap();
+        InventoryRepository::create_with_conn(&conn, &service).unwrap();
 
         let data = DashboardRepository::get_dashboard_data_with_conn(&conn).unwrap();
 
-        assert_eq!(data.inventory_alerts.len(), 1);
-        assert_eq!(data.inventory_alerts[0].id, low.id);
+        assert_eq!(data.inventory_alerts.len(), 3);
+        assert_eq!(data.inventory_alert_summary.out_of_stock, 2);
+        assert_eq!(data.inventory_alert_summary.low_stock, 1);
+        assert_eq!(
+            data.inventory_alerts
+                .iter()
+                .map(|alert| alert.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                empty_with_zero_minimum.id.as_str(),
+                empty.id.as_str(),
+                low.id.as_str(),
+            ],
+        );
     }
 
     #[test]

@@ -197,6 +197,11 @@ export interface InventoryAlert {
   minStock: number;
 }
 
+export interface InventoryAlertSummary {
+  outOfStock: number;
+  lowStock: number;
+}
+
 export interface StatusCount {
   status: OSStatus;
   count: number;
@@ -206,6 +211,7 @@ export interface DashboardData {
   summary: FinancialSummary;
   recentOrders: RecentOS[];
   inventoryAlerts: InventoryAlert[];
+  inventoryAlertSummary: InventoryAlertSummary;
   statusCounts: StatusCount[];
 }
 

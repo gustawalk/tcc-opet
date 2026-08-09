@@ -50,7 +50,7 @@ O público-alvo são pequenas oficinas e técnicos autônomos que precisam de:
 
 - **Build:** Vite, Docker (AppImage Debian 12)
 - **CI:** GitHub Actions — validação em PRs/push, release em tags `v*`
-- **Testes:** `cargo test` (92+ testes no backend Rust)
+- **Testes:** `cargo test` (149 testes declarados no backend Rust; 148 regulares e 1 teste real de PDF separado)
 
 ## Recursos
 
@@ -104,8 +104,14 @@ yarn build
 yarn test
 yarn test:coverage
 cd src-tauri && cargo test
+cd src-tauri && cargo test e2e_tests -- --test-threads=1
+cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1
+cd src-tauri && cargo fmt --all -- --check
+cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
 cd src-tauri && cargo llvm-cov --workspace --summary-only --fail-under-lines 75
 ```
+
+Os testes E2E do backend usam um banco SQLCipher real em diretório temporário e cobrem o ciclo completo de ordens de serviço, estoque, anexos, dashboard, relatórios, backup, restauração, inicialização e migração. A suíte IPC executa os comandos principais por meio do runtime simulado do Tauri para validar payloads camelCase, respostas e erros bilíngues sem abrir a interface gráfica.
 
 ## Auto-update
 

@@ -57,7 +57,7 @@ export interface ServiceOrder {
   updatedAt?: string;
   closedAt?: string | null;
   displayId: string;
-  discountPercent: number;
+  discountBasisPoints: number;
 }
 
 export interface Settings {
@@ -142,7 +142,7 @@ export interface ServiceOrderPart {
 
 export interface FinancialSummary {
   totalRevenue: number;
-  netProfit: number;
+  estimatedGrossProfit: number;
   partsInUseCost: number;
   activeOrdersCount: number;
   revenueTrend: { value: string; isPositive: boolean };
@@ -157,7 +157,7 @@ export interface RecentOS {
   createdAt: string;
   totalPrice: number;
   displayId: string;
-  discountPercent: number;
+  discountBasisPoints: number;
 }
 
 export interface InventoryMovement {
@@ -197,6 +197,11 @@ export interface InventoryAlert {
   minStock: number;
 }
 
+export interface InventoryAlertSummary {
+  outOfStock: number;
+  lowStock: number;
+}
+
 export interface StatusCount {
   status: OSStatus;
   count: number;
@@ -206,6 +211,7 @@ export interface DashboardData {
   summary: FinancialSummary;
   recentOrders: RecentOS[];
   inventoryAlerts: InventoryAlert[];
+  inventoryAlertSummary: InventoryAlertSummary;
   statusCounts: StatusCount[];
 }
 
@@ -229,7 +235,7 @@ export interface FinancialReport {
   endDate: string;
   totalRevenue: number;
   totalCost: number;
-  netProfit: number;
+  estimatedGrossProfit: number;
   averageTicket: number;
   finalizedOrders: number;
   newCustomers: number;

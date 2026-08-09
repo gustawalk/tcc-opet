@@ -1,8 +1,32 @@
 export const formatCurrency = (value: number) => {
+  if (!Number.isSafeInteger(value)) {
+    throw new TypeError("Money values must be safe integers");
+  }
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(value);
+  }).format(value / 100);
+};
+
+export const applyDiscount = (value: number, discountBasisPoints: number) => {
+  if (
+    !Number.isSafeInteger(value) ||
+    !Number.isSafeInteger(discountBasisPoints)
+  ) {
+    throw new TypeError("Money and discount values must be safe integers");
+  }
+  if (discountBasisPoints < 0 || discountBasisPoints > 10_000) {
+    throw new RangeError("Discount must be between 0 and 10000 basis points");
+  }
+
+  const numerator = BigInt(value) * BigInt(10_000 - discountBasisPoints);
+  const rounded =
+    (numerator >= 0 ? numerator + 5_000n : numerator - 5_000n) / 10_000n;
+  const result = Number(rounded);
+  if (!Number.isSafeInteger(result)) {
+    throw new RangeError("Discounted value is too large");
+  }
+  return result;
 };
 
 export const formatDate = (date: string) => {
@@ -37,8 +61,8 @@ export const formatName = (value: string) => {
   const trimmed = value.replace(/\s+/g, " ").trim();
   return trimmed
     .split(" ")
-    .map((word) =>
-      word.length > 3
+    .map((word, index) =>
+      index === 0 || word.length > 3
         ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
         : word.toLowerCase()
     )

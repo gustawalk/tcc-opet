@@ -1,4 +1,43 @@
 import { z } from "zod";
+import {
+  currencyInputToNumber,
+  decimalInputToNumber,
+  integerInputToNumber,
+} from "@/lib/numeric-input";
+
+const nonNegativeInteger = z.preprocess(
+  (value) => (typeof value === "string" ? integerInputToNumber(value) : value),
+  z.number("Informe um número inteiro")
+    .int("Deve ser um número inteiro")
+    .min(0, "Deve ser maior ou igual a 0"),
+);
+
+const positiveInteger = z.preprocess(
+  (value) => (typeof value === "string" ? integerInputToNumber(value) : value),
+  z.number("Informe um número inteiro")
+    .int("Deve ser um número inteiro")
+    .min(1, "A quantidade deve ser pelo menos 1"),
+);
+
+const currencyValue = z.preprocess(
+  (value) => (typeof value === "string" ? currencyInputToNumber(value) : value),
+  z.number("Informe um valor válido")
+    .finite("Informe um valor válido")
+    .min(0, "O valor deve ser maior ou igual a 0"),
+);
+
+const percentageValue = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    const percentage = decimalInputToNumber(value);
+    return percentage === undefined ? undefined : Math.round(percentage * 100);
+  },
+  z.number("Informe um percentual válido")
+    .finite("Informe um percentual válido")
+    .int("Informe no máximo duas casas decimais")
+    .min(0, "Desconto não pode ser negativo")
+    .max(10_000, "Desconto não pode exceder 100%"),
+);
 
 export const userSchema = z.object({
   name: z.string().min(2, "Nome deve ter ao menos 2 caracteres"),
@@ -18,14 +57,14 @@ export const customerSchema = z.object({
 export const inventoryItemSchema = z.object({
   name: z.string().min(2, "Nome deve ter ao menos 2 caracteres"),
   description: z.string().min(3, "Descrição deve ter ao menos 3 caracteres"),
-  costPrice: z.number().min(0, "Preço de custo deve ser maior ou igual a 0"),
-  salePrice: z.number().min(0, "Preço de venda deve ser maior ou igual a 0"),
-  minQuantity: z.number().int("Deve ser um número inteiro").min(0, "Quantidade mínima deve ser maior ou igual a 0"),
-  initialQuantity: z.number().int("Deve ser um número inteiro").min(0, "Quantidade inicial deve ser maior ou igual a 0"),
+  costPrice: currencyValue,
+  salePrice: currencyValue,
+  minQuantity: nonNegativeInteger,
+  initialQuantity: nonNegativeInteger,
 });
 
 export const quantitySchema = z.object({
-  quantity: z.number().int("Deve ser um número inteiro").min(1, "A quantidade deve ser pelo menos 1"),
+  quantity: positiveInteger,
 });
 
 export const serviceOrderCreateSchema = z.object({
@@ -44,7 +83,7 @@ export const newCustomerSchema = z.object({
 
 export const editServiceOrderSchema = z.object({
   description: z.string().min(10, "Descrição deve ter ao menos 10 caracteres"),
-  discount: z.number().min(0, "Desconto não pode ser negativo").max(100, "Desconto não pode exceder 100%").optional(),
+  discountBasisPoints: percentageValue.optional(),
 });
 
 export const settingsSchema = z.object({

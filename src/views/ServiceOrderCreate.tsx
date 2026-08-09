@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
+import { EmployeeCreateSheet } from "@/components/shared/EmployeeCreateSheet";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
 import {
   ServiceOrderItemLine,
@@ -88,6 +89,7 @@ export function ServiceOrderCreate() {
     useState<ChecklistTemplate | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [isTemplateSheetOpen, setIsTemplateSheetOpen] = useState(false);
+  const [isEmployeeSheetOpen, setIsEmployeeSheetOpen] = useState(false);
   const [createInventoryType, setCreateInventoryType] = useState<
     InventoryItem["type"] | null
   >(null);
@@ -234,13 +236,10 @@ export function ServiceOrderCreate() {
     );
   };
   const changeQuantity = (line: ServiceOrderItemLine, next: number) => {
-    const quantity = Math.max(
-      1,
-      line.itemType === "part" ? Math.min(line.maxQuantity ?? next, next) : next,
-    );
+    if (!Number.isSafeInteger(next) || next < 1) return;
     setLines((current) =>
       current.map((entry) =>
-        entry.id === line.id ? { ...entry, quantity } : entry,
+        entry.id === line.id ? { ...entry, quantity: next } : entry,
       ),
     );
   };
@@ -307,6 +306,7 @@ export function ServiceOrderCreate() {
           equipment: formData.equipment,
           imei: formData.imei || null,
           description: formData.description,
+          discountBasisPoints: 0,
           parts: lines.map((l) => ({
             inventoryItemId: l.inventoryItemId,
             quantity: l.quantity,
@@ -349,7 +349,7 @@ export function ServiceOrderCreate() {
         </Button>
         <div>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Nova Ordem de Serviço
+            Nova Ordem
           </h2>
           <p className="text-muted-foreground mt-1">
             Preencha os dados do cliente e do equipamento para iniciar o
@@ -524,6 +524,8 @@ export function ServiceOrderCreate() {
               maxOptions={5}
               getKey={(user) => user.id}
               getLabel={(user) => user.name}
+              createLabel="Criar funcionário"
+              onCreate={() => setIsEmployeeSheetOpen(true)}
             />
           </CardContent>
         </Card>
@@ -726,13 +728,20 @@ export function ServiceOrderCreate() {
             className="w-full gap-2 sm:w-auto"
           >
             <Save className="h-4 w-4" />
-            {isSubmitting ? "Criando..." : "Criar OS"}
+            {isSubmitting ? "Criando..." : "Criar ordem"}
           </Button>
         </div>
         <ChecklistTemplateSheet
           open={isTemplateSheetOpen}
           onOpenChange={setIsTemplateSheetOpen}
           onCreated={applyTemplate}
+        />
+        <EmployeeCreateSheet
+          open={isEmployeeSheetOpen}
+          onOpenChange={setIsEmployeeSheetOpen}
+          onCreated={(employee) =>
+            setFormData((data) => ({ ...data, techId: employee.id }))
+          }
         />
         <InventoryItemSheet
           open={createInventoryType !== null}

@@ -11,9 +11,9 @@ pub struct InventoryItem {
     pub r#type: String, // 'part' or 'service'
     pub min_quantity: i32,
     pub current_quantity: i32,
-    pub cost_price: f64,
-    pub average_cost: f64,
-    pub sale_price: f64,
+    pub cost_price: i64,
+    pub average_cost: i64,
+    pub sale_price: i64,
     pub supplier_name: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -27,8 +27,8 @@ impl InventoryItem {
         r#type: String,
         min_quantity: i32,
         current_quantity: i32,
-        cost_price: f64,
-        sale_price: f64,
+        cost_price: i64,
+        sale_price: i64,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -60,18 +60,18 @@ mod tests {
             "part".to_string(),
             2,
             10,
-            50.0,
-            120.0,
+            5_000,
+            12_000,
         );
 
         assert!(Uuid::parse_str(&item.id).is_ok());
         assert_eq!(item.r#type, "part");
         assert_eq!(item.min_quantity, 2);
         assert_eq!(item.current_quantity, 10);
-        assert_eq!(item.cost_price, 50.0);
-        assert_eq!(item.average_cost, 50.0);
+        assert_eq!(item.cost_price, 5_000);
+        assert_eq!(item.average_cost, 5_000);
         assert!(item.supplier_name.is_none());
-        assert_eq!(item.sale_price, 120.0);
+        assert_eq!(item.sale_price, 12_000);
         assert!(item.created_at.is_some());
         assert!(item.deleted_at.is_none());
     }

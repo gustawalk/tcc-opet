@@ -50,7 +50,7 @@ O público-alvo são pequenas oficinas e técnicos autônomos que precisam de:
 
 - **Build:** Vite, Docker (AppImage Debian 12)
 - **CI:** GitHub Actions — validação em PRs/push, release em tags `v*`
-- **Testes:** `cargo test` (92+ testes no backend Rust)
+- **Testes:** `cargo test` (149 testes declarados no backend Rust; 148 regulares e 1 teste real de PDF separado)
 
 ## Recursos
 
@@ -101,8 +101,17 @@ Em builds de desenvolvimento, os dados demonstrativos são inseridos por padrão
 yarn lint
 yarn typecheck
 yarn build
+yarn test
+yarn test:coverage
 cd src-tauri && cargo test
+cd src-tauri && cargo test e2e_tests -- --test-threads=1
+cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1
+cd src-tauri && cargo fmt --all -- --check
+cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
+cd src-tauri && cargo llvm-cov --workspace --summary-only --fail-under-lines 75
 ```
+
+Os testes E2E do backend usam um banco SQLCipher real em diretório temporário e cobrem o ciclo completo de ordens de serviço, estoque, anexos, dashboard, relatórios, backup, restauração, inicialização e migração. A suíte IPC executa os comandos principais por meio do runtime simulado do Tauri para validar payloads camelCase, respostas e erros bilíngues sem abrir a interface gráfica.
 
 ## Auto-update
 
@@ -123,7 +132,7 @@ Para compatibilidade com distribuições Linux mais antigas, gere o AppImage em 
 
 ### Releases no GitHub
 
-- Pull requests e pushes para `main` executam a validação contínua (lint, TypeScript, build frontend e testes Rust).
+- Pull requests e pushes para `main` executam lint, TypeScript, build, testes frontend e testes Rust com mínimo de 75% de cobertura de linhas.
 - Envie uma tag `vX.Y.Z` para publicar uma GitHub Release. O pipeline de release compila para Windows e Linux (deb + AppImage).
 - O pipeline publica `updater.json` como asset da Release, com URLs, assinaturas e notas da versão em português. A v0.1.1 também atualiza uma última vez o manifesto na `main` para que instalações v0.1.0 encontrem a atualização.
 - A variável secreta `OPETS_DATA_KEY_V1` é obrigatória nos builds de release e deve permanecer estável para manter acesso aos dados protegidos.

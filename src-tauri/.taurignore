@@ -1,0 +1,5 @@
+database.db
+database.lock
+database.encryption.json
+database.attachments/
+database.pdf-previews/

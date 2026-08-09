@@ -86,8 +86,9 @@ pub async fn reset_database() -> Result<(), AppError> {
         })?
 }
 
-fn reset_database_data() -> Result<(), AppError> {
-    let conn = crate::database::get_db()?;
+pub(crate) fn reset_database_data() -> Result<(), AppError> {
+    let _guard = crate::database::exclusive_storage_guard()?;
+    let conn = crate::database::open_encrypted_database(&crate::database::database_path())?;
     reset_database_with_conn(&conn)?;
     drop(conn);
     let attachments_dir = crate::database::attachments_dir();
@@ -102,7 +103,7 @@ fn reset_database_data() -> Result<(), AppError> {
     Ok(())
 }
 
-fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<(), AppError> {
+pub(crate) fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<(), AppError> {
     conn.execute_batch(
         "
         PRAGMA foreign_keys = OFF;
@@ -186,6 +187,7 @@ pub fn export_backup(
     destination: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
+    let _guard = crate::database::exclusive_storage_guard()?;
     crate::backup_service::export_backup_with_passphrase(
         &crate::database::database_path(),
         &crate::database::attachments_dir(),
@@ -199,6 +201,7 @@ pub fn restore_backup(
     source: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
+    let _guard = crate::database::exclusive_storage_guard()?;
     crate::backup_service::restore_backup_with_passphrase(
         Path::new(&source),
         &crate::database::database_path(),

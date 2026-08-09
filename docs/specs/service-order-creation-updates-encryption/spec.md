@@ -8,7 +8,7 @@ This work reduces interruptions while creating service orders, gives users a non
 
 ## Current scenario
 
-- `src/views/ServiceOrderCreate.tsx` uses `SearchableSelect` for checklist templates and `ServiceOrderItemsEditor` for inventory records.
+- `src/views/ServiceOrderCreate.tsx` uses `SearchableSelect` for checklist templates and the responsible technician, and `ServiceOrderItemsEditor` for inventory records.
 - The inventory and template creation sheets are embedded in `src/views/Inventory.tsx` and `src/views/Templates.tsx`.
 - `src/components/shared/ServiceOrderDrawerProvider.tsx` is the existing decoupled-drawer reference.
 - `src/views/Settings.tsx` already checks, downloads, installs, and relaunches updates with `@tauri-apps/plugin-updater`.
@@ -17,7 +17,7 @@ This work reduces interruptions while creating service orders, gives users a non
 
 ## Description
 
-As a technician, I want to create a checklist, part, or service while creating a service order so that I can complete the registration without leaving the workflow.
+As a technician, I want to create a checklist, part, service, or employee while creating a service order so that I can complete the registration without leaving the workflow.
 
 As an application user, I want a lightweight warning when an update exists so that I can decide when to install it from Settings.
 
@@ -29,12 +29,15 @@ As an application owner, I want local data protected from casual file inspection
 
 - The checklist selector displays a `Novo checklist` action while its dropdown is open.
 - The inventory autocomplete displays `Nova peca` and `Novo servico` actions while its dropdown is open.
+- The responsible-technician selector displays a `Criar funcionário` action while its dropdown is open.
 - These actions open reusable controlled sheets without navigating away from the service-order form.
 - Successfully creating a checklist immediately selects it and applies its items to the draft service order.
 - Successfully creating a part or service immediately adds it to the draft service order.
+- Successfully creating an employee immediately selects that employee as the responsible technician for the draft service order.
 - Cancelling or failing creation leaves the service-order draft unchanged.
 - Inventory creation refreshes both `['inventory']` and `['inventory-lookup']` query data.
 - Checklist creation refreshes `['checklist-templates']` query data.
+- Employee creation updates `['users']` query data before automatic selection.
 
 ### Launch-time update notice
 
@@ -83,8 +86,10 @@ As an application owner, I want local data protected from casual file inspection
 ## Contracts and interfaces affected
 
 - `src/components/shared/SearchableSelect.tsx`
+- `src/components/shared/EmployeeCreateSheet.tsx`
 - `src/components/shared/ServiceOrderItemsEditor.tsx`
 - `src/views/ServiceOrderCreate.tsx`
+- `src/views/Users.tsx`
 - `src/views/Inventory.tsx`
 - `src/views/Templates.tsx`
 - `src/App.tsx`
@@ -97,7 +102,7 @@ As an application owner, I want local data protected from casual file inspection
 
 ## Test strategy
 
-- Add component tests for inline actions, cancellation, successful automatic selection, and query invalidation.
+- Add component tests for inline actions, cancellation, successful automatic selection, and query invalidation, including employee creation and responsible-technician selection.
 - Add updater tests or mocks for available, unavailable, and failed checks.
 - Verify release workflow output: feed version, URLs, signatures, and platform targets match released artifacts.
 - Add Rust tests for encrypted database access, legacy migration, wrong keys, attachment authentication failures, passworded and passwordless backups, restore rollback, and key-version compatibility.

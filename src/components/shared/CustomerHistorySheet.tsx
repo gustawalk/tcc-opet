@@ -20,7 +20,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { copyToClipboard, toastError, toastSuccess } from "@/lib/errors";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { Customer, ServiceOrder } from "@/lib/types";
 
 interface CustomerHistorySheetProps {
@@ -142,7 +142,14 @@ export function CustomerHistorySheet({
                       </div>
                     </CardContent>
                     <div className="flex items-center justify-between border-t bg-primary/5 px-4 py-2">
-                      <span className="text-sm font-bold">{formatCurrency(order.totalPrice || 0)}</span>
+                      <span className="text-sm font-bold">
+                        {formatCurrency(
+                          applyDiscount(
+                            order.totalPrice || 0,
+                            order.discountBasisPoints,
+                          ),
+                        )}
+                      </span>
                       <div className="flex items-center gap-1">
                         <Button
                           type="button"

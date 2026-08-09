@@ -3,31 +3,10 @@
     windows_subsystem = "windows"
 )]
 
-mod attachment_service;
-mod backup_service;
-mod commands;
-mod database;
-mod encryption;
-mod error;
-mod models;
-mod pdf_service;
-mod repositories;
-mod seeds;
-#[cfg(test)]
-mod test_helpers;
-
-use dotenv::dotenv;
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![
+macro_rules! register_commands {
+    ($builder:expr $(, $extra:path)* $(,)?) => {{
+        use $crate::commands;
+        $builder.invoke_handler(tauri::generate_handler![
             commands::customer_commands::create_customer,
             commands::customer_commands::get_customer,
             commands::customer_commands::get_customers,
@@ -66,7 +45,6 @@ pub fn run() {
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
             commands::settings_commands::reset_database,
-            commands::settings_commands::select_company_logo,
             commands::settings_commands::get_system_info,
             commands::settings_commands::check_for_updates,
             commands::settings_commands::export_backup,
@@ -80,8 +58,6 @@ pub fn run() {
             commands::checklist_commands::delete_checklist_template,
             commands::checklist_commands::save_service_order_checklist,
             commands::checklist_commands::get_service_order_checklist,
-            commands::attachment_commands::select_service_order_attachments,
-            commands::attachment_commands::select_pending_service_order_attachments,
             commands::attachment_commands::attach_pending_service_order_attachments,
             commands::attachment_commands::discard_pending_service_order_attachments,
             commands::attachment_commands::get_service_order_attachments,
@@ -89,18 +65,58 @@ pub fn run() {
             commands::attachment_commands::read_service_order_attachment,
             commands::attachment_commands::export_service_order_attachment,
             commands::pdf_commands::preview_service_order_pdf,
-            commands::pdf_commands::save_pdf_preview,
             commands::pdf_commands::discard_pdf_preview,
             commands::report_commands::get_financial_report,
             commands::report_commands::export_financial_report_csv,
             commands::report_commands::preview_financial_report_pdf,
+            $($extra,)*
         ])
-        .setup(|app| {
-            let _ = dotenv();
-            // Startup must fail visibly when the local data store cannot initialize.
-            database::init_db(app)?;
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    }};
+}
+
+mod attachment_service;
+#[cfg(test)]
+mod backend_e2e_tests;
+mod backup_service;
+mod commands;
+mod database;
+mod encryption;
+mod error;
+mod models;
+mod money;
+mod pdf_service;
+mod repositories;
+mod seeds;
+#[cfg(test)]
+mod storage_e2e_tests;
+#[cfg(test)]
+mod tauri_ipc_tests;
+#[cfg(test)]
+mod test_helpers;
+
+use dotenv::dotenv;
+
+// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    register_commands!(
+        tauri::Builder::default()
+            .plugin(tauri_plugin_opener::init())
+            .plugin(tauri_plugin_dialog::init())
+            .plugin(tauri_plugin_process::init())
+            .plugin(tauri_plugin_updater::Builder::new().build()),
+        commands::settings_commands::select_company_logo,
+        commands::attachment_commands::select_service_order_attachments,
+        commands::attachment_commands::select_pending_service_order_attachments,
+        commands::pdf_commands::save_pdf_preview,
+    )
+    .setup(|app| {
+        let _ = dotenv();
+        // Startup must fail visibly when the local data store cannot initialize.
+        database::init_db(app)?;
+        Ok(())
+    })
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
 }

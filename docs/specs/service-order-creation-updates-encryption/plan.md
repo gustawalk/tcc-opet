@@ -33,9 +33,15 @@
   - Depends on: T1.1, T1.2
 
 - [ ] **T1.4: Connect service-order creation and cache updates**
-  - Description: Apply the newly created checklist or inventory item to the draft immediately, then invalidate/refetch all affected query keys.
+  - Description: Apply the newly created checklist, inventory item, or employee to the draft immediately, then invalidate/refetch all affected query keys.
   - Files/modules affected: `src/views/ServiceOrderCreate.tsx`, inventory and template mutation locations.
-  - Criterion of completion: New records appear immediately and remain available after subsequent interactions.
+  - Criterion of completion: New records appear immediately and remain available after subsequent interactions; a new employee is selected as the responsible technician.
+  - Depends on: T1.3
+
+- [x] **T1.5: Add responsible-technician inline creation**
+  - Description: Provide a `Criar funcionário` action in the responsible-technician selector. The controlled employee drawer creates the record, updates `['users']`, and selects the returned employee in the draft service order.
+  - Files/modules affected: `src/components/shared/EmployeeCreateSheet.tsx`, `src/views/ServiceOrderCreate.tsx`.
+  - Criterion of completion: Closing or failing the drawer preserves the draft; a successful creation displays the employee as the selected responsible technician without a manual refresh.
   - Depends on: T1.3
 
 ## Phase 2: Update notice
@@ -121,7 +127,7 @@
 **Objective:** Prove user-facing behavior and recovery safety.
 
 - [ ] **T5.1: Cover frontend workflows**
-  - Description: Test inline creation, automatic selection, query invalidation, and update notice scenarios.
+  - Description: Test inline creation, automatic selection, query invalidation, and update notice scenarios, including creating an employee from the responsible-technician selector.
   - Files/modules affected: frontend test setup and relevant component tests.
   - Criterion of completion: Expected success, cancellation, unavailable-update, and failed-check behavior passes.
   - Depends on: Phase 1, Phase 2

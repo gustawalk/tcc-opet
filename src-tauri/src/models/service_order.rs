@@ -14,12 +14,12 @@ pub struct ServiceOrder {
     pub imei: Option<String>,
     pub description: String,
     pub status: String, // OSStatus enum
-    pub total_price: Option<f64>,
+    pub total_price: Option<i64>,
     pub created_at: String,
     pub updated_at: Option<String>,
     pub closed_at: Option<String>,
     pub display_id: String,
-    pub discount_percent: f64,
+    pub discount_basis_points: i64,
 }
 
 impl ServiceOrder {
@@ -39,7 +39,7 @@ impl ServiceOrder {
             updated_at: None,
             closed_at: None,
             display_id: String::new(),
-            discount_percent: 0.0,
+            discount_basis_points: 0,
         }
     }
 }
@@ -60,7 +60,7 @@ mod tests {
         assert_eq!(order.status, "Orçamento");
         assert!(order.total_price.is_none());
         assert!(order.display_id.is_empty());
-        assert_eq!(order.discount_percent, 0.0);
+        assert_eq!(order.discount_basis_points, 0);
         assert!(order.closed_at.is_none());
     }
 }

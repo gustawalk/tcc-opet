@@ -40,7 +40,7 @@ import { SortableHeader } from "@/components/shared/SortableHeader";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useSort } from "@/hooks/useSort";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   Customer,
@@ -149,15 +149,15 @@ export function ServiceOrders() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Ordens de Serviço
+            Ordens
           </h2>
           <p className="text-muted-foreground mt-1">
-            Gerencie atendimentos, ordens de serviço e orçamentos.
+            Acompanhe atendimentos, ordens e orçamentos.
           </p>
         </div>
         <Button className="w-full gap-2 sm:w-auto" onClick={() => navigate("/os/new")}>
           <Plus className="h-4 w-4" />
-          Nova OS
+          Nova Ordem
         </Button>
       </div>
       <Tabs defaultValue="all" onValueChange={setStatusFilter}>
@@ -167,7 +167,7 @@ export function ServiceOrders() {
             <TabsTrigger value="all">Todas</TabsTrigger>
             <TabsTrigger value="Orçamento">Orçamentos</TabsTrigger>
             <TabsTrigger value="Em Manutenção">Em Manutenção</TabsTrigger>
-            <TabsTrigger value="Aguardando Peça">Pendentes</TabsTrigger>
+            <TabsTrigger value="Aguardando Peça">Aguardando peça</TabsTrigger>
             <TabsTrigger value="Finalizada">Finalizadas</TabsTrigger>
             <TabsTrigger value="Cancelada">Canceladas</TabsTrigger>
           </TabsList>
@@ -251,7 +251,7 @@ export function ServiceOrders() {
               <TableRow>
                 <SortableHeader
                   column="displayId"
-                  label="ID"
+                  label="Nº da ordem"
                   sortConfig={sortConfig}
                   onSort={cycleSort}
                 />
@@ -305,15 +305,20 @@ export function ServiceOrders() {
                     <TableCell className="font-mono text-xs font-bold">
                       {order.displayId}
                     </TableCell>
-                      <TableCell onClick={(event) => event.stopPropagation()}>
-                      <button
-                        type="button"
-                        className="block w-full rounded-sm text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => openCustomerHistory(order.customerId)}
-                      >
+                      <TableCell>
+                      <div>
                         <span className="flex gap-1 text-sm font-medium">
                           <UserIcon className="h-3 w-3" />
-                          {order.customerName}
+                          <button
+                            type="button"
+                            className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCustomerHistory(order.customerId);
+                            }}
+                          >
+                            {order.customerName}
+                          </button>
                         </span>
                         <span className="flex gap-1 text-xs text-muted-foreground">
                           <Smartphone className="h-3 w-3" />
@@ -326,7 +331,7 @@ export function ServiceOrders() {
                             {new Date(order.createdAt).toLocaleDateString("pt-BR")}
                           </span>
                         </span>
-                      </button>
+                      </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {statusBadge(order.status)}
@@ -337,20 +342,22 @@ export function ServiceOrders() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        {order.discountPercent > 0 && (
+                        {order.discountBasisPoints > 0 && (
                           <span className="text-xs text-muted-foreground line-through">
                             {formatCurrency(order.totalPrice || 0)}
                           </span>
                         )}
                         <span>
                           {formatCurrency(
-                            (order.totalPrice || 0) *
-                              (1 - order.discountPercent / 100),
+                            applyDiscount(
+                              order.totalPrice || 0,
+                              order.discountBasisPoints,
+                            ),
                           )}
                         </span>
-                        {order.discountPercent > 0 && (
+                        {order.discountBasisPoints > 0 && (
                           <Badge variant="outline" className="text-[10px]">
-                            -{order.discountPercent}%
+                            -{order.discountBasisPoints / 100}%
                           </Badge>
                         )}
                       </div>

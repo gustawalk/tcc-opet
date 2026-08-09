@@ -441,7 +441,7 @@ export function Customers() {
                             <DropdownMenuItem
                               onClick={() => handleViewOS(customer)}
                             >
-                              <FileText className="mr-2 h-4 w-4" /> Ver OS
+                              <FileText className="mr-2 h-4 w-4" /> Ver ordens
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleEditCustomer(customer)}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useId } from "react";
-import { Search, ChevronRight } from "lucide-react";
+import { Search, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -246,8 +246,9 @@ export function SearchableSelect<T>({
                   close();
                   onCreate();
                 }}
-              >
-                {createLabel}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {createLabel}
               </Button>
             </div>
           )}

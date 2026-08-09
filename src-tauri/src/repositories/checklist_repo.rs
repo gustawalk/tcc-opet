@@ -180,7 +180,7 @@ impl ChecklistRepository {
             "checklist_updated".to_string(),
             serde_json::json!({ "itemCount": item_count }).to_string(),
         );
-        ServiceOrderEventRepository::create_with_conn(&tx, &event)?;
+        ServiceOrderEventRepository::create_with_conn(tx, &event)?;
 
         Ok(())
     }

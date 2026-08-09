@@ -11,7 +11,7 @@ use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 const MAX_ATTACHMENT_SIZE_BYTES: u64 = 10 * 1024 * 1024;
@@ -220,12 +220,47 @@ pub(crate) fn validate_attachment_file(path: &Path) -> Result<(String, Vec<u8>),
     Ok((validate_attachment_bytes(&bytes)?.to_string(), bytes))
 }
 
+#[cfg(test)]
 pub fn add_attachment(
     service_order_id: &str,
     source_path: &Path,
 ) -> Result<ServiceOrderAttachment, AppError> {
     let conn = get_db()?;
-    add_attachment_with_paths(&conn, service_order_id, source_path, &attachments_dir())
+    let mut attachments = add_attachments_atomically_with_paths(
+        &conn,
+        service_order_id,
+        &[source_path.to_path_buf()],
+        &attachments_dir(),
+    )?;
+    Ok(attachments.remove(0))
+}
+
+pub(crate) fn add_attachments_atomically_with_paths(
+    conn: &rusqlite::Connection,
+    service_order_id: &str,
+    source_paths: &[PathBuf],
+    storage_dir: &Path,
+) -> Result<Vec<ServiceOrderAttachment>, AppError> {
+    let transaction = conn.unchecked_transaction()?;
+    let mut attachments = Vec::with_capacity(source_paths.len());
+    for source_path in source_paths {
+        match add_attachment_with_paths(&transaction, service_order_id, source_path, storage_dir) {
+            Ok(attachment) => attachments.push(attachment),
+            Err(error) => {
+                for attachment in &attachments {
+                    let _ = fs::remove_file(storage_dir.join(&attachment.storage_name));
+                }
+                return Err(error);
+            }
+        }
+    }
+    if let Err(error) = transaction.commit() {
+        for attachment in &attachments {
+            let _ = fs::remove_file(storage_dir.join(&attachment.storage_name));
+        }
+        return Err(error.into());
+    }
+    Ok(attachments)
 }
 
 pub(crate) fn add_attachment_with_paths(
@@ -265,12 +300,16 @@ pub(crate) fn add_attachment_with_paths(
         "attachment_added".to_string(),
         serde_json::json!({ "fileName": attachment.file_name }).to_string(),
     );
-    ServiceOrderEventRepository::create_with_conn(conn, &event)?;
+    if let Err(error) = ServiceOrderEventRepository::create_with_conn(conn, &event) {
+        let _ = fs::remove_file(storage_dir.join(&attachment.storage_name));
+        return Err(error.into());
+    }
     Ok(attachment)
 }
 
 pub fn delete_attachment(id: &str) -> Result<(), AppError> {
-    let conn = get_db()?;
+    let _guard = crate::database::exclusive_storage_guard()?;
+    let conn = crate::database::open_encrypted_database(&crate::database::database_path())?;
     delete_attachment_with_paths(&conn, id, &attachments_dir())
 }
 
@@ -279,34 +318,151 @@ pub(crate) fn delete_attachment_with_paths(
     id: &str,
     storage_dir: &Path,
 ) -> Result<(), AppError> {
-    let attachment = ServiceOrderAttachmentRepository::delete_with_conn(conn, id).map_err(
-        |error| match error {
-            rusqlite::Error::QueryReturnedNoRows => not_found("Attachment", "Anexo"),
-            other => other.into(),
-        },
-    )?;
+    let attachment = ServiceOrderAttachmentRepository::get_by_id_with_conn(conn, id)?
+        .ok_or_else(|| not_found("Attachment", "Anexo"))?;
+    let transaction = conn.unchecked_transaction()?;
     let stored_path = storage_dir.join(&attachment.storage_name);
-    if stored_path.exists() {
-        fs::remove_file(stored_path).map_err(|error| {
+    let staged_path = if stored_path.exists() {
+        let metadata = fs::symlink_metadata(&stored_path).map_err(|error| {
             AppError::new(
-                format!("Failed to delete attachment file: {error}"),
-                format!("Erro ao excluir o arquivo do anexo: {error}"),
+                format!("Failed to inspect attachment file: {error}"),
+                format!("Erro ao inspecionar o arquivo do anexo: {error}"),
             )
         })?;
+        if !metadata.file_type().is_file() {
+            return Err(business_error(
+                "Stored attachment is not a regular file.",
+                "O anexo armazenado não é um arquivo regular.",
+            ));
+        }
+        let staged_path = storage_dir.join(format!(".delete-{}", attachment.storage_name));
+        fs::rename(&stored_path, &staged_path).map_err(|error| {
+            AppError::new(
+                format!("Failed to stage attachment deletion: {error}"),
+                format!("Erro ao preparar a exclusão do anexo: {error}"),
+            )
+        })?;
+        Some(staged_path)
+    } else {
+        None
+    };
+    if let Err(error) = ServiceOrderAttachmentRepository::delete_with_conn(&transaction, id) {
+        restore_staged_attachment_file(staged_path.as_deref(), &stored_path)?;
+        return Err(match error {
+            rusqlite::Error::QueryReturnedNoRows => not_found("Attachment", "Anexo"),
+            other => other.into(),
+        });
     }
     let event = ServiceOrderEvent::new(
         attachment.service_order_id,
         "attachment_removed".to_string(),
         serde_json::json!({ "fileName": attachment.file_name }).to_string(),
     );
-    ServiceOrderEventRepository::create_with_conn(conn, &event)?;
+    if let Err(error) = ServiceOrderEventRepository::create_with_conn(&transaction, &event) {
+        restore_staged_attachment_file(staged_path.as_deref(), &stored_path)?;
+        return Err(error.into());
+    }
+    if let Err(error) = transaction.commit() {
+        restore_staged_attachment_file(staged_path.as_deref(), &stored_path)?;
+        return Err(error.into());
+    }
+    if let Some(staged_path) = staged_path {
+        if let Err(error) = fs::remove_file(staged_path) {
+            eprintln!("[ATTACHMENT] Failed to remove staged attachment: {error}");
+        }
+    }
+    Ok(())
+}
+
+fn restore_staged_attachment_file(
+    staged: Option<&Path>,
+    destination: &Path,
+) -> Result<(), AppError> {
+    if let Some(staged) = staged {
+        fs::rename(staged, destination).map_err(|error| {
+            AppError::new(
+                format!("Failed to restore attachment after database failure: {error}"),
+                format!("Erro ao restaurar o anexo após falha no banco de dados: {error}"),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+pub(crate) fn recover_staged_attachment_deletions(
+    conn: &rusqlite::Connection,
+    storage_dir: &Path,
+) -> Result<(), AppError> {
+    if !storage_dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(storage_dir).map_err(|error| {
+        AppError::new(
+            format!("Failed to inspect attachment recovery files: {error}"),
+            format!("Erro ao inspecionar arquivos de recuperação de anexos: {error}"),
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            AppError::new(
+                format!("Failed to inspect attachment recovery entry: {error}"),
+                format!("Erro ao inspecionar item de recuperação de anexo: {error}"),
+            )
+        })?;
+        let file_type = entry.file_type().map_err(|error| {
+            AppError::new(
+                format!("Failed to inspect attachment recovery type: {error}"),
+                format!("Erro ao inspecionar tipo de recuperação de anexo: {error}"),
+            )
+        })?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let Some(storage_name) = file_name
+            .to_str()
+            .and_then(|name| name.strip_prefix(".delete-"))
+            .filter(|name| !name.is_empty())
+        else {
+            continue;
+        };
+        let metadata_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM service_order_attachments WHERE storage_name = ?1)",
+            [storage_name],
+            |row| row.get(0),
+        )?;
+        let staged_path = entry.path();
+        let original_path = storage_dir.join(storage_name);
+        if metadata_exists && !original_path.exists() {
+            fs::rename(&staged_path, &original_path).map_err(|error| {
+                AppError::new(
+                    format!("Failed to recover staged attachment: {error}"),
+                    format!("Erro ao recuperar anexo preparado: {error}"),
+                )
+            })?;
+        } else {
+            fs::remove_file(staged_path).map_err(|error| {
+                AppError::new(
+                    format!("Failed to clean staged attachment: {error}"),
+                    format!("Erro ao limpar anexo preparado: {error}"),
+                )
+            })?;
+        }
+    }
     Ok(())
 }
 
 pub fn read_attachment_as_data_url(id: &str) -> Result<String, AppError> {
-    let attachment = ServiceOrderAttachmentRepository::get_by_id(id)?
+    let conn = get_db()?;
+    let attachment = ServiceOrderAttachmentRepository::get_by_id_with_conn(&conn, id)?
         .ok_or_else(|| not_found("Attachment", "Anexo"))?;
-    let bytes = read_stored_attachment(&attachments_dir(), &attachment)?;
+    read_attachment_as_data_url_with_paths(&attachment, &attachments_dir())
+}
+
+pub(crate) fn read_attachment_as_data_url_with_paths(
+    attachment: &ServiceOrderAttachment,
+    storage_dir: &Path,
+) -> Result<String, AppError> {
+    let bytes = read_stored_attachment(storage_dir, attachment)?;
     Ok(format!(
         "data:{};base64,{}",
         attachment.mime_type,
@@ -315,11 +471,20 @@ pub fn read_attachment_as_data_url(id: &str) -> Result<String, AppError> {
 }
 
 pub fn export_attachment(id: &str, destination: &Path) -> Result<(), AppError> {
-    let attachment = ServiceOrderAttachmentRepository::get_by_id(id)?
+    let conn = get_db()?;
+    let attachment = ServiceOrderAttachmentRepository::get_by_id_with_conn(&conn, id)?
         .ok_or_else(|| not_found("Attachment", "Anexo"))?;
+    export_attachment_with_paths(&attachment, &attachments_dir(), destination)
+}
+
+pub(crate) fn export_attachment_with_paths(
+    attachment: &ServiceOrderAttachment,
+    storage_dir: &Path,
+    destination: &Path,
+) -> Result<(), AppError> {
     fs::write(
         destination,
-        read_stored_attachment(&attachments_dir(), &attachment)?,
+        read_stored_attachment(storage_dir, attachment)?,
     )
     .map_err(|error| {
         AppError::new(
@@ -479,6 +644,14 @@ mod tests {
             read_stored_attachment(&storage, &attachment).unwrap(),
             b"\x89PNG\r\n\x1a\n"
         );
+        assert!(
+            read_attachment_as_data_url_with_paths(&attachment, &storage)
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        let exported = temp_dir.join("exported.png");
+        export_attachment_with_paths(&attachment, &storage, &exported).unwrap();
+        assert_eq!(fs::read(exported).unwrap(), b"\x89PNG\r\n\x1a\n");
         delete_attachment_with_paths(&conn, &attachment.id, &storage).unwrap();
         assert!(!storage.join(&attachment.storage_name).exists());
         let _ = fs::remove_dir_all(temp_dir);
@@ -492,6 +665,90 @@ mod tests {
         fs::write(&source, b"not-an-image").unwrap();
 
         assert!(validate_attachment_file(&source).is_err());
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn encryption_rejects_invalid_or_tampered_envelopes() {
+        let attachment = ServiceOrderAttachment::new(
+            "order-1".to_string(),
+            "entrada.png".to_string(),
+            "stored-file".to_string(),
+            "image/png".to_string(),
+            8,
+        );
+        let bytes = b"\x89PNG\r\n\x1a\n";
+        let envelope = encrypt_attachment_bytes(&attachment, bytes).unwrap();
+
+        assert_eq!(
+            decrypt_attachment_bytes(&attachment, &envelope).unwrap(),
+            bytes
+        );
+        assert!(decrypt_attachment_bytes(&attachment, b"plaintext").is_err());
+        assert!(decrypt_attachment_bytes(&attachment, ENVELOPE_MAGIC).is_err());
+
+        let mut tampered = envelope;
+        *tampered.last_mut().unwrap() ^= 1;
+        assert!(decrypt_attachment_bytes(&attachment, &tampered).is_err());
+
+        let mut mismatched = attachment.clone();
+        mismatched.size_bytes = 9;
+        assert!(decrypt_attachment_bytes(
+            &mismatched,
+            &encrypt_attachment_bytes(&attachment, bytes).unwrap()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn validates_attachment_file_type_and_metadata() {
+        let temp_dir = std::env::temp_dir().join(format!("tcc-opet-attachment-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let error = validate_attachment_file(&temp_dir).unwrap_err();
+        assert_eq!(error.en, "Attachment must be a regular file.");
+
+        let source = temp_dir.join("entrada.png");
+        fs::write(&source, b"\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(validate_attachment_file(&source).unwrap().0, "image/png");
+        assert!(validate_attachment_file(&temp_dir.join("missing.png")).is_err());
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn migrates_plaintext_legacy_attachment_to_an_encrypted_envelope() {
+        let conn = setup_db();
+        let customer = Customer::new(
+            "Ana".to_string(),
+            "41999999999".to_string(),
+            "ana@example.com".to_string(),
+            "Rua A".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &customer).unwrap();
+        let mut order = ServiceOrder::new(customer.id, "iPhone".to_string(), "Falha".to_string());
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        let temp_dir =
+            std::env::temp_dir().join(format!("tcc-opet-legacy-attachment-{}", Uuid::new_v4()));
+        let storage = temp_dir.join("storage");
+        fs::create_dir_all(&storage).unwrap();
+        let attachment = ServiceOrderAttachment::new(
+            order.id,
+            "entrada.png".to_string(),
+            "legacy.png".to_string(),
+            "image/png".to_string(),
+            8,
+        );
+        ServiceOrderAttachmentRepository::create_with_conn(&conn, &attachment).unwrap();
+        fs::write(storage.join(&attachment.storage_name), b"\x89PNG\r\n\x1a\n").unwrap();
+
+        migrate_legacy_attachments(&conn, &storage).unwrap();
+
+        let stored = fs::read(storage.join(&attachment.storage_name)).unwrap();
+        assert!(stored.starts_with(ENVELOPE_MAGIC));
+        assert_eq!(
+            read_stored_attachment(&storage, &attachment).unwrap(),
+            b"\x89PNG\r\n\x1a\n"
+        );
         let _ = fs::remove_dir_all(temp_dir);
     }
 }

@@ -1,5 +1,5 @@
 use crate::attachment_service;
-use crate::commands::attachment_commands::PENDING_ATTACHMENT_SELECTIONS;
+use crate::commands::attachment_commands::reserve_pending_attachment_selection;
 use crate::error::AppError;
 use crate::models::checklist::ChecklistItem;
 use crate::models::service_order::ServiceOrder;
@@ -10,14 +10,41 @@ use crate::repositories::inventory_repo::InventoryRepository;
 use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
 use crate::repositories::service_order_repo::{ServiceOrderPart, ServiceOrderRepository};
 use serde::Deserialize;
+use std::path::PathBuf;
 use tauri::command;
+
+#[derive(Default)]
+struct AttachmentFileRollback {
+    paths: Vec<PathBuf>,
+    committed: bool,
+}
+
+impl AttachmentFileRollback {
+    fn track(&mut self, path: PathBuf) {
+        self.paths.push(path);
+    }
+
+    fn commit(&mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for AttachmentFileRollback {
+    fn drop(&mut self) {
+        if !self.committed {
+            for path in &self.paths {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveServiceOrderEditRequest {
     id: String,
     description: String,
-    discount_percent: f64,
+    discount_basis_points: i64,
     status: String,
     restore_stock: bool,
     checklist: Vec<ChecklistItem>,
@@ -31,6 +58,8 @@ pub struct CreateFullServiceOrderRequest {
     pub equipment: String,
     pub imei: Option<String>,
     pub description: String,
+    #[serde(default)]
+    pub discount_basis_points: Option<i64>,
     #[serde(default)]
     pub parts: Vec<CreateServiceOrderPartRequest>,
     #[serde(default)]
@@ -81,6 +110,16 @@ fn require_existing_service_order(order: Option<ServiceOrder>) -> Result<Service
     order.ok_or_else(|| crate::error::not_found("Service order", "Ordem de serviço"))
 }
 
+fn validate_discount_basis_points(discount_basis_points: i64) -> Result<(), AppError> {
+    if !(0..=10_000).contains(&discount_basis_points) {
+        return Err(crate::error::business_error(
+            "Discount percentage must be between 0 and 100.",
+            "O percentual de desconto deve estar entre 0 e 100.",
+        ));
+    }
+    Ok(())
+}
+
 #[command]
 pub fn get_service_order_parts(
     service_order_id: String,
@@ -98,13 +137,15 @@ pub fn create_service_order(
     equipment: String,
     imei: Option<String>,
     description: String,
-    discount_percent: Option<f64>,
+    discount_basis_points: Option<i64>,
 ) -> Result<String, AppError> {
+    let discount_basis_points = discount_basis_points.unwrap_or(0);
+    validate_discount_basis_points(discount_basis_points)?;
     let mut order = ServiceOrder::new(customer_id, equipment, description);
     order.customer_name = customer_name;
     order.user_id = user_id;
     order.imei = imei;
-    order.discount_percent = discount_percent.unwrap_or(0.0);
+    order.discount_basis_points = discount_basis_points;
 
     ServiceOrderRepository::create(&mut order)?;
     Ok(order.id)
@@ -122,7 +163,15 @@ pub(crate) fn create_full_service_order_with_conn(
     conn: &rusqlite::Connection,
     request: CreateFullServiceOrderRequest,
 ) -> Result<String, AppError> {
+    let discount_basis_points = request.discount_basis_points.unwrap_or(0);
+    validate_discount_basis_points(discount_basis_points)?;
+    let mut attachment_reservation = request
+        .attachment_token
+        .as_deref()
+        .map(reserve_pending_attachment_selection)
+        .transpose()?;
     let tx = conn.unchecked_transaction()?;
+    let mut attachment_rollback = AttachmentFileRollback::default();
 
     let (customer_id, customer_name) = match request.customer_action {
         CustomerAction::Existing { id, update } => {
@@ -164,6 +213,7 @@ pub(crate) fn create_full_service_order_with_conn(
     order.customer_name = Some(customer_name.clone());
     order.user_id = request.user_id.clone();
     order.imei = request.imei.clone();
+    order.discount_basis_points = discount_basis_points;
     ServiceOrderRepository::create_with_conn(&tx, &mut order)?;
     let order_id = order.id.clone();
 
@@ -179,13 +229,13 @@ pub(crate) fn create_full_service_order_with_conn(
             String,
             String,
             i32,
-            f64,
-            f64,
+            i64,
+            i64,
         ) = tx
             .query_row(
                 "SELECT name, type, current_quantity,
-                        CASE WHEN average_cost > 0 THEN average_cost ELSE cost_price END,
-                        sale_price
+                        CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END,
+                        sale_price_cents
                  FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
                 rusqlite::params![part.inventory_item_id],
                 |row| {
@@ -213,7 +263,7 @@ pub(crate) fn create_full_service_order_with_conn(
         }
 
         tx.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price, stock_restored)
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost_cents, unit_price_cents, stock_restored)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
             rusqlite::params![
                 uuid::Uuid::new_v4().to_string(),
@@ -246,7 +296,7 @@ pub(crate) fn create_full_service_order_with_conn(
             }
 
             tx.execute(
-                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost, created_at)
+                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost_cents, created_at)
                  VALUES (?1, ?2, 'saida', ?3, ?4, 'service_order_add', ?5, ?6)",
                 rusqlite::params![
                     uuid::Uuid::new_v4().to_string(),
@@ -261,7 +311,7 @@ pub(crate) fn create_full_service_order_with_conn(
 
         tx.execute(
             "UPDATE service_orders
-             SET total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
+             SET total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
              WHERE id = ?1",
             rusqlite::params![order_id, chrono::Utc::now().to_rfc3339()],
         )?;
@@ -292,38 +342,19 @@ pub(crate) fn create_full_service_order_with_conn(
         ChecklistRepository::replace_os_checklist_in_transaction(&tx, &order_id, items)?;
     }
 
-    if let Some(token) = &request.attachment_token {
-        let paths = PENDING_ATTACHMENT_SELECTIONS
-            .lock()
-            .map_err(|_| {
-                AppError::new(
-                    "Pending attachment storage is unavailable.",
-                    "O armazenamento temporário de anexos está indisponível.",
-                )
-            })?
-            .get(token)
-            .cloned()
-            .ok_or_else(|| {
-                AppError::new(
-                    "Selected attachments are no longer available.",
-                    "Os anexos selecionados não estão mais disponíveis.",
-                )
-            })?;
-        for path in &paths {
-            attachment_service::add_attachment_with_paths(
-                &tx,
-                &order_id,
-                path,
-                &crate::database::attachments_dir(),
-            )?;
+    if let Some(reservation) = &attachment_reservation {
+        for path in reservation.paths() {
+            let storage_dir = crate::database::attachments_dir();
+            let attachment =
+                attachment_service::add_attachment_with_paths(&tx, &order_id, path, &storage_dir)?;
+            attachment_rollback.track(storage_dir.join(attachment.storage_name));
         }
     }
 
     tx.commit()?;
-    if let Some(token) = &request.attachment_token {
-        if let Ok(mut selections) = PENDING_ATTACHMENT_SELECTIONS.lock() {
-            selections.remove(token);
-        }
+    attachment_rollback.commit();
+    if let Some(reservation) = &mut attachment_reservation {
+        reservation.commit();
     }
     Ok(order_id)
 }
@@ -360,11 +391,7 @@ pub fn transition_service_order_status(
     status: String,
     restore_stock: bool,
 ) -> Result<ServiceOrder, AppError> {
-    Ok(ServiceOrderRepository::transition_status(
-        &id,
-        &status,
-        restore_stock,
-    )?)
+    ServiceOrderRepository::transition_status(&id, &status, restore_stock)
 }
 
 #[command]
@@ -372,7 +399,7 @@ pub fn save_service_order_edit(request: SaveServiceOrderEditRequest) -> Result<(
     ServiceOrderRepository::save_edit(
         &request.id,
         &request.description,
-        request.discount_percent,
+        request.discount_basis_points,
         &request.status,
         request.restore_stock,
         request.checklist,
@@ -390,9 +417,9 @@ pub fn update_service_order(
     imei: Option<String>,
     description: String,
     status: String,
-    total_price: Option<f64>,
+    total_price: Option<i64>,
     closed_at: Option<String>,
-    discount_percent: Option<f64>,
+    discount_basis_points: Option<i64>,
 ) -> Result<(), AppError> {
     let mut order = require_existing_service_order(ServiceOrderRepository::get_by_id(&id)?)?;
     let _ = (status, total_price, closed_at);
@@ -406,7 +433,7 @@ pub fn update_service_order(
     // Status and closing timestamps are controlled by the lifecycle command.
     // Totals are always recalculated from the persisted OS line items.
     order.total_price = None;
-    order.discount_percent = discount_percent.unwrap_or(0.0);
+    order.discount_basis_points = discount_basis_points.unwrap_or(0);
     order.updated_at = Some(chrono::Utc::now().to_rfc3339());
 
     Ok(ServiceOrderRepository::update(&order)?)
@@ -503,6 +530,36 @@ mod tests {
     }
 
     #[test]
+    fn create_commands_reject_invalid_discounts() {
+        assert!(validate_discount_basis_points(-1).is_err());
+        assert!(validate_discount_basis_points(10_001).is_err());
+
+        let conn = setup_db();
+        let request = CreateFullServiceOrderRequest {
+            customer_action: CustomerAction::New {
+                name: "João".to_string(),
+                phone: "41999999999".to_string(),
+                email: "joao@example.com".to_string(),
+                address: "Rua A".to_string(),
+            },
+            user_id: None,
+            equipment: "iPhone".to_string(),
+            imei: None,
+            description: "Reparo".to_string(),
+            discount_basis_points: Some(10_001),
+            parts: vec![],
+            checklist_items: vec![],
+            attachment_token: None,
+        };
+
+        assert!(create_full_service_order_with_conn(&conn, request).is_err());
+        let customer_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM customers", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(customer_count, 0);
+    }
+
+    #[test]
     fn create_full_service_order_creates_customer_os_parts_and_checklist() {
         let conn = setup_db();
         let part = InventoryItem::new(
@@ -511,8 +568,8 @@ mod tests {
             "part".to_string(),
             1,
             10,
-            50.0,
-            120.0,
+            5_000,
+            12_000,
         );
         InventoryRepository::create_with_conn(&conn, &part).unwrap();
 
@@ -527,6 +584,7 @@ mod tests {
             equipment: "iPhone 14".to_string(),
             imei: Some("123456789".to_string()),
             description: "Troca de tela".to_string(),
+            discount_basis_points: None,
             parts: vec![CreateServiceOrderPartRequest {
                 inventory_item_id: part.id.clone(),
                 quantity: 1,
@@ -552,7 +610,7 @@ mod tests {
         assert_eq!(order.equipment, "iPhone 14");
         assert_eq!(order.description, "Troca de tela");
         assert_eq!(order.status, "Orçamento");
-        assert!(order.total_price.unwrap_or(0.0) > 0.0);
+        assert!(order.total_price.unwrap_or(0) > 0);
 
         let parts =
             ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order_id).unwrap();
@@ -586,8 +644,8 @@ mod tests {
             "part".to_string(),
             1,
             1,
-            30.0,
-            80.0,
+            3_000,
+            8_000,
         );
         InventoryRepository::create_with_conn(&conn, &part).unwrap();
         let customer_id = existing.id.clone();
@@ -601,6 +659,7 @@ mod tests {
             equipment: "iPhone 14".to_string(),
             imei: None,
             description: "Troca de bateria".to_string(),
+            discount_basis_points: None,
             parts: vec![
                 CreateServiceOrderPartRequest {
                     inventory_item_id: part.id.clone(),
@@ -645,8 +704,8 @@ mod tests {
             "service".to_string(),
             0,
             0,
-            0.0,
-            100.0,
+            0,
+            10_000,
         );
         InventoryRepository::create_with_conn(&conn, &service).unwrap();
         let customer_id = existing.id.clone();
@@ -664,6 +723,7 @@ mod tests {
             equipment: "Notebook".to_string(),
             imei: None,
             description: "Reparo".to_string(),
+            discount_basis_points: None,
             parts: vec![CreateServiceOrderPartRequest {
                 inventory_item_id: service.id.clone(),
                 quantity: 1,

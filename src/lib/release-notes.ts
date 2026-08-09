@@ -11,6 +11,37 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.2.0",
+    date: "09/08/2026",
+    title: "Precisão financeira e estoque com alertas",
+    sections: [
+      {
+        title: "Precisão e indicadores",
+        items: [
+          "Preços, custos, descontos e totais agora são calculados com precisão, sem diferenças de arredondamento.",
+          "Painel e Relatório avançado mostram \"Lucro bruto estimado\" com a mesma base de cálculo em tela, CSV e PDF.",
+        ],
+      },
+      {
+        title: "Estoque e painel",
+        items: [
+          "Alertas para peças em estoque baixo ou esgotadas, direto no painel.",
+          "Duplique itens do catálogo em um clique, sem zerar o saldo por engano.",
+          "Consulte os detalhes de um modelo de checklist ao selecioná-lo.",
+          "Crie o colaborador na hora da ordem de serviço e digite valores no formato brasileiro.",
+        ],
+      },
+      {
+        title: "Backup, segurança e atualizações",
+        items: [
+          "Mais proteção ao abrir o aplicativo: o banco não é aberto por duas instâncias ao mesmo tempo.",
+          "Verificação de atualizações mais estável quando o computador está offline.",
+          "Você continua podendo restaurar backups criados nas versões 0.1.x.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.1.2",
     date: "31/07/2026",
     title: "Relatórios interativos e fluxo de OS aprimorado",

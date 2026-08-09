@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/formatters";
 import { InventoryItem } from "@/lib/types";
+import { normalizeIntegerInput, sanitizeIntegerInput } from "@/lib/numeric-input";
+import { quantitySchema } from "@/lib/validation";
 
 export type ServiceOrderItemLine = {
   id: string;
@@ -92,6 +94,7 @@ export function ServiceOrderItemsEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [showItems, setShowItems] = useState(false);
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
   const filteredItems = inventory.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -112,12 +115,18 @@ export function ServiceOrderItemsEditor({
   };
 
   const changeQuantity = (line: ServiceOrderItemLine, value: string) => {
-    const requested = Math.trunc(Number(value)) || 1;
-    const quantity = Math.max(
-      1,
-      Math.min(line.maxQuantity ?? requested, requested),
+    setQuantityInputs((current) => ({
+      ...current,
+      [line.id]: sanitizeIntegerInput(value),
+    }));
+  };
+  const commitQuantity = (line: ServiceOrderItemLine) => {
+    const value = normalizeIntegerInput(
+      quantityInputs[line.id] ?? String(line.quantity),
     );
-    void onQuantityChange(line, quantity);
+    setQuantityInputs((current) => ({ ...current, [line.id]: value }));
+    const result = quantitySchema.safeParse({ quantity: value });
+    if (result.success) void onQuantityChange(line, result.data.quantity);
   };
   const createItem = (type: "part" | "service") => {
     setSearch("");
@@ -259,12 +268,11 @@ export function ServiceOrderItemsEditor({
                   </div>
                   <Input
                     className="h-8 w-16 text-center"
-                    type="number"
-                    min="1"
-                    max={line.maxQuantity}
-                    value={line.quantity}
+                    inputMode="numeric"
+                    value={quantityInputs[line.id] ?? String(line.quantity)}
                     aria-label={`Quantidade de ${line.inventoryItemName}`}
                     onChange={(event) => changeQuantity(line, event.target.value)}
+                    onBlur={() => commitQuantity(line)}
                     disabled={isBusy}
                   />
                   <span className="col-start-2 w-16 text-center text-xs font-bold sm:w-20 sm:text-right">

@@ -48,6 +48,9 @@ Verificacoes executadas em 9 de agosto de 2026 no estado de trabalho usado para 
 - texto das 18 paginas extraido sem caracteres invalidos ou termos de cronologia de versao;
 - verificacao estrutural das 18 paginas: nenhuma pagina vazia, texto dentro dos limites da area util e fontes incorporadas.
 
-## Rastreabilidade pendente
+## Publicacao
 
-O repositorio e publico, mas este estado de trabalho ainda aguarda publicacao sob commit e tag especificos. O hash deve ser acrescentado a esta evidencia e ao TCC quando a publicacao for autorizada.
+- Tag `v0.2.0` publicada em 9 de agosto de 2026 em https://github.com/gustawalk/tcc-opet/releases/tag/v0.2.0.
+- Commit de referencia: `ec27a6e` (merge do PR #13 na ramificacao main).
+- Instaladores Windows (NSIS/MSI), Linux (DEB/AppImage) e o manifesto `updater.json` disponiveis publicamente.
+- Os artefatos complementares deste estado de trabalho sao reproduziveis a partir dessa referencia.

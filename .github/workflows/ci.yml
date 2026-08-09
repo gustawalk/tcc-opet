@@ -69,6 +69,20 @@ jobs:
       - name: Install Rust coverage tool
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust backend
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test Rust backend E2E
+        working-directory: src-tauri
+        run: |
+          cargo test e2e_tests -- --test-threads=1
+          cargo test tauri_ipc_tests -- --test-threads=1
+
       - name: Test Rust backend with coverage
         working-directory: src-tauri
         run: cargo llvm-cov --workspace --summary-only --fail-under-lines 75

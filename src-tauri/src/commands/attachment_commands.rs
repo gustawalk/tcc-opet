@@ -14,6 +14,55 @@ use uuid::Uuid;
 pub(crate) static PENDING_ATTACHMENT_SELECTIONS: Lazy<Mutex<HashMap<String, Vec<PathBuf>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+pub(crate) struct PendingAttachmentReservation {
+    token: String,
+    paths: Option<Vec<PathBuf>>,
+}
+
+impl PendingAttachmentReservation {
+    pub(crate) fn paths(&self) -> &[PathBuf] {
+        self.paths.as_deref().unwrap_or_default()
+    }
+
+    pub(crate) fn commit(&mut self) {
+        self.paths = None;
+    }
+}
+
+impl Drop for PendingAttachmentReservation {
+    fn drop(&mut self) {
+        if let Some(paths) = self.paths.take() {
+            if let Ok(mut selections) = PENDING_ATTACHMENT_SELECTIONS.lock() {
+                selections.insert(self.token.clone(), paths);
+            }
+        }
+    }
+}
+
+pub(crate) fn reserve_pending_attachment_selection(
+    token: &str,
+) -> Result<PendingAttachmentReservation, AppError> {
+    let paths = PENDING_ATTACHMENT_SELECTIONS
+        .lock()
+        .map_err(|_| {
+            AppError::new(
+                "Pending attachment storage is unavailable.",
+                "O armazenamento temporário de anexos está indisponível.",
+            )
+        })?
+        .remove(token)
+        .ok_or_else(|| {
+            AppError::new(
+                "Selected attachments are no longer available.",
+                "Os anexos selecionados não estão mais disponíveis.",
+            )
+        })?;
+    Ok(PendingAttachmentReservation {
+        token: token.to_string(),
+        paths: Some(paths),
+    })
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingAttachmentSelection {
@@ -45,10 +94,14 @@ pub async fn select_service_order_attachments(
     service_order_id: String,
 ) -> Result<Vec<ServiceOrderAttachment>, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        pick_attachment_paths(&app)?
-            .into_iter()
-            .map(|file| attachment_service::add_attachment(&service_order_id, &file))
-            .collect()
+        let paths = pick_attachment_paths(&app)?;
+        let conn = crate::database::get_db()?;
+        attachment_service::add_attachments_atomically_with_paths(
+            &conn,
+            &service_order_id,
+            &paths,
+            &crate::database::attachments_dir(),
+        )
     })
     .await
     .map_err(|error| {
@@ -108,25 +161,16 @@ pub fn attach_pending_service_order_attachments(
     service_order_id: String,
     token: String,
 ) -> Result<Vec<ServiceOrderAttachment>, AppError> {
-    let paths = PENDING_ATTACHMENT_SELECTIONS
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Pending attachment storage is unavailable.",
-                "O armazenamento temporário de anexos está indisponível.",
-            )
-        })?
-        .remove(&token)
-        .ok_or_else(|| {
-            AppError::new(
-                "Selected attachments are no longer available.",
-                "Os anexos selecionados não estão mais disponíveis.",
-            )
-        })?;
-    paths
-        .iter()
-        .map(|path| attachment_service::add_attachment(&service_order_id, path))
-        .collect()
+    let mut reservation = reserve_pending_attachment_selection(&token)?;
+    let conn = crate::database::get_db()?;
+    let attachments = attachment_service::add_attachments_atomically_with_paths(
+        &conn,
+        &service_order_id,
+        reservation.paths(),
+        &crate::database::attachments_dir(),
+    )?;
+    reservation.commit();
+    Ok(attachments)
 }
 
 #[command]

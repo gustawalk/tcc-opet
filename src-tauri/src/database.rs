@@ -2,18 +2,41 @@ use once_cell::sync::OnceCell;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io;
+use std::ops::{Deref, DerefMut};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tauri::Manager;
 use uuid::Uuid;
 
 // Static connection pool for simple desktop usage
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
+static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
+static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
+
+pub struct DatabaseConnection {
+    connection: Connection,
+    _guard: RwLockReadGuard<'static, ()>,
+}
+
+impl Deref for DatabaseConnection {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+impl DerefMut for DatabaseConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,41 +52,81 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
     })?;
     let resolved_database_path = get_database_path(&app_data_dir)?;
+    if let Some(parent) = resolved_database_path.parent() {
+        ensure_private_dir(parent).map_err(io_error)?;
+    }
+    acquire_storage_instance_lock(&resolved_database_path)?;
+    initialize_storage_at(&resolved_database_path, should_seed_demo_data())?;
     DB_PATH.set(resolved_database_path).map_err(|_| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
             "Database path was already initialized.",
         )))
-    })?;
+    })
+}
 
-    if let Some(parent) = database_path().parent() {
+fn storage_instance_lock_path(database_path: &Path) -> PathBuf {
+    let mut path = database_path.to_path_buf();
+    path.set_extension("lock");
+    path
+}
+
+fn open_storage_instance_lock(database_path: &Path) -> Result<File> {
+    let path = storage_instance_lock_path(database_path);
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(io_error)?;
+    fs2::FileExt::try_lock_exclusive(&file).map_err(|error| {
+        database_error(format!(
+            "Another application instance is already using this storage: {error}"
+        ))
+    })?;
+    secure_private_file(&path).map_err(io_error)?;
+    Ok(file)
+}
+
+fn acquire_storage_instance_lock(database_path: &Path) -> Result<()> {
+    let file = open_storage_instance_lock(database_path)?;
+    STORAGE_INSTANCE_LOCK
+        .set(file)
+        .map_err(|_| database_error("Application storage instance lock was already initialized."))
+}
+
+pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) -> Result<()> {
+    let attachments_path = attachments_dir_for(database_path);
+    if let Some(parent) = database_path.parent() {
         ensure_private_dir(parent).map_err(io_error)?;
     }
+    write_or_validate_storage_metadata_at(database_path)?;
 
-    let recovery_backup = if is_plaintext_database(&database_path()).map_err(io_error)? {
+    let recovery_backup = if is_plaintext_database(database_path).map_err(io_error)? {
         Some(create_pre_encryption_recovery_backup(
-            &database_path(),
-            &attachments_dir(),
+            database_path,
+            &attachments_path,
         )?)
     } else {
         None
     };
     let legacy_database = if recovery_backup.is_some() {
-        Some(migrate_plaintext_database(&database_path())?)
+        Some(migrate_plaintext_database(database_path)?)
     } else {
         None
     };
 
     // Open the connection once to run migrations with foreign keys enabled.
-    let conn = get_db()?;
+    let conn = open_encrypted_database(database_path)?;
     run_migrations(&conn)?;
-    write_or_validate_storage_metadata()?;
-    crate::attachment_service::migrate_legacy_attachments(&conn, &attachments_dir())
+    crate::attachment_service::recover_staged_attachment_deletions(&conn, &attachments_path)
         .map_err(database_error)?;
-    secure_private_file(&database_path()).map_err(io_error)?;
+    crate::attachment_service::migrate_legacy_attachments(&conn, &attachments_path)
+        .map_err(database_error)?;
+    secure_private_file(database_path).map_err(io_error)?;
 
-    drop(conn);
-    if should_seed_demo_data() {
-        crate::seeds::initialize_seed_data().map_err(|error| {
+    if seed_demo_data {
+        crate::seeds::initialize_seed_data_with_conn(&conn).map_err(|error| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error)))
         })?;
     } else if cfg!(debug_assertions) {
@@ -71,6 +134,7 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
     } else {
         println!("[SEED] Demo seed data skipped in production.");
     }
+    drop(conn);
 
     if let Some(path) = legacy_database {
         let _ = fs::remove_file(path);
@@ -122,8 +186,8 @@ pub(crate) fn is_plaintext_database(path: &Path) -> io::Result<bool> {
     Ok(bytes.starts_with(SQLITE_HEADER))
 }
 
-fn storage_metadata_path() -> PathBuf {
-    let mut path = database_path();
+fn storage_metadata_path_for(database_path: &Path) -> PathBuf {
+    let mut path = database_path.to_path_buf();
     path.set_extension("encryption.json");
     path
 }
@@ -132,8 +196,8 @@ fn metadata_payload(format_version: u8, key_version: u8) -> String {
     format!("{format_version}:{key_version}")
 }
 
-fn write_or_validate_storage_metadata() -> Result<()> {
-    let path = storage_metadata_path();
+fn write_or_validate_storage_metadata_at(database_path: &Path) -> Result<()> {
+    let path = storage_metadata_path_for(database_path);
     let expected_authentication = crate::encryption::metadata_authentication(&metadata_payload(
         STORAGE_FORMAT_VERSION,
         crate::encryption::ACTIVE_KEY_VERSION,
@@ -324,6 +388,9 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             cost_price REAL NOT NULL DEFAULT 0.0,
             average_cost REAL NOT NULL DEFAULT 0.0,
             sale_price REAL NOT NULL DEFAULT 0.0,
+            cost_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_price_cents >= 0),
+            average_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (average_cost_cents >= 0),
+            sale_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (sale_price_cents >= 0),
             supplier_name TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
@@ -341,11 +408,13 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             description TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'Orçamento' CHECK (status IN ('Orçamento', 'Em Manutenção', 'Aguardando Peça', 'Finalizada', 'Cancelada')),
             total_price REAL DEFAULT 0.0,
+            total_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_price_cents >= 0),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
             display_id TEXT NOT NULL DEFAULT '',
             discount_percent REAL NOT NULL DEFAULT 0.0,
+            discount_basis_points INTEGER NOT NULL DEFAULT 0 CHECK (discount_basis_points BETWEEN 0 AND 10000),
             deleted_at TEXT,
             FOREIGN KEY (customer_id) REFERENCES customers (id),
             FOREIGN KEY (user_id) REFERENCES users (id)
@@ -383,8 +452,10 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             inventory_item_name TEXT NOT NULL DEFAULT '',
             item_type TEXT NOT NULL DEFAULT '',
             quantity INTEGER NOT NULL,
-            unit_cost REAL NOT NULL,
-            unit_price REAL NOT NULL,
+            unit_cost REAL NOT NULL DEFAULT 0.0,
+            unit_price REAL NOT NULL DEFAULT 0.0,
+            unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (unit_cost_cents >= 0),
+            unit_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_cents >= 0),
             stock_restored BOOLEAN NOT NULL DEFAULT 0,
             FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE,
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
@@ -426,6 +497,10 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             total_cost REAL NOT NULL DEFAULT 0.0,
             net_profit REAL NOT NULL DEFAULT 0.0,
             parts_in_use_cost REAL NOT NULL DEFAULT 0.0,
+            total_revenue_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_revenue_cents >= 0),
+            total_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cost_cents >= 0),
+            estimated_gross_profit_cents INTEGER NOT NULL DEFAULT 0,
+            parts_in_use_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (parts_in_use_cost_cents >= 0),
             active_orders_count INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -439,6 +514,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             reference_os_id TEXT,
             reason TEXT NOT NULL DEFAULT '',
             unit_cost REAL,
+            unit_cost_cents INTEGER CHECK (unit_cost_cents IS NULL OR unit_cost_cents >= 0),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
@@ -455,63 +531,57 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
     )?;
 
     // Migration: add columns to service_orders if missing
-    for migration in &[
-        "ALTER TABLE service_orders ADD COLUMN deleted_at TEXT;",
-        "ALTER TABLE service_orders ADD COLUMN display_id TEXT NOT NULL DEFAULT '';",
-        "ALTER TABLE service_orders ADD COLUMN discount_percent REAL NOT NULL DEFAULT 0.0;",
-    ] {
-        if let Err(e) = conn.execute_batch(migration) {
-            let err_msg = e.to_string();
-            if !err_msg.contains("duplicate column") {
-                eprintln!(
-                    "[MIGRATION WARNING] Could not run migration '{}': {}",
-                    migration.trim(),
-                    err_msg
-                );
-            }
-        }
-    }
+    add_column_if_missing(conn, "service_orders", "deleted_at", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        "service_orders",
+        "display_id",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(
+        conn,
+        "service_orders",
+        "discount_percent",
+        "REAL NOT NULL DEFAULT 0.0",
+    )?;
 
     // Migration: add reason to legacy inventory movement records.
-    if let Err(error) = conn.execute_batch(
-        "ALTER TABLE inventory_movements ADD COLUMN reason TEXT NOT NULL DEFAULT '';",
-    ) {
-        if !error.to_string().contains("duplicate column") {
-            eprintln!("[MIGRATION WARNING] Could not add inventory movement reason: {error}");
-        }
-    }
+    add_column_if_missing(
+        conn,
+        "inventory_movements",
+        "reason",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
 
     // Additive inventory migrations preserve existing catalog and audit data.
-    for migration in &[
-        "ALTER TABLE inventory_items ADD COLUMN average_cost REAL NOT NULL DEFAULT 0.0;",
-        "ALTER TABLE inventory_items ADD COLUMN supplier_name TEXT;",
-        "ALTER TABLE inventory_movements ADD COLUMN unit_cost REAL;",
-    ] {
-        if let Err(error) = conn.execute_batch(migration) {
-            if !error.to_string().contains("duplicate column") {
-                eprintln!(
-                    "[MIGRATION WARNING] Could not run inventory migration '{}': {error}",
-                    migration.trim()
-                );
-            }
-        }
-    }
+    add_column_if_missing(
+        conn,
+        "inventory_items",
+        "average_cost",
+        "REAL NOT NULL DEFAULT 0.0",
+    )?;
+    add_column_if_missing(conn, "inventory_items", "supplier_name", "TEXT")?;
+    add_column_if_missing(conn, "inventory_movements", "unit_cost", "REAL")?;
 
     // Preserve the catalog identity used by an OS even when the item is later renamed or retyped.
-    for migration in &[
-        "ALTER TABLE service_order_parts ADD COLUMN inventory_item_name TEXT NOT NULL DEFAULT '';",
-        "ALTER TABLE service_order_parts ADD COLUMN item_type TEXT NOT NULL DEFAULT '';",
-        "ALTER TABLE service_order_parts ADD COLUMN stock_restored BOOLEAN NOT NULL DEFAULT 0;",
-    ] {
-        if let Err(error) = conn.execute_batch(migration) {
-            if !error.to_string().contains("duplicate column") {
-                eprintln!(
-                    "[MIGRATION WARNING] Could not run service order part migration '{}': {error}",
-                    migration.trim()
-                );
-            }
-        }
-    }
+    add_column_if_missing(
+        conn,
+        "service_order_parts",
+        "inventory_item_name",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(
+        conn,
+        "service_order_parts",
+        "item_type",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(
+        conn,
+        "service_order_parts",
+        "stock_restored",
+        "BOOLEAN NOT NULL DEFAULT 0",
+    )?;
     conn.execute_batch(
         "UPDATE service_order_parts
          SET inventory_item_name = (SELECT name FROM inventory_items WHERE id = inventory_item_id),
@@ -520,22 +590,9 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
     )?;
 
     // Migration: add columns to users if missing from intermediate schema
-    for migration in &[
-        "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT '';",
-        "ALTER TABLE users ADD COLUMN cpf TEXT DEFAULT '';",
-        "ALTER TABLE users ADD COLUMN join_date TEXT DEFAULT '';",
-    ] {
-        if let Err(e) = conn.execute_batch(migration) {
-            let err_msg = e.to_string();
-            if !err_msg.contains("duplicate column") {
-                eprintln!(
-                    "[MIGRATION WARNING] Could not run migration '{}': {}",
-                    migration.trim(),
-                    err_msg
-                );
-            }
-        }
-    }
+    add_column_if_missing(conn, "users", "phone", "TEXT DEFAULT ''")?;
+    add_column_if_missing(conn, "users", "cpf", "TEXT DEFAULT ''")?;
+    add_column_if_missing(conn, "users", "join_date", "TEXT DEFAULT ''")?;
 
     // Migration: migrate users table from old schema (role) to new schema (phone, cpf, join_date)
     {
@@ -566,22 +623,16 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
                 DROP TABLE users;
                 ALTER TABLE users_new RENAME TO users;
                 PRAGMA foreign_keys = ON;",
-            )
-            .map_err(|e| eprintln!("[MIGRATION ERROR] Failed to migrate users table: {}", e))
-            .ok();
+            )?;
             eprintln!("[MIGRATION] Users table migrated successfully.");
         }
     }
 
+    migrate_integer_money(conn)?;
     Ok(())
 }
 
 pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
-    conn.execute(
-        "UPDATE inventory_items SET average_cost = cost_price WHERE average_cost = 0.0 AND cost_price > 0.0",
-        [],
-    )?;
-
     // Insert default settings if not exists
     conn.execute(
         "INSERT OR IGNORE INTO settings (id, company_name) VALUES (1, 'Minha Empresa')",
@@ -604,9 +655,151 @@ pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<()> {
+    let exists: bool = conn.query_row(
+        &format!("SELECT EXISTS(SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1)"),
+        [column],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        ))?;
+    }
+    Ok(())
+}
+
+fn migrate_integer_money(conn: &Connection) -> Result<()> {
+    let transaction = conn.unchecked_transaction()?;
+    for (table, column, definition) in [
+        ("inventory_items", "cost_price_cents", "INTEGER CHECK (cost_price_cents IS NULL OR cost_price_cents >= 0)"),
+        ("inventory_items", "average_cost_cents", "INTEGER CHECK (average_cost_cents IS NULL OR average_cost_cents >= 0)"),
+        ("inventory_items", "sale_price_cents", "INTEGER CHECK (sale_price_cents IS NULL OR sale_price_cents >= 0)"),
+        ("service_orders", "total_price_cents", "INTEGER CHECK (total_price_cents IS NULL OR total_price_cents >= 0)"),
+        ("service_orders", "discount_basis_points", "INTEGER CHECK (discount_basis_points IS NULL OR discount_basis_points BETWEEN 0 AND 10000)"),
+        ("service_order_parts", "unit_cost_cents", "INTEGER CHECK (unit_cost_cents IS NULL OR unit_cost_cents >= 0)"),
+        ("service_order_parts", "unit_price_cents", "INTEGER CHECK (unit_price_cents IS NULL OR unit_price_cents >= 0)"),
+        ("inventory_movements", "unit_cost_cents", "INTEGER CHECK (unit_cost_cents IS NULL OR unit_cost_cents >= 0)"),
+        ("financial_snapshots", "total_revenue_cents", "INTEGER CHECK (total_revenue_cents IS NULL OR total_revenue_cents >= 0)"),
+        ("financial_snapshots", "total_cost_cents", "INTEGER CHECK (total_cost_cents IS NULL OR total_cost_cents >= 0)"),
+        (
+            "financial_snapshots",
+            "estimated_gross_profit_cents",
+            "INTEGER",
+        ),
+        ("financial_snapshots", "parts_in_use_cost_cents", "INTEGER CHECK (parts_in_use_cost_cents IS NULL OR parts_in_use_cost_cents >= 0)"),
+    ] {
+        add_column_if_missing(&transaction, table, column, definition)?;
+    }
+    transaction.execute_batch(
+        "UPDATE inventory_items SET cost_price_cents = ROUND(cost_price * 100)
+         WHERE cost_price_cents IS NULL;
+         UPDATE inventory_items SET average_cost_cents = ROUND(
+             CASE WHEN average_cost > 0 THEN average_cost ELSE cost_price END * 100
+         )
+         WHERE average_cost_cents IS NULL;
+         UPDATE inventory_items SET sale_price_cents = ROUND(sale_price * 100)
+         WHERE sale_price_cents IS NULL;
+         UPDATE service_orders SET total_price_cents = ROUND(COALESCE(total_price, 0) * 100)
+         WHERE total_price_cents IS NULL;
+         UPDATE service_orders SET discount_basis_points = ROUND(COALESCE(discount_percent, 0) * 100)
+         WHERE discount_basis_points IS NULL;
+         UPDATE service_order_parts SET unit_cost_cents = ROUND(unit_cost * 100)
+         WHERE unit_cost_cents IS NULL;
+         UPDATE service_order_parts SET unit_price_cents = ROUND(unit_price * 100)
+         WHERE unit_price_cents IS NULL;
+         UPDATE inventory_movements SET unit_cost_cents = ROUND(unit_cost * 100)
+         WHERE unit_cost_cents IS NULL AND unit_cost IS NOT NULL;
+         UPDATE financial_snapshots SET total_revenue_cents = ROUND(total_revenue * 100)
+         WHERE total_revenue_cents IS NULL;
+         UPDATE financial_snapshots SET total_cost_cents = ROUND(total_cost * 100)
+         WHERE total_cost_cents IS NULL;
+         UPDATE financial_snapshots SET estimated_gross_profit_cents = ROUND(net_profit * 100)
+         WHERE estimated_gross_profit_cents IS NULL;
+         UPDATE financial_snapshots SET parts_in_use_cost_cents = ROUND(parts_in_use_cost * 100)
+         WHERE parts_in_use_cost_cents IS NULL;",
+    )?;
+    make_legacy_part_prices_optional(&transaction)?;
+    validate_integer_money(&transaction)?;
+    transaction.commit()
+}
+
+fn validate_integer_money(conn: &Connection) -> Result<()> {
+    let invalid: bool = conn.query_row(
+        "SELECT
+            EXISTS(SELECT 1 FROM inventory_items WHERE cost_price_cents IS NULL OR cost_price_cents < 0 OR average_cost_cents IS NULL OR average_cost_cents < 0 OR sale_price_cents IS NULL OR sale_price_cents < 0)
+            OR EXISTS(SELECT 1 FROM service_orders WHERE total_price_cents IS NULL OR total_price_cents < 0 OR discount_basis_points IS NULL OR discount_basis_points NOT BETWEEN 0 AND 10000)
+            OR EXISTS(SELECT 1 FROM service_order_parts WHERE unit_cost_cents IS NULL OR unit_cost_cents < 0 OR unit_price_cents IS NULL OR unit_price_cents < 0)
+            OR EXISTS(SELECT 1 FROM inventory_movements WHERE unit_cost_cents < 0)
+            OR EXISTS(SELECT 1 FROM financial_snapshots WHERE total_revenue_cents IS NULL OR total_revenue_cents < 0 OR total_cost_cents IS NULL OR total_cost_cents < 0 OR estimated_gross_profit_cents IS NULL OR parts_in_use_cost_cents IS NULL OR parts_in_use_cost_cents < 0)",
+        [],
+        |row| row.get(0),
+    )?;
+    if invalid {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(())
+}
+
+fn make_legacy_part_prices_optional(conn: &Connection) -> Result<()> {
+    let unit_cost_not_null: i64 = conn.query_row(
+        "SELECT \"notnull\" FROM pragma_table_info('service_order_parts') WHERE name = 'unit_cost'",
+        [],
+        |row| row.get(0),
+    )?;
+    if unit_cost_not_null == 0 {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "ALTER TABLE service_order_parts RENAME TO service_order_parts_legacy_money;
+         CREATE TABLE service_order_parts (
+             id TEXT PRIMARY KEY,
+             service_order_id TEXT NOT NULL,
+             inventory_item_id TEXT NOT NULL,
+             inventory_item_name TEXT NOT NULL DEFAULT '',
+             item_type TEXT NOT NULL DEFAULT '',
+             quantity INTEGER NOT NULL,
+             unit_cost REAL,
+             unit_price REAL,
+             unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (unit_cost_cents >= 0),
+             unit_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_cents >= 0),
+             stock_restored BOOLEAN NOT NULL DEFAULT 0,
+             FOREIGN KEY (service_order_id) REFERENCES service_orders (id) ON DELETE CASCADE,
+             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
+         );
+         INSERT INTO service_order_parts (
+             id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity,
+             unit_cost, unit_price, unit_cost_cents, unit_price_cents, stock_restored
+         )
+         SELECT id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity,
+                unit_cost, unit_price, unit_cost_cents, unit_price_cents, stock_restored
+         FROM service_order_parts_legacy_money;
+         DROP TABLE service_order_parts_legacy_money;",
+    )
+}
+
 // Get database connection - returns a new connection using the stored path
-pub fn get_db() -> Result<Connection> {
-    open_encrypted_database(&database_path())
+pub fn get_db() -> Result<DatabaseConnection> {
+    let guard = STORAGE_OPERATION_LOCK
+        .read()
+        .map_err(|_| database_error("Storage operation lock is unavailable."))?;
+    let connection = open_encrypted_database(&database_path())?;
+    Ok(DatabaseConnection {
+        connection,
+        _guard: guard,
+    })
+}
+
+pub(crate) fn exclusive_storage_guard() -> Result<RwLockWriteGuard<'static, ()>> {
+    STORAGE_OPERATION_LOCK
+        .write()
+        .map_err(|_| database_error("Storage operation lock is unavailable."))
 }
 
 pub fn database_path() -> PathBuf {
@@ -617,9 +810,27 @@ pub fn database_path() -> PathBuf {
 }
 
 pub fn attachments_dir() -> PathBuf {
-    let mut path = database_path();
+    attachments_dir_for(&database_path())
+}
+
+pub(crate) fn attachments_dir_for(database_path: &Path) -> PathBuf {
+    let mut path = database_path.to_path_buf();
     path.set_extension("attachments");
     path
+}
+
+#[cfg(test)]
+pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
+    initialize_storage_at(path, false)?;
+    match DB_PATH.get() {
+        Some(initialized) if initialized == path => Ok(()),
+        Some(_) => Err(database_error(
+            "Test database path was already initialized with a different path.",
+        )),
+        None => DB_PATH
+            .set(path.to_path_buf())
+            .map_err(|_| database_error("Test database path was already initialized.")),
+    }
 }
 
 #[cfg(test)]
@@ -646,6 +857,17 @@ mod tests {
             resolve_database_path(Some(configured_path.clone()), &app_data_dir),
             configured_path
         );
+    }
+
+    #[test]
+    fn storage_instance_lock_rejects_a_second_owner() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let database_path = temp_dir.path().join("database.db");
+        let first = open_storage_instance_lock(&database_path).unwrap();
+
+        assert!(open_storage_instance_lock(&database_path).is_err());
+        drop(first);
+        assert!(open_storage_instance_lock(&database_path).is_ok());
     }
 
     #[cfg(unix)]
@@ -902,9 +1124,9 @@ mod tests {
 
         run_migrations(&conn).unwrap();
 
-        let item: (f64, Option<String>) = conn
+        let item: (i64, Option<String>) = conn
             .query_row(
-                "SELECT average_cost, supplier_name FROM inventory_items WHERE id = 'part-1'",
+                "SELECT average_cost_cents, supplier_name FROM inventory_items WHERE id = 'part-1'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -912,8 +1134,151 @@ mod tests {
         let has_unit_cost: i64 = conn.query_row(
             "SELECT COUNT(*) FROM pragma_table_info('inventory_movements') WHERE name = 'unit_cost'", [], |row| row.get(0),
         ).unwrap();
-        assert_eq!(item.0, 42.5);
+        assert_eq!(item.0, 4_250);
         assert!(item.1.is_none());
         assert_eq!(has_unit_cost, 1);
+    }
+
+    #[test]
+    fn money_migration_backfills_legacy_decimals_and_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE inventory_items (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', type TEXT NOT NULL,
+                min_quantity INTEGER NOT NULL DEFAULT 0, current_quantity INTEGER NOT NULL DEFAULT 0,
+                cost_price REAL NOT NULL DEFAULT 0.0, average_cost REAL NOT NULL DEFAULT 0.0,
+                sale_price REAL NOT NULL DEFAULT 0.0, cost_price_cents INTEGER,
+                average_cost_cents INTEGER, sale_price_cents INTEGER,
+                created_at TEXT, updated_at TEXT, deleted_at TEXT
+             );
+             CREATE TABLE service_orders (
+                id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, customer_name TEXT, user_id TEXT,
+                equipment TEXT NOT NULL, imei TEXT, description TEXT NOT NULL, status TEXT NOT NULL,
+                total_price REAL DEFAULT 0.0, created_at TEXT NOT NULL, updated_at TEXT, closed_at TEXT,
+                display_id TEXT NOT NULL DEFAULT '', discount_percent REAL NOT NULL DEFAULT 0.0,
+                total_price_cents INTEGER, discount_basis_points INTEGER, deleted_at TEXT
+             );
+             CREATE TABLE service_order_parts (
+                id TEXT PRIMARY KEY, service_order_id TEXT NOT NULL, inventory_item_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL, unit_cost REAL NOT NULL, unit_price REAL NOT NULL,
+                unit_cost_cents INTEGER, unit_price_cents INTEGER
+             );
+             CREATE TABLE inventory_movements (
+                id TEXT PRIMARY KEY, inventory_item_id TEXT NOT NULL, type TEXT NOT NULL,
+                quantity INTEGER NOT NULL, reference_os_id TEXT, reason TEXT NOT NULL DEFAULT '',
+                unit_cost REAL, created_at TEXT
+             );
+             CREATE TABLE financial_snapshots (
+                id TEXT PRIMARY KEY, snapshot_date DATE NOT NULL UNIQUE,
+                total_revenue REAL NOT NULL DEFAULT 0.0, total_cost REAL NOT NULL DEFAULT 0.0,
+                net_profit REAL NOT NULL DEFAULT 0.0, parts_in_use_cost REAL NOT NULL DEFAULT 0.0,
+                total_revenue_cents INTEGER, total_cost_cents INTEGER,
+                estimated_gross_profit_cents INTEGER, parts_in_use_cost_cents INTEGER,
+                active_orders_count INTEGER NOT NULL DEFAULT 0, created_at TEXT
+             );
+             INSERT INTO inventory_items (id, name, type, cost_price, average_cost, sale_price, cost_price_cents, average_cost_cents, sale_price_cents)
+                VALUES ('part-1', 'Tela', 'part', 42.567, 12.34, 99.999, 777, NULL, 10000);
+             INSERT INTO inventory_items (id, name, type, cost_price, average_cost, sale_price, cost_price_cents, average_cost_cents, sale_price_cents)
+                VALUES ('part-2', 'Cabo', 'part', 10.0, 0.0, 20.0, 1000, 0, 2000);
+             INSERT INTO service_orders (id, customer_id, equipment, description, status, total_price, created_at, discount_percent, total_price_cents, discount_basis_points)
+                VALUES ('order-1', 'customer-1', 'Celular', 'Reparo', 'Finalizada', 123.456, CURRENT_TIMESTAMP, 1.5, 888, NULL);
+             INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, quantity, unit_cost, unit_price, unit_cost_cents, unit_price_cents)
+                VALUES ('line-1', 'order-1', 'part-1', 2, 42.567, 7.89, 666, NULL);
+             INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, unit_cost)
+                VALUES ('movement-1', 'part-1', 'entrada', 2, 40.555);
+             INSERT INTO financial_snapshots (
+                 id, snapshot_date, total_revenue, total_cost, net_profit, parts_in_use_cost,
+                 total_revenue_cents, total_cost_cents, estimated_gross_profit_cents, parts_in_use_cost_cents
+              ) VALUES ('snapshot-1', '2020-01-01', 123.456, 4.44, 38.322, 2.22, 555, NULL, 333, NULL);",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let item: (i64, i64, i64) = conn
+            .query_row(
+                "SELECT cost_price_cents, average_cost_cents, sale_price_cents FROM inventory_items WHERE id = 'part-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        let order: (i64, i64) = conn
+            .query_row(
+                "SELECT total_price_cents, discount_basis_points FROM service_orders WHERE id = 'order-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let migrated_zero_average: i64 = conn
+            .query_row(
+                "SELECT average_cost_cents FROM inventory_items WHERE id = 'part-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let line: (i64, i64) = conn
+            .query_row(
+                "SELECT unit_cost_cents, unit_price_cents FROM service_order_parts WHERE id = 'line-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let movement: i64 = conn
+            .query_row(
+                "SELECT unit_cost_cents FROM inventory_movements WHERE id = 'movement-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let snapshot: (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT total_revenue_cents, total_cost_cents, estimated_gross_profit_cents, parts_in_use_cost_cents
+                 FROM financial_snapshots WHERE id = 'snapshot-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+
+        assert_eq!(item, (777, 1_234, 10_000));
+        assert_eq!(migrated_zero_average, 0);
+        assert_eq!(order, (888, 150));
+        assert_eq!(line, (666, 789));
+        assert_eq!(movement, 4_056);
+        assert_eq!(snapshot, (555, 444, 333, 222));
+    }
+
+    #[test]
+    fn fresh_schema_rejects_invalid_integer_money() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let customer = crate::models::customer::Customer::new(
+            "Cliente".to_string(),
+            "41".to_string(),
+            "cliente@example.com".to_string(),
+            "Rua".to_string(),
+        );
+        crate::repositories::customer_repo::CustomerRepository::create_with_conn(&conn, &customer)
+            .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO service_orders (id, customer_id, equipment, description, discount_basis_points)
+                 VALUES ('invalid-order', ?1, 'Celular', 'Reparo', 10001)",
+                [customer.id],
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn migration_rejects_out_of_range_existing_money() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "PRAGMA ignore_check_constraints = ON;
+             UPDATE financial_snapshots SET total_cost_cents = -1;",
+        )
+        .unwrap();
+
+        assert!(migrate_integer_money(&conn).is_err());
     }
 }

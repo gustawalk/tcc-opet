@@ -40,7 +40,7 @@ import { SortableHeader } from "@/components/shared/SortableHeader";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useSort } from "@/hooks/useSort";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   Customer,
@@ -342,20 +342,22 @@ export function ServiceOrders() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        {order.discountPercent > 0 && (
+                        {order.discountBasisPoints > 0 && (
                           <span className="text-xs text-muted-foreground line-through">
                             {formatCurrency(order.totalPrice || 0)}
                           </span>
                         )}
                         <span>
                           {formatCurrency(
-                            (order.totalPrice || 0) *
-                              (1 - order.discountPercent / 100),
+                            applyDiscount(
+                              order.totalPrice || 0,
+                              order.discountBasisPoints,
+                            ),
                           )}
                         </span>
-                        {order.discountPercent > 0 && (
+                        {order.discountBasisPoints > 0 && (
                           <Badge variant="outline" className="text-[10px]">
-                            -{order.discountPercent}%
+                            -{order.discountBasisPoints / 100}%
                           </Badge>
                         )}
                       </div>

@@ -13,8 +13,8 @@ fn validate_inventory_values(
     item_type: &str,
     min_quantity: i32,
     current_quantity: i32,
-    cost_price: f64,
-    sale_price: f64,
+    cost_price: i64,
+    sale_price: i64,
 ) -> Result<(), AppError> {
     if !matches!(item_type, "part" | "service") {
         return Err(crate::error::business_error(
@@ -22,13 +22,7 @@ fn validate_inventory_values(
             "O tipo do item deve ser peça ou serviço.",
         ));
     }
-    if min_quantity < 0
-        || current_quantity < 0
-        || !cost_price.is_finite()
-        || !sale_price.is_finite()
-        || cost_price < 0.0
-        || sale_price < 0.0
-    {
+    if min_quantity < 0 || current_quantity < 0 || cost_price < 0 || sale_price < 0 {
         return Err(crate::error::business_error(
             "Inventory quantities and prices cannot be negative.",
             "Quantidades e preços do inventário não podem ser negativos.",
@@ -62,14 +56,15 @@ fn validate_stock_change(id: &str, quantity: i32, removing: bool) -> Result<(), 
 }
 
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub fn create_inventory_item(
     name: String,
     description: String,
     r#type: String,
     min_quantity: i32,
     current_quantity: i32,
-    cost_price: f64,
-    sale_price: f64,
+    cost_price: i64,
+    sale_price: i64,
     supplier_name: Option<String>,
 ) -> Result<InventoryItem, AppError> {
     validate_inventory_values(
@@ -112,8 +107,8 @@ pub fn update_inventory_item(
     r#type: String,
     min_quantity: i32,
     current_quantity: i32,
-    cost_price: f64,
-    sale_price: f64,
+    cost_price: i64,
+    sale_price: i64,
     supplier_name: Option<String>,
 ) -> Result<(), AppError> {
     validate_inventory_values(
@@ -145,11 +140,11 @@ pub fn delete_inventory_item(id: String) -> Result<(), AppError> {
 pub fn restock_inventory_item(
     id: String,
     quantity: i32,
-    unit_cost: Option<f64>,
+    unit_cost: Option<i64>,
     reason: Option<String>,
 ) -> Result<(), AppError> {
     validate_stock_change(&id, quantity, false)?;
-    if unit_cost.is_some_and(|cost| !cost.is_finite() || cost <= 0.0) {
+    if unit_cost.is_some_and(|cost| cost <= 0) {
         return Err(crate::error::business_error(
             "Restock unit cost must be greater than zero.",
             "O custo unitário da reposição deve ser maior que zero.",
@@ -208,7 +203,7 @@ mod tests {
 
     #[test]
     fn rejects_negative_inventory_values() {
-        let err = validate_inventory_values("part", 0, 0, -1.0, 10.0).unwrap_err();
+        let err = validate_inventory_values("part", 0, 0, -1, 1_000).unwrap_err();
 
         assert_eq!(
             err.pt,
@@ -217,9 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_inventory_types_and_non_finite_prices() {
-        assert!(validate_inventory_values("other", 0, 0, 1.0, 1.0).is_err());
-        assert!(validate_inventory_values("part", 0, 0, f64::NAN, 1.0).is_err());
-        assert!(validate_inventory_values("part", 0, 0, 1.0, f64::INFINITY).is_err());
+    fn rejects_invalid_inventory_types() {
+        assert!(validate_inventory_values("other", 0, 0, 100, 100).is_err());
     }
 }

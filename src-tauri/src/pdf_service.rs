@@ -1,5 +1,6 @@
 use crate::error::{not_found, AppError};
 use crate::models::checklist::ChecklistItem;
+use crate::money::{apply_discount, format_brl};
 use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::financial_report_repo::FinancialReportRepository;
 use crate::repositories::service_order_repo::{ServiceOrderPart, ServiceOrderRepository};
@@ -67,23 +68,6 @@ fn pdf_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
-fn format_currency(value: f64) -> String {
-    let formatted = format!("{value:.2}");
-    let (integer, decimal) = formatted.split_once('.').unwrap_or((&formatted, "00"));
-    let mut grouped = String::new();
-    for (index, character) in integer.chars().rev().enumerate() {
-        if index > 0 && index % 3 == 0 {
-            grouped.push('.');
-        }
-        grouped.push(character);
-    }
-    format!(
-        "R$ {},{}",
-        grouped.chars().rev().collect::<String>(),
-        decimal
-    )
-}
-
 fn format_date(value: &str) -> String {
     DateTime::parse_from_rfc3339(value)
         .map(|date| {
@@ -120,11 +104,16 @@ fn build_html_with_conn(conn: &Connection, service_order_id: &str) -> Result<Str
     let settings = SettingsRepository::get_settings_with_conn(conn)?;
     let parts = ServiceOrderRepository::get_service_order_parts_with_conn(conn, service_order_id)?;
     let checklist = ChecklistRepository::get_os_checklist_with_conn(conn, service_order_id)?;
-    let gross_total = parts
-        .iter()
-        .map(|part| part.quantity as f64 * part.unit_price)
-        .sum::<f64>();
-    let total = gross_total * (1.0 - order.discount_percent / 100.0);
+    let gross_total = parts.iter().try_fold(0_i64, |total, part| {
+        let line_total = i64::from(part.quantity)
+            .checked_mul(part.unit_price)
+            .ok_or_else(|| pdf_error("service order total exceeds the supported range"))?;
+        total
+            .checked_add(line_total)
+            .ok_or_else(|| pdf_error("service order total exceeds the supported range"))
+    })?;
+    let total = apply_discount(gross_total, order.discount_basis_points)
+        .ok_or_else(|| pdf_error("invalid service order discount"))?;
 
     let mut context = Context::new();
     context.insert("settings", &settings);
@@ -149,10 +138,17 @@ fn build_html_with_conn(conn: &Connection, service_order_id: &str) -> Result<Str
             .map(format_date)
             .unwrap_or_default(),
     );
-    context.insert("discount_percent", &order.discount_percent);
-    context.insert("gross_total", &format_currency(gross_total));
-    context.insert("total", &format_currency(total));
-    context.insert("parts", &parts.iter().map(pdf_part).collect::<Vec<_>>());
+    context.insert(
+        "discount_percentage_label",
+        &format_basis_points_percent(order.discount_basis_points),
+    );
+    context.insert("discount_basis_points", &order.discount_basis_points);
+    context.insert("gross_total", &format_brl(gross_total));
+    context.insert("total", &format_brl(total));
+    context.insert(
+        "parts",
+        &parts.iter().map(pdf_part).collect::<Result<Vec<_>, _>>()?,
+    );
     context.insert(
         "checklist",
         &checklist.iter().map(pdf_checklist_item).collect::<Vec<_>>(),
@@ -165,12 +161,24 @@ fn build_html_with_conn(conn: &Connection, service_order_id: &str) -> Result<Str
     Tera::one_off(SERVICE_ORDER_TEMPLATE, &context, true).map_err(pdf_error)
 }
 
-fn pdf_part(part: &ServiceOrderPart) -> PdfPart {
-    PdfPart {
+fn pdf_part(part: &ServiceOrderPart) -> Result<PdfPart, AppError> {
+    let total_price = part
+        .unit_price
+        .checked_mul(i64::from(part.quantity))
+        .ok_or_else(|| pdf_error("service order line total exceeds the supported range"))?;
+    Ok(PdfPart {
         name: part.inventory_item_name.clone(),
         quantity: part.quantity,
-        unit_price: format_currency(part.unit_price),
-        total_price: format_currency(part.unit_price * part.quantity as f64),
+        unit_price: format_brl(part.unit_price),
+        total_price: format_brl(total_price),
+    })
+}
+
+fn format_basis_points_percent(basis_points: i64) -> String {
+    if basis_points % 100 == 0 {
+        (basis_points / 100).to_string()
+    } else {
+        format!("{}.{:02}", basis_points / 100, basis_points % 100)
     }
 }
 
@@ -271,10 +279,13 @@ fn build_financial_report_html(
     let mut context = Context::new();
     context.insert("start_date", &report.start_date);
     context.insert("end_date", &report.end_date);
-    context.insert("total_revenue", &format_currency(report.total_revenue));
-    context.insert("total_cost", &format_currency(report.total_cost));
-    context.insert("net_profit", &format_currency(report.net_profit));
-    context.insert("average_ticket", &format_currency(report.average_ticket));
+    context.insert("total_revenue", &format_brl(report.total_revenue));
+    context.insert("total_cost", &format_brl(report.total_cost));
+    context.insert(
+        "estimated_gross_profit",
+        &format_brl(report.estimated_gross_profit),
+    );
+    context.insert("average_ticket", &format_brl(report.average_ticket));
     context.insert("finalized_orders", &report.finalized_orders);
     context.insert("new_customers", &report.new_customers);
     context.insert("new_orders", &report.new_orders);
@@ -292,7 +303,7 @@ fn build_financial_report_html(
         &format!("{:.1} h", report.average_turnaround_hours),
     );
     context.insert("returning_customers", &report.returning_customers);
-    context.insert("total_discounts", &format_currency(report.total_discounts));
+    context.insert("total_discounts", &format_brl(report.total_discounts));
     context.insert(
         "ranking_label",
         if report.ranking_metric == "quantity" {
@@ -310,9 +321,9 @@ fn build_financial_report_html(
             .map(|item| {
                 serde_json::json!({
                     "label": item.label,
-                    "revenue": format_currency(item.revenue),
-                    "cost": format_currency(item.cost),
-                    "profit": format_currency(item.profit),
+                    "revenue": format_brl(item.revenue),
+                    "cost": format_brl(item.cost),
+                    "profit": format_brl(item.profit),
                     "count": item.count,
                 })
             })
@@ -326,9 +337,9 @@ fn build_financial_report_html(
             .map(|item| {
                 serde_json::json!({
                     "label": item.label,
-                    "revenue": format_currency(item.revenue),
-                    "cost": format_currency(item.cost),
-                    "profit": format_currency(item.profit),
+                    "revenue": format_brl(item.revenue),
+                    "cost": format_brl(item.cost),
+                    "profit": format_brl(item.profit),
                     "count": item.count,
                 })
             })
@@ -342,8 +353,8 @@ fn build_financial_report_html(
             .map(|item| {
                 serde_json::json!({
                     "month": item.month,
-                    "revenue": format_currency(item.revenue),
-                    "profit": format_currency(item.profit),
+                    "revenue": format_brl(item.revenue),
+                    "profit": format_brl(item.profit),
                     "count": item.order_count,
                 })
             })
@@ -357,9 +368,9 @@ fn build_financial_report_html(
             .map(|item| {
                 serde_json::json!({
                     "label": item.label,
-                    "revenue": format_currency(item.revenue),
-                    "cost": format_currency(item.cost),
-                    "profit": format_currency(item.profit),
+                    "revenue": format_brl(item.revenue),
+                    "cost": format_brl(item.cost),
+                    "profit": format_brl(item.profit),
                     "count": item.count,
                 })
             })
@@ -512,8 +523,8 @@ mod tests {
             "part".to_string(),
             1,
             2,
-            100.0,
-            200.0,
+            10_000,
+            20_000,
         );
         InventoryRepository::create_with_conn(&conn, &part).unwrap();
         ServiceOrderRepository::add_part_to_service_order_with_conn(
@@ -561,18 +572,18 @@ mod tests {
     fn renders_financial_report_html_without_requiring_chromium() {
         let breakdown = FinancialBreakdown {
             label: "Técnica Ana".to_string(),
-            revenue: 1234.5,
-            cost: 400.0,
-            profit: 834.5,
+            revenue: 123_450,
+            cost: 40_000,
+            profit: 83_450,
             count: 3,
         };
         let report = FinancialReport {
             start_date: "2026-01-01".to_string(),
             end_date: "2026-01-31".to_string(),
-            total_revenue: 1234.5,
-            total_cost: 400.0,
-            net_profit: 834.5,
-            average_ticket: 411.5,
+            total_revenue: 123_450,
+            total_cost: 40_000,
+            estimated_gross_profit: 83_450,
+            average_ticket: 41_150,
             finalized_orders: 3,
             new_customers: 2,
             new_orders: 4,
@@ -581,7 +592,7 @@ mod tests {
             cancellation_rate: 25.0,
             average_turnaround_hours: 12.5,
             returning_customers: 1,
-            total_discounts: 50.0,
+            total_discounts: 5_000,
             ranking_metric: "quantity".to_string(),
             ranking_limit: 5,
             by_technician: vec![breakdown.clone()],
@@ -589,8 +600,8 @@ mod tests {
             top_items: vec![breakdown],
             by_month: vec![FinancialMonth {
                 month: "2026-01".to_string(),
-                revenue: 1234.5,
-                profit: 834.5,
+                revenue: 123_450,
+                profit: 83_450,
                 order_count: 3,
             }],
         };
@@ -599,6 +610,7 @@ mod tests {
 
         assert!(html.contains("Técnica Ana"));
         assert!(html.contains("R$ 1.234,50"));
+        assert!(html.contains("Lucro bruto estimado"));
         assert!(html.contains("Quantidade vendida"));
     }
 }

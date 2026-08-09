@@ -23,13 +23,14 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const DATABASE_ENTRY: &str = "database.db";
 const ATTACHMENTS_PREFIX: &str = "attachments/";
 const MANIFEST_ENTRY: &str = "opets-backup.json";
-const BACKUP_FORMAT_VERSION: u8 = 2;
+const BACKUP_FORMAT_VERSION: u8 = 3;
 const ENCRYPTED_BACKUP_MAGIC: &[u8] = b"OPETBKP2";
 const MAX_BACKUP_FILE_SIZE_BYTES: u64 = 250 * 1024 * 1024;
 const MAX_DATABASE_SIZE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT: usize = 200;
 const MAX_ARCHIVE_ENTRIES: usize = MAX_ATTACHMENT_COUNT + 2;
+type BackupKeyMaterial = ([u8; 32], Option<Vec<u8>>, bool);
 
 const REQUIRED_TABLES: [&str; 14] = [
     "settings",
@@ -110,7 +111,7 @@ fn activate_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppE
 fn backup_envelope_key(
     passphrase: Option<&str>,
     salt: Option<&[u8]>,
-) -> Result<([u8; 32], Option<Vec<u8>>, bool), AppError> {
+) -> Result<BackupKeyMaterial, AppError> {
     let passphrase = passphrase.unwrap_or("");
     if passphrase.is_empty() {
         return Ok((
@@ -164,7 +165,7 @@ fn encrypt_backup_archive(archive: &[u8], passphrase: Option<&str>) -> Result<Ve
 }
 
 fn validate_backup_envelope_header(header: &BackupEnvelopeHeader) -> Result<(), AppError> {
-    if header.format_version != BACKUP_FORMAT_VERSION
+    if !matches!(header.format_version, 1..=3)
         || header.key_version != crate::encryption::ACTIVE_KEY_VERSION
     {
         return Err(backup_error(
@@ -322,7 +323,7 @@ fn backup_manifest() -> BackupManifest {
 }
 
 fn validate_manifest(manifest: BackupManifest) -> Result<(), AppError> {
-    if manifest.application != "com.walk.tcc-opet" || !matches!(manifest.format_version, 1 | 2) {
+    if manifest.application != "com.walk.tcc-opet" || !matches!(manifest.format_version, 1..=3) {
         return Err(AppError::new(
             "Backup manifest is not compatible with this application.",
             "O manifesto do backup não é compatível com este aplicativo.",
@@ -832,6 +833,19 @@ mod tests {
 
         assert!(error.en.contains("manifest"));
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn exports_format_three_and_accepts_all_supported_manifests() {
+        assert_eq!(backup_manifest().format_version, 3);
+        for format_version in [1, 2, 3] {
+            assert!(validate_manifest(BackupManifest {
+                application: "com.walk.tcc-opet".to_string(),
+                format_version,
+                key_version: (format_version == 3).then_some(crate::encryption::ACTIVE_KEY_VERSION),
+            })
+            .is_ok());
+        }
     }
 
     #[test]

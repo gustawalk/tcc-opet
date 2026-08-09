@@ -33,7 +33,7 @@ describe("ServiceOrders", () => {
             totalPrice: 0,
             createdAt: "2026-01-01T00:00:00Z",
             displayId: "OS-000001",
-            discountPercent: 0,
+            discountBasisPoints: 0,
           },
         ]);
       }

@@ -30,7 +30,7 @@ import {
   ServiceOrderEvent,
   PdfPreview,
 } from "@/lib/types";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   User,
@@ -150,8 +150,8 @@ const getEventContent = (event: ServiceOrderEvent) => {
     case "updated":
       return {
         label: "Dados da ordem atualizados",
-        detail: value("discountPercent")
-          ? `Desconto: ${value("discountPercent")}%`
+        detail: value("discountBasisPoints")
+          ? `Desconto: ${Number(value("discountBasisPoints")) / 100}%`
           : undefined,
       };
     case "status_changed":
@@ -554,19 +554,21 @@ export function ServiceOrderDetailSheet({
                 <p className="text-xs text-muted-foreground font-semibold uppercase">
                   Total Previsto
                 </p>
-                {order.discountPercent > 0 ? (
+                {order.discountBasisPoints > 0 ? (
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-primary">
                       {formatCurrency(
-                        (order.totalPrice || 0) *
-                          (1 - order.discountPercent / 100),
+                        applyDiscount(
+                          order.totalPrice || 0,
+                          order.discountBasisPoints,
+                        ),
                       )}
                     </p>
                     <span className="text-xs line-through text-muted-foreground">
                       {formatCurrency(order.totalPrice || 0)}
                     </span>
                     <Badge variant="outline" className="text-[10px]">
-                      -{order.discountPercent}%
+                      -{order.discountBasisPoints / 100}%
                     </Badge>
                   </div>
                 ) : (

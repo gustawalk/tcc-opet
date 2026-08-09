@@ -27,7 +27,7 @@ export function formatCurrencyInput(value: string) {
 }
 
 export function formatCurrencyInputValue(value: number) {
-  return currencyFormatter.format(Math.round(value * 100) / 100);
+  return Number.isSafeInteger(value) ? currencyFormatter.format(value / 100) : "";
 }
 
 export function currencyInputToNumber(value: string) {
@@ -35,7 +35,7 @@ export function currencyInputToNumber(value: string) {
   if (!digits) return undefined;
 
   const cents = Number(digits);
-  return Number.isSafeInteger(cents) ? cents / 100 : undefined;
+  return Number.isSafeInteger(cents) ? cents : undefined;
 }
 
 export function normalizeCurrencyInput(value: string) {

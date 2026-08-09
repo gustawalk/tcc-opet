@@ -1,15 +1,8 @@
-use crate::database::get_db;
 use chrono::{Duration, Utc};
 use rusqlite::params;
 use uuid::Uuid;
 
-/// Initialize seed data - seeds missing tables independently
-pub fn initialize_seed_data() -> Result<(), String> {
-    let conn = get_db().map_err(|e| e.to_string())?;
-    initialize_seed_data_with_conn(&conn)
-}
-
-fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), String> {
+pub(crate) fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), String> {
     println!("[SEED] Checking seed data requirements...");
 
     // Seed users first (needed for service orders)
@@ -19,7 +12,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
     println!("[SEED] Users count: {}", user_count);
     if user_count == 0 {
         println!("[SEED] Seeding users...");
-        seed_users(&conn)?;
+        seed_users(conn)?;
         println!("[SEED] Users seeded successfully");
     } else {
         println!("[SEED] Users already exist, skipping");
@@ -32,7 +25,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
     println!("[SEED] Customers count: {}", customer_count);
     if customer_count == 0 {
         println!("[SEED] Seeding customers...");
-        seed_customers(&conn)?;
+        seed_customers(conn)?;
         println!("[SEED] Customers seeded successfully");
     } else {
         println!("[SEED] Customers already exist, skipping");
@@ -45,7 +38,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
     println!("[SEED] Inventory count: {}", inventory_count);
     if inventory_count == 0 {
         println!("[SEED] Seeding inventory...");
-        seed_inventory(&conn)?;
+        seed_inventory(conn)?;
         println!("[SEED] Inventory seeded successfully");
     } else {
         println!("[SEED] Inventory already exists, skipping");
@@ -58,7 +51,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
     println!("[SEED] Service orders count: {}", order_count);
     if order_count == 0 {
         println!("[SEED] About to seed service_orders...");
-        seed_service_orders(&conn)?;
+        seed_service_orders(conn)?;
 
         // Seed financial snapshots only if empty (migration might have inserted one for today)
         let financial_count: i64 = conn
@@ -69,7 +62,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
         println!("[SEED] Financial snapshots count: {}", financial_count);
         if financial_count == 0 {
             println!("[SEED] About to seed financial_snapshots...");
-            seed_financial_snapshots(&conn)?;
+            seed_financial_snapshots(conn)?;
         } else {
             println!("[SEED] Financial snapshots already exist, skipping");
         }
@@ -88,7 +81,7 @@ fn initialize_seed_data_with_conn(conn: &rusqlite::Connection) -> Result<(), Str
     println!("[SEED] Checklist templates count: {}", template_count);
     if template_count == 0 {
         println!("[SEED] About to seed checklist templates...");
-        seed_checklist_templates(&conn)?;
+        seed_checklist_templates(conn)?;
         println!("[SEED] Checklist templates seeded successfully");
     } else {
         println!("[SEED] Checklist templates already exist, skipping");
@@ -208,8 +201,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             5,
             3,
-            80.00,
-            180.00,
+            8_000,
+            18_000,
         ),
         (
             "Bateria Samsung Galaxy",
@@ -217,8 +210,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             5,
             8,
-            45.00,
-            120.00,
+            4_500,
+            12_000,
         ),
         (
             "Carregador USB-C",
@@ -226,8 +219,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             10,
             2,
-            12.00,
-            45.00,
+            1_200,
+            4_500,
         ),
         (
             "Pasta Térmica Arctic Silver",
@@ -235,8 +228,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             5,
             0,
-            8.00,
-            35.00,
+            800,
+            3_500,
         ),
         (
             "Conector de Carga iPhone 13",
@@ -244,8 +237,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             5,
             12,
-            15.00,
-            55.00,
+            1_500,
+            5_500,
         ),
         (
             "Teclado Notebook Acer",
@@ -253,18 +246,18 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             2,
             4,
-            55.00,
-            150.00,
+            5_500,
+            15_000,
         ),
-        ("Webcam HD", "Webcam 1080p USB", "part", 3, 6, 35.00, 100.00),
+        ("Webcam HD", "Webcam 1080p USB", "part", 3, 6, 3_500, 10_000),
         (
             "SSD 240GB",
             "Unidade SSD 240GB",
             "part",
             3,
             9,
-            70.00,
-            180.00,
+            7_000,
+            18_000,
         ),
         (
             "RAM DDR4 8GB",
@@ -272,8 +265,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             3,
             7,
-            65.00,
-            160.00,
+            6_500,
+            16_000,
         ),
         (
             "Placa Mãe",
@@ -281,15 +274,15 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "part",
             1,
             2,
-            120.00,
-            300.00,
+            12_000,
+            30_000,
         ),
     ];
 
     for (name, description, item_type, min_qty, current_qty, cost, sale) in parts {
         conn.execute(
-            "INSERT INTO inventory_items (id, name, description, type, min_quantity, current_quantity, cost_price, sale_price, created_at, updated_at, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, NULL)",
+            "INSERT INTO inventory_items (id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, created_at, updated_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9, NULL, NULL)",
             params![
                 Uuid::new_v4().to_string(),
                 name,
@@ -313,8 +306,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "service",
             0,
             999,
-            50.00,
-            150.00,
+            5_000,
+            15_000,
         ),
         (
             "Mão de Obra Notebook",
@@ -322,8 +315,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "service",
             0,
             999,
-            60.00,
-            180.00,
+            6_000,
+            18_000,
         ),
         (
             "Limpeza Preventiva",
@@ -331,8 +324,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "service",
             0,
             999,
-            10.00,
-            80.00,
+            1_000,
+            8_000,
         ),
         (
             "Diagnóstico",
@@ -340,8 +333,8 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "service",
             0,
             999,
-            0.00,
-            50.00,
+            0,
+            5_000,
         ),
         (
             "Instalação de Software",
@@ -349,15 +342,15 @@ fn seed_inventory(conn: &rusqlite::Connection) -> Result<(), String> {
             "service",
             0,
             999,
-            0.00,
-            60.00,
+            0,
+            6_000,
         ),
     ];
 
     for (name, description, item_type, min_qty, current_qty, cost, sale) in services {
         conn.execute(
-            "INSERT INTO inventory_items (id, name, description, type, min_quantity, current_quantity, cost_price, sale_price, created_at, updated_at, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, NULL)",
+            "INSERT INTO inventory_items (id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, created_at, updated_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9, NULL, NULL)",
             params![
                 Uuid::new_v4().to_string(),
                 name,
@@ -408,10 +401,10 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
     println!("[SEED] seed_service_orders: Fetching inventory items...");
     let mut inventory_stmt = conn
         .prepare(
-            "SELECT id, name, type, sale_price, cost_price FROM inventory_items ORDER BY ROWID",
+            "SELECT id, name, type, sale_price_cents, cost_price_cents FROM inventory_items ORDER BY ROWID",
         )
         .map_err(|e| e.to_string())?;
-    let inventory_items: Vec<(String, String, String, f64, f64)> = inventory_stmt
+    let inventory_items: Vec<(String, String, String, i64, i64)> = inventory_stmt
         .query_map([], |row| {
             Ok((
                 row.get(0)?,
@@ -473,7 +466,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
         ("Cancelada", false), // 5% - 1 order
     ];
 
-    let descriptions = vec![
+    let descriptions = [
         "Troca de tela danificada",
         "Reparo de bateria com mau funcionamento",
         "Limpeza preventiva e reinstalação do SO",
@@ -525,7 +518,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Insert service order
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, created_at, updated_at, closed_at)
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 order_id,
@@ -536,7 +529,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
                 imei,
                 description,
                 status,
-                0.0,
+                0,
                 created_at,
                 created_at,
                 closed_at
@@ -546,7 +539,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Add 2-4 items to the order
         let num_items = 2 + (idx % 3);
-        let mut total_price = 0.0;
+        let mut total_price = 0_i64;
 
         for item_idx in 0..num_items {
             let (inventory_id, inventory_name, item_type, sale_price, cost_price) =
@@ -556,7 +549,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
             total_price += sale_price;
 
             conn.execute(
-                "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price)
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost_cents, unit_price_cents)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     Uuid::new_v4().to_string(),
@@ -574,7 +567,7 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Update order with calculated total_price
         conn.execute(
-            "UPDATE service_orders SET total_price = ?1 WHERE id = ?2",
+            "UPDATE service_orders SET total_price_cents = ?1 WHERE id = ?2",
             params![total_price, order_id],
         )
         .map_err(|e| e.to_string())?;
@@ -672,12 +665,14 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
         // Calculate financial data for this day
         let query = "
             SELECT
-                COALESCE(SUM(CASE WHEN so.closed_at IS NOT NULL THEN so.total_price ELSE 0 END), 0) as total_revenue,
-                COALESCE(SUM(CASE WHEN so.closed_at IS NOT NULL THEN sop.unit_cost * sop.quantity ELSE 0 END), 0) as total_cost,
-                COUNT(CASE WHEN so.status NOT IN ('Finalizada', 'Cancelada') THEN 1 END) as active_orders
+                COALESCE(SUM((so.total_price_cents / 10000) * (10000 - so.discount_basis_points) + ((so.total_price_cents % 10000) * (10000 - so.discount_basis_points) + 5000) / 10000), 0),
+                COALESCE((SELECT SUM(sop.unit_cost_cents * sop.quantity)
+                    FROM service_order_parts sop JOIN service_orders finalized ON finalized.id = sop.service_order_id
+                    WHERE finalized.status = 'Finalizada' AND DATE(finalized.closed_at) = ?1), 0),
+                (SELECT COUNT(*) FROM service_orders active
+                    WHERE DATE(active.created_at) <= ?1 AND active.status NOT IN ('Finalizada', 'Cancelada'))
             FROM service_orders so
-            LEFT JOIN service_order_parts sop ON so.id = sop.service_order_id
-            WHERE DATE(so.closed_at) = ?1 OR (DATE(so.created_at) <= ?1 AND so.status NOT IN ('Finalizada', 'Cancelada'))
+            WHERE so.status = 'Finalizada' AND DATE(so.closed_at) = ?1
         ";
 
         println!(
@@ -685,26 +680,26 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
             snapshot_date
         );
 
-        let (total_revenue, total_cost, active_orders): (f64, f64, i64) = conn
+        let (total_revenue, total_cost, active_orders): (i64, i64, i64) = conn
             .query_row(query, [&snapshot_date], |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })
-            .unwrap_or((0.0, 0.0, 0));
+            .unwrap_or((0, 0, 0));
 
-        let net_profit = total_revenue - total_cost;
+        let estimated_gross_profit = total_revenue - total_cost;
 
         println!("[SEED] seed_financial_snapshots: Query done, getting parts cost...");
 
-        let parts_in_use_cost: f64 = conn
+        let parts_in_use_cost: i64 = conn
             .query_row(
-                "SELECT COALESCE(SUM(sop.unit_cost * sop.quantity), 0)
+                "SELECT COALESCE(SUM(sop.unit_cost_cents * sop.quantity), 0)
                  FROM service_order_parts sop
                  JOIN service_orders so ON sop.service_order_id = so.id
                  WHERE so.status IN ('Em Manutenção', 'Aguardando Peça')",
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or(0.0);
+            .unwrap_or(0);
 
         println!(
             "[SEED] seed_financial_snapshots: Inserting snapshot for {}",
@@ -712,14 +707,14 @@ fn seed_financial_snapshots(conn: &rusqlite::Connection) -> Result<(), String> {
         );
 
         conn.execute(
-            "INSERT INTO financial_snapshots (id, snapshot_date, total_revenue, total_cost, net_profit, parts_in_use_cost, active_orders_count, created_at)
+            "INSERT INTO financial_snapshots (id, snapshot_date, total_revenue_cents, total_cost_cents, estimated_gross_profit_cents, parts_in_use_cost_cents, active_orders_count, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)",
             params![
                 Uuid::new_v4().to_string(),
                 snapshot_date,
                 total_revenue,
                 total_cost,
-                net_profit,
+                estimated_gross_profit,
                 parts_in_use_cost,
                 active_orders
             ],

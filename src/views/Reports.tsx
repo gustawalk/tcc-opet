@@ -118,7 +118,7 @@ function BreakdownTable({
           <TableHead>{label}</TableHead>
           <TableHead className="text-right">Faturamento</TableHead>
           <TableHead className="text-right">Custo</TableHead>
-          <TableHead className="text-right">Lucro</TableHead>
+          <TableHead className="text-right">Lucro bruto estimado</TableHead>
           <TableHead className="text-right">{countLabel}</TableHead>
         </TableRow>
       </TableHeader>
@@ -216,7 +216,7 @@ function MonthlyTrendChart({ items }: { items: FinancialReport["byMonth"] }) {
         <Tooltip formatter={formatChartCurrency} />
         <Legend />
         <Area type="monotone" dataKey="revenue" name="Faturamento" stroke="#2563eb" fill="url(#revenueFill)" strokeWidth={2.5} />
-        <Area type="monotone" dataKey="profit" name="Lucro" stroke="#059669" fill="url(#profitFill)" strokeWidth={2.5} />
+        <Area type="monotone" dataKey="profit" name="Lucro bruto estimado" stroke="#059669" fill="url(#profitFill)" strokeWidth={2.5} />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -546,8 +546,8 @@ export function Reports() {
               description="Custos dos itens e serviços utilizados"
             />
             <FinancialCard
-              title="Lucro Líquido"
-              value={formatCurrency(report.netProfit)}
+              title="Lucro bruto estimado"
+              value={formatCurrency(report.estimatedGrossProfit)}
               icon={Wallet}
               description="Faturamento menos custos"
             />
@@ -638,7 +638,7 @@ export function Reports() {
                   <CardHeader>
                     <CardTitle>Evolução Financeira</CardTitle>
                     <CardDescription>
-                      Faturamento e lucro das OS finalizadas por mês.
+                      Faturamento e lucro bruto estimado das OS finalizadas por mês.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -732,7 +732,7 @@ export function Reports() {
                 <CardHeader>
                   <CardTitle>Evolução Mensal</CardTitle>
                   <CardDescription>
-                    Faturamento e lucro por mês dentro do período.
+                    Faturamento e lucro bruto estimado por mês dentro do período.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -744,7 +744,7 @@ export function Reports() {
                           <TableHead className="text-right">
                             Faturamento
                           </TableHead>
-                          <TableHead className="text-right">Lucro</TableHead>
+                          <TableHead className="text-right">Lucro bruto estimado</TableHead>
                           <TableHead className="text-right">
                             Ordens finalizadas
                           </TableHead>

@@ -18,8 +18,8 @@ describe("numeric validation", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.costPrice).toBe(80.5);
-      expect(result.data.salePrice).toBe(150);
+      expect(result.data.costPrice).toBe(8050);
+      expect(result.data.salePrice).toBe(15000);
       expect(result.data.initialQuantity).toBe(5);
     }
   });
@@ -34,13 +34,18 @@ describe("numeric validation", () => {
     expect(
       editServiceOrderSchema.safeParse({
         description: "Descrição válida da manutenção",
-        discount: "12,5",
+        discountBasisPoints: "12,5",
       }).success,
     ).toBe(true);
+    const valid = editServiceOrderSchema.safeParse({
+      description: "Descrição válida da manutenção",
+      discountBasisPoints: "12,5",
+    });
+    if (valid.success) expect(valid.data.discountBasisPoints).toBe(1250);
     expect(
       editServiceOrderSchema.safeParse({
         description: "Descrição válida da manutenção",
-        discount: "100,1",
+        discountBasisPoints: "100,1",
       }).success,
     ).toBe(false);
   });

@@ -15,9 +15,9 @@ const item: InventoryItem = {
   type: "part",
   minQuantity: 2,
   currentQuantity: 7,
-  costPrice: 80,
-  averageCost: 80,
-  salePrice: 150,
+  costPrice: 8000,
+  averageCost: 8000,
+  salePrice: 15000,
   supplierName: "Distribuidora",
 };
 

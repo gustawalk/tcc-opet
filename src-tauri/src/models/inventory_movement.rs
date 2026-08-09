@@ -12,7 +12,7 @@ pub struct InventoryMovement {
     pub reference_os_id: Option<String>,
     pub os_display_id: Option<String>,
     pub reason: String,
-    pub unit_cost: Option<f64>,
+    pub unit_cost: Option<i64>,
     pub created_at: Option<String>,
 }
 

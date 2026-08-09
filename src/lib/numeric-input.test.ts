@@ -3,6 +3,7 @@ import {
   currencyInputToNumber,
   decimalInputToNumber,
   formatCurrencyInput,
+  formatCurrencyInputValue,
   integerInputToNumber,
   normalizeCurrencyInput,
   normalizeIntegerInput,
@@ -21,9 +22,14 @@ describe("numeric input helpers", () => {
   it("formats and parses Brazilian currency values", () => {
     const formatted = formatCurrencyInput("123456");
 
-    expect(currencyInputToNumber(formatted)).toBe(1234.56);
+    expect(currencyInputToNumber(formatted)).toBe(123456);
     expect(normalizeCurrencyInput("")).toContain("0,00");
     expect(currencyInputToNumber("")).toBeUndefined();
+  });
+
+  it("formats stored integer cents back into a BRL input", () => {
+    expect(formatCurrencyInputValue(123456)).toContain("1.234,56");
+    expect(currencyInputToNumber("R$ 0,01")).toBe(1);
   });
 
   it("supports comma decimals without accepting non-numeric text", () => {

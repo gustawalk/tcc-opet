@@ -38,7 +38,7 @@ import {
   parseErrors,
   ValidationErrors,
 } from "@/lib/validation";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import {
   decimalInputToNumber,
   normalizeDecimalInput,
@@ -130,9 +130,9 @@ export function ServiceOrderEditorSheet({
   const checklist = checklistQuery.data ?? [];
   const attachments = attachmentsQuery.data ?? [];
   const discountValue = decimalInputToNumber(discountInput);
-  const discount =
+  const discountBasisPoints =
     discountValue !== undefined && discountValue >= 0 && discountValue <= 100
-      ? discountValue
+      ? Math.round(discountValue * 100)
       : 0;
   const total = items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
@@ -155,7 +155,9 @@ export function ServiceOrderEditorSheet({
     if (!order) return;
     setEditStatus(order.status);
     setEditDescription(order.description);
-    setDiscountInput(String(order.discountPercent));
+    setDiscountInput(
+      String(order.discountBasisPoints / 100).replace(".", ","),
+    );
     setEditErrors({});
   }, [order, open]);
 
@@ -300,7 +302,7 @@ export function ServiceOrderEditorSheet({
     if (!order || isSaving) return;
     const result = editServiceOrderSchema.safeParse({
       description: editDescription,
-      discount: discountInput,
+      discountBasisPoints: discountInput,
     });
     if (!result.success) {
       setEditErrors(parseErrors(result) ?? {});
@@ -320,7 +322,7 @@ export function ServiceOrderEditorSheet({
         request: {
           id: order.id,
           description: editDescription,
-          discountPercent: result.data.discount ?? 0,
+          discountBasisPoints: result.data.discountBasisPoints ?? 0,
           status: editStatus,
           restoreStock: editStatus === "Cancelada",
           checklist,
@@ -589,7 +591,9 @@ export function ServiceOrderEditorSheet({
                       inputMode="decimal"
                       onChange={(event) => {
                         setDiscountInput(sanitizeDecimalInput(event.target.value));
-                        setEditErrors(clearFieldError(editErrors, "discount"));
+                        setEditErrors(
+                          clearFieldError(editErrors, "discountBasisPoints"),
+                        );
                       }}
                       onBlur={(event) =>
                         setDiscountInput(normalizeDecimalInput(event.target.value))
@@ -597,23 +601,25 @@ export function ServiceOrderEditorSheet({
                     />
                     <span>%</span>
                   </div>
-                  {editErrors.discount && (
+                  {editErrors.discountBasisPoints && (
                     <p className="text-xs text-destructive">
-                      {editErrors.discount}
+                      {editErrors.discountBasisPoints}
                     </p>
                   )}
                   <div className="flex flex-wrap items-center justify-end gap-2 text-right">
-                    {discount > 0 && (
+                    {discountBasisPoints > 0 && (
                       <span className="text-sm text-muted-foreground line-through">
                         {formatCurrency(total)}
                       </span>
                     )}
                     <span className="font-bold">
-                      Total: {formatCurrency(total * (1 - discount / 100))}
+                      Total: {formatCurrency(
+                        applyDiscount(total, discountBasisPoints),
+                      )}
                     </span>
-                    {discount > 0 && (
+                    {discountBasisPoints > 0 && (
                       <Badge variant="outline" className="text-[10px]">
-                        -{discount}%
+                        -{discountBasisPoints / 100}%
                       </Badge>
                     )}
                   </div>

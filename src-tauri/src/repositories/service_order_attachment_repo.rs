@@ -25,11 +25,6 @@ impl ServiceOrderAttachmentRepository {
         Ok(())
     }
 
-    pub fn get_by_id(id: &str) -> Result<Option<ServiceOrderAttachment>> {
-        let conn = get_db()?;
-        Self::get_by_id_with_conn(&conn, id)
-    }
-
     pub(crate) fn get_by_id_with_conn(
         conn: &Connection,
         id: &str,

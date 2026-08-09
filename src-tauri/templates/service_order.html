@@ -96,7 +96,7 @@
      </div>
      <div class="totals">
        <div><span>Subtotal</span><span>{{ gross_total }}</span></div>
-       {% if discount_percent > 0 %}<div><span>Desconto ({{ discount_percent }}%)</span><span>- aplicado</span></div>{% endif %}
+       {% if discount_basis_points > 0 %}<div><span>Desconto ({{ discount_percentage_label }}%)</span><span>- aplicado</span></div>{% endif %}
        <div class="grand"><span>Total previsto</span><span>{{ total }}</span></div>
      </div>
    </div>

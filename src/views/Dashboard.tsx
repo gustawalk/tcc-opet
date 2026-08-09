@@ -36,7 +36,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardData, InventoryAlert } from "@/lib/types";
-import { formatCurrency } from "@/lib/formatters";
+import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { toastError, toastSuccess } from "@/lib/errors";
 
@@ -152,17 +152,17 @@ export function Dashboard() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <FinancialCard
-          title="Faturamento Bruto"
+          title="Faturamento"
           value={formatCurrency(summary.totalRevenue)}
           icon={TrendingUp}
-          description="Total acumulado do mês"
+          description="Receita das OS finalizadas"
           trend={summary.revenueTrend}
         />
         <FinancialCard
-          title="Lucro Líquido"
-          value={formatCurrency(summary.netProfit)}
+          title="Lucro bruto estimado"
+          value={formatCurrency(summary.estimatedGrossProfit)}
           icon={Wallet}
-          description="Faturamento - Custo de Peças"
+          description="Faturamento - custos dos itens"
           trend={summary.profitTrend}
         />
         <FinancialCard
@@ -240,13 +240,16 @@ export function Dashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {os.discountPercent > 0 ? (
+                      {os.discountBasisPoints > 0 ? (
                         <>
                           <span className="text-xs line-through text-muted-foreground mr-1">
                             {formatCurrency(os.totalPrice)}
                           </span>{" "}
                           {formatCurrency(
-                            os.totalPrice * (1 - os.discountPercent / 100),
+                            applyDiscount(
+                              os.totalPrice,
+                              os.discountBasisPoints,
+                            ),
                           )}
                         </>
                       ) : (
@@ -291,7 +294,7 @@ export function Dashboard() {
                       </div>
                       <span className="text-sm font-medium">
                         {s.status === "Finalizada"
-                          ? "Finalizadas (Mês)"
+                          ? "Finalizadas"
                           : s.status}
                       </span>
                     </div>

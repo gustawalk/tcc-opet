@@ -20,8 +20,8 @@ pub struct ServiceOrderPart {
     pub item_type: String,
     pub current_quantity: i32,
     pub quantity: i32,
-    pub unit_cost: f64,
-    pub unit_price: f64,
+    pub unit_cost: i64,
+    pub unit_price: i64,
 }
 
 pub struct ServiceOrderRepository;
@@ -37,7 +37,7 @@ impl ServiceOrderRepository {
         service_order_id: &str,
     ) -> Result<Vec<ServiceOrderPart>> {
         let mut stmt = conn.prepare(
-            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, COALESCE(ii.current_quantity, 0), sop.quantity, sop.unit_cost, sop.unit_price
+            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, COALESCE(ii.current_quantity, 0), sop.quantity, sop.unit_cost_cents, sop.unit_price_cents
              FROM service_order_parts sop
              LEFT JOIN inventory_items ii ON sop.inventory_item_id = ii.id
              WHERE sop.service_order_id = ?1"
@@ -101,8 +101,8 @@ impl ServiceOrderRepository {
             // Check the active catalog item and snapshot its prices for this OS.
             let mut stmt = transaction.prepare(
                 "SELECT name, type, current_quantity,
-                            CASE WHEN average_cost > 0 THEN average_cost ELSE cost_price END,
-                            sale_price
+                            CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END,
+                            sale_price_cents
                      FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
             )?;
             let mut rows = stmt.query_map(params![inventory_item_id], |row: &rusqlite::Row| {
@@ -110,17 +110,16 @@ impl ServiceOrderRepository {
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, i32>(2)?,
-                    row.get::<_, f64>(3)?,
-                    row.get::<_, f64>(4)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             })?;
 
-            let qty_cost_price = match rows.next() {
+            match rows.next() {
                 Some(Ok(v)) => v,
                 Some(Err(e)) => return Err(e),
                 None => return Err(rusqlite::Error::QueryReturnedNoRows),
-            };
-            qty_cost_price
+            }
         };
 
         if quantity <= 0 {
@@ -133,7 +132,7 @@ impl ServiceOrderRepository {
 
         // 2. Record the part usage
         transaction.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost, unit_price, stock_restored)
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost_cents, unit_price_cents, stock_restored)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
             params![
                 Uuid::new_v4().to_string(),
@@ -160,7 +159,7 @@ impl ServiceOrderRepository {
             }
 
             transaction.execute(
-                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost, created_at)
+                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost_cents, created_at)
                  VALUES (?1, ?2, 'saida', ?3, ?4, 'service_order_add', ?5, ?6)",
                 params![
                     Uuid::new_v4().to_string(),
@@ -176,7 +175,7 @@ impl ServiceOrderRepository {
         // 5. Update the Service Order total price
         transaction.execute(
             "UPDATE service_orders 
-             SET total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
+             SET total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
              WHERE id = ?1",
             params![service_order_id, Utc::now().to_rfc3339()],
         )?;
@@ -259,7 +258,7 @@ impl ServiceOrderRepository {
         // 3. Recalculate OS total
         transaction.execute(
             "UPDATE service_orders 
-             SET total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
+             SET total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?1), updated_at = ?2
              WHERE id = ?1",
             params![os_id, Utc::now().to_rfc3339()],
         )?;
@@ -305,9 +304,9 @@ impl ServiceOrderRepository {
             item_type,
             stock,
             status,
-        ): (String, String, i32, f64, String, i32, String) = transaction
+        ): (String, String, i32, i64, String, i32, String) = transaction
             .query_row(
-                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.unit_cost,
+                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.unit_cost_cents,
                          sop.item_type, ii.current_quantity, so.status
                  FROM service_order_parts sop
                  JOIN inventory_items ii ON ii.id = sop.inventory_item_id
@@ -372,7 +371,7 @@ impl ServiceOrderRepository {
             }
 
             transaction.execute(
-                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost, created_at)
+                "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost_cents, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, 'service_order_quantity_update', ?6, ?7)",
                 params![
                     Uuid::new_v4().to_string(),
@@ -392,7 +391,7 @@ impl ServiceOrderRepository {
         )?;
         transaction.execute(
             "UPDATE service_orders
-             SET total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?1),
+             SET total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?1),
                  updated_at = ?2
              WHERE id = ?1",
             params![service_order_id, Utc::now().to_rfc3339()],
@@ -430,10 +429,13 @@ impl ServiceOrderRepository {
     }
 
     pub(crate) fn create_with_conn(conn: &Connection, order: &mut ServiceOrder) -> Result<()> {
+        if !(0..=10_000).contains(&order.discount_basis_points) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
         order.display_id = Self::next_display_id(conn)?;
 
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price, created_at, updated_at, closed_at, display_id, discount_percent)
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, display_id, discount_basis_points)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 order.id,
@@ -444,12 +446,12 @@ impl ServiceOrderRepository {
                 order.imei,
                 order.description,
                 order.status,
-                order.total_price,
+                order.total_price.unwrap_or(0),
                 order.created_at,
                 order.updated_at,
                 order.closed_at,
                 order.display_id,
-                order.discount_percent
+                order.discount_basis_points
             ],
         )?;
         let event = ServiceOrderEvent::new(
@@ -468,7 +470,7 @@ impl ServiceOrderRepository {
 
     pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -490,7 +492,7 @@ impl ServiceOrderRepository {
                 updated_at: row.get(10)?,
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
-                discount_percent: row.get(13)?,
+                discount_basis_points: row.get(13)?,
             })
         })?;
 
@@ -505,7 +507,7 @@ impl ServiceOrderRepository {
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -528,7 +530,7 @@ impl ServiceOrderRepository {
                 updated_at: row.get(10)?,
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
-                discount_percent: row.get(13)?,
+                discount_basis_points: row.get(13)?,
             })
         })?;
 
@@ -549,7 +551,7 @@ impl ServiceOrderRepository {
         customer_id: &str,
     ) -> Result<Vec<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_percent, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -571,7 +573,7 @@ impl ServiceOrderRepository {
                 updated_at: row.get(10)?,
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
-                discount_percent: row.get(13)?,
+                discount_basis_points: row.get(13)?,
             })
         })?;
 
@@ -588,9 +590,12 @@ impl ServiceOrderRepository {
     }
 
     pub(crate) fn update_with_conn(conn: &Connection, order: &ServiceOrder) -> Result<()> {
+        if !(0..=10_000).contains(&order.discount_basis_points) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
         let updated = conn.execute(
             "UPDATE service_orders
-               SET customer_id = ?1, customer_name = ?2, user_id = ?3, equipment = ?4, imei = ?5, description = ?6, total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?9), updated_at = ?7, discount_percent = ?8
+               SET customer_id = ?1, customer_name = ?2, user_id = ?3, equipment = ?4, imei = ?5, description = ?6, total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?9), updated_at = ?7, discount_basis_points = ?8
                 WHERE id = ?9 AND deleted_at IS NULL",
             params![
                 order.customer_id,
@@ -600,7 +605,7 @@ impl ServiceOrderRepository {
                 order.imei,
                 order.description,
                 Utc::now().to_rfc3339(),
-                order.discount_percent,
+                order.discount_basis_points,
                 order.id
             ],
         )?;
@@ -610,7 +615,7 @@ impl ServiceOrderRepository {
         let event = ServiceOrderEvent::new(
             order.id.clone(),
             "updated".to_string(),
-            serde_json::json!({ "discountPercent": order.discount_percent }).to_string(),
+            serde_json::json!({ "discountBasisPoints": order.discount_basis_points }).to_string(),
         );
         ServiceOrderEventRepository::create_with_conn(conn, &event)?;
         Ok(())
@@ -619,7 +624,7 @@ impl ServiceOrderRepository {
     pub fn save_edit(
         service_order_id: &str,
         description: &str,
-        discount_percent: f64,
+        discount_basis_points: i64,
         next_status: &str,
         restore_stock: bool,
         checklist: Vec<ChecklistItem>,
@@ -629,7 +634,7 @@ impl ServiceOrderRepository {
             &conn,
             service_order_id,
             description,
-            discount_percent,
+            discount_basis_points,
             next_status,
             restore_stock,
             checklist,
@@ -641,12 +646,12 @@ impl ServiceOrderRepository {
         conn: &Connection,
         service_order_id: &str,
         description: &str,
-        discount_percent: f64,
+        discount_basis_points: i64,
         next_status: &str,
         restore_stock: bool,
         checklist: Vec<ChecklistItem>,
     ) -> std::result::Result<(), AppError> {
-        if !(0.0..=100.0).contains(&discount_percent) || !discount_percent.is_finite() {
+        if !(0..=10_000).contains(&discount_basis_points) {
             return Err(business_error(
                 "Discount percentage must be between 0 and 100.",
                 "O percentual de desconto deve estar entre 0 e 100.",
@@ -684,7 +689,7 @@ impl ServiceOrderRepository {
             &transaction,
             service_order_id,
             description,
-            discount_percent,
+            discount_basis_points,
         )?;
         transaction.commit()?;
         Ok(())
@@ -694,18 +699,18 @@ impl ServiceOrderRepository {
         transaction: &Transaction<'_>,
         service_order_id: &str,
         description: &str,
-        discount_percent: f64,
+        discount_basis_points: i64,
     ) -> Result<()> {
         let updated = transaction.execute(
             "UPDATE service_orders
              SET description = ?1,
-                 discount_percent = ?2,
-                 total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?3),
+                  discount_basis_points = ?2,
+                  total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?3),
                  updated_at = ?4
              WHERE id = ?3 AND deleted_at IS NULL",
             params![
                 description,
-                discount_percent,
+                discount_basis_points,
                 service_order_id,
                 Utc::now().to_rfc3339(),
             ],
@@ -716,7 +721,7 @@ impl ServiceOrderRepository {
         let event = ServiceOrderEvent::new(
             service_order_id.to_string(),
             "updated".to_string(),
-            serde_json::json!({ "discountPercent": discount_percent }).to_string(),
+            serde_json::json!({ "discountBasisPoints": discount_basis_points }).to_string(),
         );
         ServiceOrderEventRepository::create_with_conn(transaction, &event)?;
         Ok(())
@@ -925,7 +930,7 @@ impl ServiceOrderRepository {
             "UPDATE service_orders
              SET status = ?1,
                  closed_at = ?2,
-                 total_price = (SELECT COALESCE(SUM(quantity * unit_price), 0.0) FROM service_order_parts WHERE service_order_id = ?3),
+                 total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?3),
                  updated_at = ?4
              WHERE id = ?3 AND deleted_at IS NULL",
             params![next_status, closed_at, service_order_id, Utc::now().to_rfc3339()],
@@ -940,7 +945,7 @@ impl ServiceOrderRepository {
             })
             .to_string(),
         );
-        ServiceOrderEventRepository::create_with_conn(&transaction, &event)?;
+        ServiceOrderEventRepository::create_with_conn(transaction, &event)?;
         Ok(())
     }
 
@@ -999,8 +1004,8 @@ mod tests {
             "part".to_string(),
             1,
             stock,
-            30.0,
-            80.0,
+            3_000,
+            8_000,
         );
         InventoryRepository::create_with_conn(conn, &part).unwrap();
         part
@@ -1013,8 +1018,8 @@ mod tests {
             "service".to_string(),
             0,
             0,
-            0.0,
-            50.0,
+            0,
+            5_000,
         );
         InventoryRepository::create_with_conn(conn, &service).unwrap();
         service
@@ -1040,6 +1045,28 @@ mod tests {
 
         assert_eq!(first.display_id, "OS-000001");
         assert_eq!(second.display_id, "OS-000002");
+    }
+
+    #[test]
+    fn create_rejects_invalid_discount_before_persistence() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let mut order = build_order(&customer.id);
+        order.discount_basis_points = 10_001;
+
+        assert!(ServiceOrderRepository::create_with_conn(&conn, &mut order).is_err());
+        let order_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM service_orders", [], |row| row.get(0))
+            .unwrap();
+        let sequence: i64 = conn
+            .query_row(
+                "SELECT value FROM service_order_sequences WHERE name = 'service_order'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(order_count, 0);
+        assert_eq!(sequence, 0);
     }
 
     #[test]
@@ -1069,7 +1096,7 @@ mod tests {
 
         order.status = "Finalizada".to_string();
         order.description = "Troca de bateria e limpeza".to_string();
-        order.discount_percent = 15.0;
+        order.discount_basis_points = 1_500;
         ServiceOrderRepository::update_with_conn(&conn, &order).unwrap();
 
         let fetched = ServiceOrderRepository::get_by_id_with_conn(&conn, &order.id)
@@ -1077,7 +1104,7 @@ mod tests {
             .unwrap();
         assert_eq!(fetched.status, "Orçamento");
         assert_eq!(fetched.description, "Troca de bateria e limpeza");
-        assert_eq!(fetched.discount_percent, 15.0);
+        assert_eq!(fetched.discount_basis_points, 1_500);
     }
 
     #[test]
@@ -1099,9 +1126,9 @@ mod tests {
         let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
         let parts =
             ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id).unwrap();
-        let total_price: f64 = conn
+        let total_price: i64 = conn
             .query_row(
-                "SELECT COALESCE(total_price, 0.0) FROM service_orders WHERE id = ?1",
+                "SELECT COALESCE(total_price_cents, 0) FROM service_orders WHERE id = ?1",
                 params![order.id],
                 |row| row.get(0),
             )
@@ -1112,7 +1139,7 @@ mod tests {
         assert_eq!(parts[0].quantity, 2);
         assert_eq!(parts[0].inventory_item_name, "Bateria");
         assert_eq!(parts[0].item_type, "part");
-        assert_eq!(total_price, 160.0);
+        assert_eq!(total_price, 16_000);
         assert_eq!(movements.len(), 1);
         assert_eq!(movements[0].r#type, "saida");
         assert_eq!(
@@ -1166,9 +1193,9 @@ mod tests {
         let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
         let remaining_parts =
             ServiceOrderRepository::get_service_order_parts_with_conn(&conn, &order.id).unwrap();
-        let total_price: f64 = conn
+        let total_price: i64 = conn
             .query_row(
-                "SELECT COALESCE(total_price, 0.0) FROM service_orders WHERE id = ?1",
+                "SELECT COALESCE(total_price_cents, 0) FROM service_orders WHERE id = ?1",
                 params![order.id],
                 |row| row.get(0),
             )
@@ -1176,7 +1203,7 @@ mod tests {
 
         assert_eq!(updated_part.current_quantity, 5);
         assert!(remaining_parts.is_empty());
-        assert_eq!(total_price, 0.0);
+        assert_eq!(total_price, 0);
         assert_eq!(movements.len(), 2);
         assert_eq!(movements[0].r#type, "entrada");
         assert_eq!(movements[1].r#type, "saida");
@@ -1206,7 +1233,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(part_after_increase.current_quantity, 1);
-        assert_eq!(increased_order.total_price, Some(320.0));
+        assert_eq!(increased_order.total_price, Some(32_000));
 
         ServiceOrderRepository::update_part_quantity_with_conn(&conn, &order_part.id, 1).unwrap();
         let part_after_decrease = InventoryRepository::get_by_id_with_conn(&conn, &part.id)
@@ -1217,7 +1244,7 @@ mod tests {
             .unwrap();
         let movements = InventoryRepository::get_movements_with_conn(&conn, &part.id).unwrap();
         assert_eq!(part_after_decrease.current_quantity, 4);
-        assert_eq!(decreased_order.total_price, Some(80.0));
+        assert_eq!(decreased_order.total_price, Some(8_000));
         assert_eq!(movements.len(), 3);
     }
 
@@ -1249,7 +1276,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(persisted_service.current_quantity, 0);
-        assert_eq!(updated_order.total_price, Some(150.0));
+        assert_eq!(updated_order.total_price, Some(15_000));
         assert!(
             InventoryRepository::get_movements_with_conn(&conn, &service.id)
                 .unwrap()
@@ -1344,7 +1371,7 @@ mod tests {
             &conn,
             &order.id,
             "Serviço concluído",
-            15.0,
+            1_500,
             "Finalizada",
             false,
             vec![ChecklistItem {
@@ -1361,7 +1388,7 @@ mod tests {
         let checklist = ChecklistRepository::get_os_checklist_with_conn(&conn, &order.id).unwrap();
         assert_eq!(persisted.status, "Finalizada");
         assert_eq!(persisted.description, "Serviço concluído");
-        assert_eq!(persisted.discount_percent, 15.0);
+        assert_eq!(persisted.discount_basis_points, 1_500);
         assert_eq!(checklist.len(), 1);
         assert_eq!(checklist[0].label, "Item não checado");
         assert!(!checklist[0].checked);
@@ -1385,7 +1412,7 @@ mod tests {
             &conn,
             &order.id,
             "Troca de bateria concluída",
-            10.0,
+            1_000,
             "Finalizada",
             false,
             vec![ChecklistItem {
@@ -1402,7 +1429,7 @@ mod tests {
         let checklist = ChecklistRepository::get_os_checklist_with_conn(&conn, &order.id).unwrap();
         assert_eq!(persisted.status, "Finalizada");
         assert_eq!(persisted.description, "Troca de bateria concluída");
-        assert_eq!(persisted.discount_percent, 10.0);
+        assert_eq!(persisted.discount_basis_points, 1_000);
         assert!(persisted.closed_at.is_some());
         assert_eq!(checklist.len(), 1);
         assert!(checklist[0].checked);
@@ -1497,8 +1524,8 @@ mod tests {
             "part".to_string(),
             1,
             2,
-            10.0,
-            30.0,
+            1_000,
+            3_000,
         );
         InventoryRepository::create_with_conn(&conn, &second).unwrap();
         let mut order = build_order(&customer.id);

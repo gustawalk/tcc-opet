@@ -306,6 +306,7 @@ export function ServiceOrderCreate() {
           equipment: formData.equipment,
           imei: formData.imei || null,
           description: formData.description,
+          discountBasisPoints: 0,
           parts: lines.map((l) => ({
             inventoryItemId: l.inventoryItemId,
             quantity: l.quantity,

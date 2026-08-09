@@ -27,11 +27,16 @@ const currencyValue = z.preprocess(
 );
 
 const percentageValue = z.preprocess(
-  (value) => (typeof value === "string" ? decimalInputToNumber(value) : value),
+  (value) => {
+    if (typeof value !== "string") return value;
+    const percentage = decimalInputToNumber(value);
+    return percentage === undefined ? undefined : Math.round(percentage * 100);
+  },
   z.number("Informe um percentual válido")
     .finite("Informe um percentual válido")
+    .int("Informe no máximo duas casas decimais")
     .min(0, "Desconto não pode ser negativo")
-    .max(100, "Desconto não pode exceder 100%"),
+    .max(10_000, "Desconto não pode exceder 100%"),
 );
 
 export const userSchema = z.object({
@@ -78,7 +83,7 @@ export const newCustomerSchema = z.object({
 
 export const editServiceOrderSchema = z.object({
   description: z.string().min(10, "Descrição deve ter ao menos 10 caracteres"),
-  discount: percentageValue.optional(),
+  discountBasisPoints: percentageValue.optional(),
 });
 
 export const settingsSchema = z.object({

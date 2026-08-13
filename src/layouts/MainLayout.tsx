@@ -8,7 +8,6 @@ import {
   ChartNoAxesCombined,
   Plus,
   User,
-  ListOrdered
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -34,7 +33,6 @@ const menuItems = [
   { icon: ChartNoAxesCombined, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
   { icon: User, label: "Funcionários", path: "/users" },
-  { icon: ListOrdered, label: "Paginação (preview)", path: "/users-pagination" }
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {

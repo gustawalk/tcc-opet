@@ -5,7 +5,6 @@ use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::financial_report_repo::FinancialReportRepository;
 use crate::repositories::service_order_repo::{ServiceOrderPart, ServiceOrderRepository};
 use crate::repositories::settings_repo::SettingsRepository;
-use base64::Engine;
 use chrono::{DateTime, Local};
 use headless_chrome::types::PrintToPdfOptions;
 use headless_chrome::{Browser, LaunchOptionsBuilder};
@@ -26,7 +25,7 @@ const FINANCIAL_REPORT_TEMPLATE: &str = include_str!("../templates/financial_rep
 #[serde(rename_all = "camelCase")]
 pub struct PdfPreview {
     pub token: String,
-    pub data_url: String,
+    pub html: String,
     pub file_name: String,
 }
 
@@ -249,6 +248,7 @@ pub fn preview_service_order_pdf(service_order_id: &str) -> Result<PdfPreview, A
     create_pdf_preview(
         format!("{}.pdf", order.display_id),
         render_html_to_pdf_bytes(&html)?,
+        html,
     )
 }
 
@@ -270,6 +270,7 @@ pub fn preview_financial_report_pdf(
     create_pdf_preview(
         "relatorio-financeiro.pdf".to_string(),
         render_html_to_pdf_bytes(&html)?,
+        html,
     )
 }
 
@@ -434,12 +435,12 @@ fn render_html_to_pdf_bytes_in_dir(html: &str, working_dir: &Path) -> Result<Vec
     result
 }
 
-fn create_pdf_preview(file_name: String, bytes: Vec<u8>) -> Result<PdfPreview, AppError> {
+fn create_pdf_preview(
+    file_name: String,
+    bytes: Vec<u8>,
+    html: String,
+) -> Result<PdfPreview, AppError> {
     let token = Uuid::new_v4().to_string();
-    let data_url = format!(
-        "data:application/pdf;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(&bytes)
-    );
     PENDING_PDF_PREVIEWS
         .lock()
         .map_err(|_| {
@@ -457,7 +458,7 @@ fn create_pdf_preview(file_name: String, bytes: Vec<u8>) -> Result<PdfPreview, A
         );
     Ok(PdfPreview {
         token,
-        data_url,
+        html,
         file_name,
     })
 }
@@ -558,10 +559,15 @@ mod tests {
 
     #[test]
     fn stores_and_discards_pdf_previews() {
-        let preview = create_pdf_preview("ordem.pdf".to_string(), b"%PDF-test".to_vec()).unwrap();
+        let preview = create_pdf_preview(
+            "ordem.pdf".to_string(),
+            b"%PDF-test".to_vec(),
+            "<html><body>Ordem</body></html>".to_string(),
+        )
+        .unwrap();
 
         assert_eq!(preview.file_name, "ordem.pdf");
-        assert!(preview.data_url.starts_with("data:application/pdf;base64,"));
+        assert!(preview.html.contains("Ordem"));
         assert_eq!(get_pdf_preview(&preview.token).unwrap().1, b"%PDF-test");
 
         discard_pdf_preview(&preview.token);

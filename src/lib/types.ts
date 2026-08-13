@@ -267,6 +267,6 @@ export interface FinancialReport {
 
 export interface PdfPreview {
   token: string;
-  dataUrl: string;
+  html: string;
   fileName: string;
 }

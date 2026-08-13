@@ -1,6 +1,22 @@
-import { createContext, ReactNode, useContext, useState } from "react";
-import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
-import { ServiceOrderEditorSheet } from "@/components/shared/ServiceOrderEditorSheet";
+import {
+  createContext,
+  lazy,
+  ReactNode,
+  Suspense,
+  useContext,
+  useState,
+} from "react";
+
+const ServiceOrderDetailSheet = lazy(() =>
+  import("@/components/shared/ServiceOrderDetailSheet").then(
+    ({ ServiceOrderDetailSheet }) => ({ default: ServiceOrderDetailSheet }),
+  ),
+);
+const ServiceOrderEditorSheet = lazy(() =>
+  import("@/components/shared/ServiceOrderEditorSheet").then(
+    ({ ServiceOrderEditorSheet }) => ({ default: ServiceOrderEditorSheet }),
+  ),
+);
 
 type ServiceOrderDrawerMode = "view" | "edit";
 
@@ -29,28 +45,35 @@ export function ServiceOrderDrawerProvider({
         openServiceOrder: (id, mode = "view") => setDrawer({ id, mode }),
         closeServiceOrder,
       }}
-    >
-      {children}
-      <ServiceOrderDetailSheet
-        orderId={drawer?.id ?? null}
-        open={drawer?.mode === "view"}
-        onClose={closeServiceOrder}
-        onEdit={() =>
-          setDrawer((current) =>
-            current ? { ...current, mode: "edit" } : current,
-          )
-        }
-      />
-      <ServiceOrderEditorSheet
-        orderId={drawer?.id ?? null}
-        open={drawer?.mode === "edit"}
-        onClose={closeServiceOrder}
-        onView={() =>
-          setDrawer((current) =>
-            current ? { ...current, mode: "view" } : current,
-          )
-        }
-      />
+      >
+        {children}
+      {drawer && (
+        <Suspense fallback={null}>
+          {drawer.mode === "view" ? (
+            <ServiceOrderDetailSheet
+              orderId={drawer.id}
+              open
+              onClose={closeServiceOrder}
+              onEdit={() =>
+                setDrawer((current) =>
+                  current ? { ...current, mode: "edit" } : current,
+                )
+              }
+            />
+          ) : (
+            <ServiceOrderEditorSheet
+              orderId={drawer.id}
+              open
+              onClose={closeServiceOrder}
+              onView={() =>
+                setDrawer((current) =>
+                  current ? { ...current, mode: "view" } : current,
+                )
+              }
+            />
+          )}
+        </Suspense>
+      )}
     </ServiceOrderDrawerContext.Provider>
   );
 }

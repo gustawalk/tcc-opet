@@ -3,10 +3,12 @@ use crate::error::{business_error, not_found, AppError};
 use crate::models::checklist::ChecklistItem;
 use crate::models::service_order::ServiceOrder;
 use crate::models::service_order_event::ServiceOrderEvent;
+use crate::page::like_search_clause;
 use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
 use chrono::Utc;
-use rusqlite::{params, Connection, Result, Transaction};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection, Result, Transaction};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -435,8 +437,8 @@ impl ServiceOrderRepository {
         order.display_id = Self::next_display_id(conn)?;
 
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, display_id, discount_basis_points)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, display_id, discount_basis_points, created_date, finalized_date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, date(?10, 'localtime'), CASE WHEN ?8 = 'Finalizada' THEN date(COALESCE(?12, ?10), 'localtime') END)",
             params![
                 order.id,
                 order.customer_id,
@@ -539,6 +541,117 @@ impl ServiceOrderRepository {
             orders.push(row?);
         }
         Ok(orders)
+    }
+
+    pub(crate) fn get_page_with_conn(
+        conn: &Connection,
+        limit: u32,
+        offset: u32,
+        search: &str,
+        status: Option<&str>,
+        user_id: Option<&str>,
+        customer_id: Option<&str>,
+    ) -> Result<Vec<ServiceOrder>> {
+        let (mut clause, mut patterns) = like_search_clause(
+            search,
+            &[
+                "COALESCE(so.customer_name, c.name)",
+                "so.equipment",
+                "so.imei",
+                "so.description",
+                "so.display_id",
+            ],
+        );
+        if let Some(status) = status {
+            clause.push_str(" AND so.status = ?");
+            patterns.push(status.to_string());
+        }
+        if let Some(user_id) = user_id {
+            clause.push_str(" AND so.user_id = ?");
+            patterns.push(user_id.to_string());
+        }
+        if let Some(customer_id) = customer_id {
+            clause.push_str(" AND so.customer_id = ?");
+            patterns.push(customer_id.to_string());
+        }
+        let sql = format!(
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
+             FROM service_orders so
+             LEFT JOIN customers c ON so.customer_id = c.id
+             LEFT JOIN users ON so.user_id = users.id
+             WHERE so.deleted_at IS NULL{clause}
+             ORDER BY so.created_at DESC, so.id DESC
+             LIMIT ? OFFSET ?"
+        );
+        let mut values: Vec<Value> = Vec::with_capacity(patterns.len() + 2);
+        for pattern in patterns {
+            values.push(pattern.into());
+        }
+        values.push((limit as i64).into());
+        values.push((offset as i64).into());
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row: &rusqlite::Row| {
+            Ok(ServiceOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                user_id: row.get(3)?,
+                user_name: row.get(14)?,
+                equipment: row.get(4)?,
+                imei: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                total_price: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                closed_at: row.get(11)?,
+                display_id: row.get(12)?,
+                discount_basis_points: row.get(13)?,
+            })
+        })?;
+        let mut page = Vec::new();
+        for row in rows {
+            page.push(row?);
+        }
+        Ok(page)
+    }
+
+    pub(crate) fn count_all_with_conn(
+        conn: &Connection,
+        search: &str,
+        status: Option<&str>,
+        user_id: Option<&str>,
+        customer_id: Option<&str>,
+    ) -> Result<i64> {
+        let (mut clause, mut patterns) = like_search_clause(
+            search,
+            &[
+                "COALESCE(so.customer_name, c.name)",
+                "so.equipment",
+                "so.imei",
+                "so.description",
+                "so.display_id",
+            ],
+        );
+        if let Some(status) = status {
+            clause.push_str(" AND so.status = ?");
+            patterns.push(status.to_string());
+        }
+        if let Some(user_id) = user_id {
+            clause.push_str(" AND so.user_id = ?");
+            patterns.push(user_id.to_string());
+        }
+        if let Some(customer_id) = customer_id {
+            clause.push_str(" AND so.customer_id = ?");
+            patterns.push(customer_id.to_string());
+        }
+        let sql = format!(
+            "SELECT COUNT(*) FROM service_orders so
+             LEFT JOIN customers c ON so.customer_id = c.id
+             WHERE so.deleted_at IS NULL{clause}"
+        );
+        let values: Vec<Value> = patterns.into_iter().map(Value::from).collect();
+        conn.query_row(&sql, params_from_iter(values), |row| row.get(0))
     }
 
     pub fn get_by_customer_id(customer_id: &str) -> Result<Vec<ServiceOrder>> {
@@ -930,6 +1043,7 @@ impl ServiceOrderRepository {
             "UPDATE service_orders
              SET status = ?1,
                  closed_at = ?2,
+                 finalized_date = CASE WHEN ?1 = 'Finalizada' THEN date('now', 'localtime') END,
                  total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?3),
                  updated_at = ?4
              WHERE id = ?3 AND deleted_at IS NULL",

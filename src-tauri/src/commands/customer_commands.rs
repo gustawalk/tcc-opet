@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::models::customer::Customer;
+use crate::page::Page;
 use crate::repositories::customer_repo::CustomerRepository;
 use tauri::command;
 
@@ -27,6 +28,23 @@ pub fn get_customer(id: String) -> Result<Option<Customer>, AppError> {
 #[command]
 pub fn get_customers() -> Result<Vec<Customer>, AppError> {
     Ok(CustomerRepository::get_all()?)
+}
+
+const CUSTOMERS_PAGE_DEFAULT_LIMIT: u32 = 200;
+
+#[command]
+pub fn get_customers_page(
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+) -> Result<Page<Customer>, AppError> {
+    let conn = crate::database::get_db()?;
+    let limit = limit.unwrap_or(CUSTOMERS_PAGE_DEFAULT_LIMIT).clamp(1, 1000);
+    let offset = offset.unwrap_or(0);
+    let search = search.unwrap_or_default();
+    let items = CustomerRepository::get_page_with_conn(&conn, limit, offset, &search)?;
+    let total = CustomerRepository::count_all_with_conn(&conn, &search)?;
+    Ok(Page { items, total })
 }
 
 #[command]

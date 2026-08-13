@@ -4,6 +4,7 @@ use crate::error::AppError;
 use crate::models::checklist::ChecklistItem;
 use crate::models::service_order::ServiceOrder;
 use crate::models::service_order_event::ServiceOrderEvent;
+use crate::page::Page;
 use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::customer_repo::CustomerRepository;
 use crate::repositories::inventory_repo::InventoryRepository;
@@ -367,6 +368,45 @@ pub fn get_service_order(id: String) -> Result<Option<ServiceOrder>, AppError> {
 #[command]
 pub fn get_service_orders() -> Result<Vec<ServiceOrder>, AppError> {
     Ok(ServiceOrderRepository::get_all()?)
+}
+
+const SERVICE_ORDERS_PAGE_DEFAULT_LIMIT: u32 = 200;
+
+#[command]
+pub fn get_service_orders_page(
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+    status: Option<String>,
+    user_id: Option<String>,
+    customer_id: Option<String>,
+) -> Result<Page<ServiceOrder>, AppError> {
+    let conn = crate::database::get_db()?;
+    let limit = limit
+        .unwrap_or(SERVICE_ORDERS_PAGE_DEFAULT_LIMIT)
+        .clamp(1, 1000);
+    let offset = offset.unwrap_or(0);
+    let search = search.unwrap_or_default();
+    let status = status.filter(|value| !value.trim().is_empty());
+    let user_id = user_id.filter(|value| !value.trim().is_empty());
+    let customer_id = customer_id.filter(|value| !value.trim().is_empty());
+    let items = ServiceOrderRepository::get_page_with_conn(
+        &conn,
+        limit,
+        offset,
+        &search,
+        status.as_deref(),
+        user_id.as_deref(),
+        customer_id.as_deref(),
+    )?;
+    let total = ServiceOrderRepository::count_all_with_conn(
+        &conn,
+        &search,
+        status.as_deref(),
+        user_id.as_deref(),
+        customer_id.as_deref(),
+    )?;
+    Ok(Page { items, total })
 }
 
 #[command]

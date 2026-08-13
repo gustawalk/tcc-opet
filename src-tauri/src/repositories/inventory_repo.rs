@@ -1,8 +1,10 @@
 use crate::database::get_db;
 use crate::models::inventory_item::InventoryItem;
 use crate::models::inventory_movement::InventoryMovement;
+use crate::page::like_search_clause;
 use chrono::Utc;
-use rusqlite::{params, Connection, Result};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection, Result};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,6 +29,14 @@ pub struct AbcInventoryGroup {
 pub struct InventoryInsights {
     pub inactive_items: Vec<InactiveInventoryItem>,
     pub abc_groups: Vec<AbcInventoryGroup>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventorySummary {
+    pub low_stock: i64,
+    pub out_of_stock: i64,
+    pub total_stock_value: i64,
 }
 
 pub struct InventoryRepository;
@@ -97,6 +107,76 @@ impl InventoryRepository {
     pub fn get_all() -> Result<Vec<InventoryItem>> {
         let conn = get_db()?;
         Self::get_all_with_conn(&conn)
+    }
+
+    pub(crate) fn get_page_with_conn(
+        conn: &Connection,
+        limit: u32,
+        offset: u32,
+        search: &str,
+        item_type: Option<&str>,
+    ) -> Result<Vec<InventoryItem>> {
+        let (mut clause, mut patterns) = like_search_clause(
+            search,
+            &["name", "description", "COALESCE(supplier_name, '')"],
+        );
+        if let Some(item_type) = item_type {
+            clause.push_str(" AND type = ?");
+            patterns.push(item_type.to_string());
+        }
+        let sql = format!(
+            "SELECT id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, created_at, updated_at, deleted_at
+             FROM inventory_items WHERE deleted_at IS NULL{clause}
+             ORDER BY created_at DESC, id DESC
+             LIMIT ? OFFSET ?"
+        );
+        let mut values: Vec<Value> = Vec::with_capacity(patterns.len() + 2);
+        for pattern in patterns {
+            values.push(pattern.into());
+        }
+        values.push((limit as i64).into());
+        values.push((offset as i64).into());
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row: &rusqlite::Row| {
+            Ok(InventoryItem {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                r#type: row.get(3)?,
+                min_quantity: row.get(4)?,
+                current_quantity: row.get(5)?,
+                cost_price: row.get(6)?,
+                average_cost: row.get(7)?,
+                sale_price: row.get(8)?,
+                supplier_name: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+                deleted_at: row.get(12)?,
+            })
+        })?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        Ok(items)
+    }
+
+    pub(crate) fn count_all_with_conn(
+        conn: &Connection,
+        search: &str,
+        item_type: Option<&str>,
+    ) -> Result<i64> {
+        let (mut clause, mut patterns) = like_search_clause(
+            search,
+            &["name", "description", "COALESCE(supplier_name, '')"],
+        );
+        if let Some(item_type) = item_type {
+            clause.push_str(" AND type = ?");
+            patterns.push(item_type.to_string());
+        }
+        let sql = format!("SELECT COUNT(*) FROM inventory_items WHERE deleted_at IS NULL{clause}");
+        let values: Vec<Value> = patterns.into_iter().map(Value::from).collect();
+        conn.query_row(&sql, params_from_iter(values), |row| row.get(0))
     }
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<InventoryItem>> {
@@ -392,6 +472,29 @@ impl InventoryRepository {
                 .collect(),
         })
     }
+
+    pub fn get_summary() -> Result<InventorySummary> {
+        let conn = get_db()?;
+        Self::get_summary_with_conn(&conn)
+    }
+
+    pub(crate) fn get_summary_with_conn(conn: &Connection) -> Result<InventorySummary> {
+        conn.query_row(
+            "SELECT
+                COALESCE(SUM(CASE WHEN current_quantity > 0 AND current_quantity <= min_quantity THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN current_quantity = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(current_quantity * CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END), 0)
+             FROM inventory_items WHERE type = 'part' AND deleted_at IS NULL",
+            [],
+            |row| {
+                Ok(InventorySummary {
+                    low_stock: row.get(0)?,
+                    out_of_stock: row.get(1)?,
+                    total_stock_value: row.get(2)?,
+                })
+            },
+        )
+    }
 }
 
 #[cfg(test)]
@@ -563,5 +666,73 @@ mod tests {
         assert_eq!(insights.abc_groups[1].item_count, 1);
         assert_eq!(insights.abc_groups[2].item_count, 1);
         assert_eq!(insights.abc_groups[0].inventory_value, 7_000);
+    }
+
+    #[test]
+    fn page_filter_by_item_type_and_search() {
+        let conn = setup_db();
+        let part = sample_item();
+        InventoryRepository::create_with_conn(&conn, &part).unwrap();
+        let service = InventoryItem::new(
+            "Reparo".to_string(),
+            "Reparo geral".to_string(),
+            "service".to_string(),
+            0,
+            0,
+            0,
+            10_000,
+        );
+        InventoryRepository::create_with_conn(&conn, &service).unwrap();
+
+        let parts =
+            InventoryRepository::get_page_with_conn(&conn, 10, 0, "", Some("part")).unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].r#type, "part");
+
+        let services =
+            InventoryRepository::get_page_with_conn(&conn, 10, 0, "", Some("service")).unwrap();
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].r#type, "service");
+
+        assert_eq!(
+            InventoryRepository::count_all_with_conn(&conn, "", Some("part")).unwrap(),
+            1
+        );
+        assert_eq!(
+            InventoryRepository::count_all_with_conn(&conn, "tela", Some("service")).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn summary_counts_only_parts_and_values_stock_at_average_cost() {
+        let conn = setup_db();
+        let part = sample_item();
+        InventoryRepository::create_with_conn(&conn, &part).unwrap();
+        let low = InventoryItem::new(
+            "Bateria".to_string(),
+            "Bateria".to_string(),
+            "part".to_string(),
+            3,
+            2,
+            1_000,
+            4_000,
+        );
+        InventoryRepository::create_with_conn(&conn, &low).unwrap();
+        let service = InventoryItem::new(
+            "Reparo".to_string(),
+            "Reparo geral".to_string(),
+            "service".to_string(),
+            0,
+            0,
+            0,
+            10_000,
+        );
+        InventoryRepository::create_with_conn(&conn, &service).unwrap();
+
+        let summary = InventoryRepository::get_summary_with_conn(&conn).unwrap();
+        assert_eq!(summary.low_stock, 1);
+        assert_eq!(summary.out_of_stock, 0);
+        assert_eq!(summary.total_stock_value, 5 * 5_000 + 2 * 1_000);
     }
 }

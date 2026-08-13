@@ -1,8 +1,10 @@
 use crate::error::AppError;
 use crate::models::inventory_item::InventoryItem;
 use crate::models::inventory_movement::InventoryMovement;
-use crate::repositories::inventory_repo::InventoryInsights;
-use crate::repositories::inventory_repo::InventoryRepository;
+use crate::page::Page;
+use crate::repositories::inventory_repo::{
+    InventoryInsights, InventoryRepository, InventorySummary,
+};
 use tauri::command;
 
 fn require_existing_inventory_item(item: Option<InventoryItem>) -> Result<InventoryItem, AppError> {
@@ -98,6 +100,41 @@ pub fn get_inventory_items() -> Result<Vec<InventoryItem>, AppError> {
     Ok(InventoryRepository::get_all()?)
 }
 
+const INVENTORY_PAGE_DEFAULT_LIMIT: u32 = 200;
+
+#[command]
+pub fn get_inventory_items_page(
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+    item_type: Option<String>,
+) -> Result<Page<InventoryItem>, AppError> {
+    let conn = crate::database::get_db()?;
+    let limit = limit.unwrap_or(INVENTORY_PAGE_DEFAULT_LIMIT).clamp(1, 1000);
+    let offset = offset.unwrap_or(0);
+    let search = search.unwrap_or_default();
+    let item_type = item_type
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.to_lowercase());
+    if let Some(value) = &item_type {
+        if !matches!(value.as_str(), "part" | "service") {
+            return Err(crate::error::business_error(
+                "Inventory item type must be part or service.",
+                "O tipo do item deve ser peça ou serviço.",
+            ));
+        }
+    }
+    let items = InventoryRepository::get_page_with_conn(
+        &conn,
+        limit,
+        offset,
+        &search,
+        item_type.as_deref(),
+    )?;
+    let total = InventoryRepository::count_all_with_conn(&conn, &search, item_type.as_deref())?;
+    Ok(Page { items, total })
+}
+
 #[command]
 #[allow(clippy::too_many_arguments)]
 pub fn update_inventory_item(
@@ -180,6 +217,11 @@ pub fn get_inventory_insights(inactive_days: Option<i32>) -> Result<InventoryIns
         ));
     }
     Ok(InventoryRepository::get_insights(inactive_days)?)
+}
+
+#[command]
+pub fn get_inventory_summary() -> Result<InventorySummary, AppError> {
+    Ok(InventoryRepository::get_summary()?)
 }
 
 #[cfg(test)]

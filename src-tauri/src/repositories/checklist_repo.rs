@@ -1,8 +1,10 @@
 use crate::database::get_db;
 use crate::models::checklist::{ChecklistItem, ChecklistTemplate};
 use crate::models::service_order_event::ServiceOrderEvent;
+use crate::page::like_search_clause;
 use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
-use rusqlite::{params, Connection, Result, Transaction};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection, Result, Transaction};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -71,6 +73,67 @@ impl ChecklistRepository {
             .collect();
 
         Ok(templates)
+    }
+
+    pub(crate) fn get_page_with_conn(
+        conn: &Connection,
+        limit: u32,
+        offset: u32,
+        search: &str,
+    ) -> Result<Vec<ChecklistTemplate>> {
+        let (clause, patterns) = like_search_clause(search, &["title"]);
+        let sql = format!(
+            "SELECT id, title, created_at FROM checklist_templates WHERE 1=1{clause}
+             ORDER BY created_at DESC, id DESC
+             LIMIT ? OFFSET ?"
+        );
+        let mut values: Vec<Value> = Vec::with_capacity(patterns.len() + 2);
+        for pattern in patterns {
+            values.push(pattern.into());
+        }
+        values.push((limit as i64).into());
+        values.push((offset as i64).into());
+        let mut stmt = conn.prepare(&sql)?;
+        let templates_raw: Vec<(String, String, Option<String>)> = stmt
+            .query_map(params_from_iter(values), |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let ids: Vec<String> = templates_raw.iter().map(|(id, _, _)| id.clone()).collect();
+        let mut items_map: HashMap<String, Vec<String>> = HashMap::new();
+        if !ids.is_empty() {
+            let placeholders = vec!["?"; ids.len()].join(",");
+            let mut item_stmt = conn.prepare(&format!(
+                "SELECT template_id, label FROM template_items WHERE template_id IN ({placeholders})"
+            ))?;
+            let rows = item_stmt.query_map(params_from_iter(ids), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (template_id, label) = row?;
+                items_map.entry(template_id).or_default().push(label);
+            }
+        }
+
+        let templates = templates_raw
+            .into_iter()
+            .map(|(id, title, created_at)| ChecklistTemplate {
+                items: items_map.remove(&id),
+                id,
+                title,
+                created_at,
+            })
+            .collect();
+
+        Ok(templates)
+    }
+
+    pub(crate) fn count_all_with_conn(conn: &Connection, search: &str) -> Result<i64> {
+        let (clause, patterns) = like_search_clause(search, &["title"]);
+        let sql = format!("SELECT COUNT(*) FROM checklist_templates WHERE 1=1{clause}");
+        let values: Vec<Value> = patterns.into_iter().map(Value::from).collect();
+        conn.query_row(&sql, params_from_iter(values), |row| row.get(0))
     }
 
     pub fn get_template_items(template_id: &str) -> Result<Vec<String>> {
@@ -333,5 +396,39 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].label, "Bateria");
         assert!(!items[0].checked);
+    }
+
+    #[test]
+    fn page_search_filters_templates_by_title() {
+        let mut conn = setup_db();
+        ChecklistRepository::create_template_with_conn(
+            &mut conn,
+            "Recepção",
+            vec!["Tela".to_string()],
+        )
+        .unwrap();
+        ChecklistRepository::create_template_with_conn(
+            &mut conn,
+            "Reparo avançado",
+            vec!["Placa".to_string(), "Conector".to_string()],
+        )
+        .unwrap();
+
+        let page = ChecklistRepository::get_page_with_conn(&conn, 10, 0, "avançado").unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].title, "Reparo avançado");
+        assert_eq!(
+            page[0].items,
+            Some(vec!["Placa".to_string(), "Conector".to_string()])
+        );
+
+        assert_eq!(
+            ChecklistRepository::count_all_with_conn(&conn, "").unwrap(),
+            2
+        );
+        assert_eq!(
+            ChecklistRepository::count_all_with_conn(&conn, "zzz").unwrap(),
+            0
+        );
     }
 }

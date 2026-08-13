@@ -1,7 +1,9 @@
 use crate::database::get_db;
 use crate::models::customer::Customer;
+use crate::page::like_search_clause;
 use chrono::Utc;
-use rusqlite::{params, Connection, Result};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection, Result};
 
 pub struct CustomerRepository;
 
@@ -35,7 +37,7 @@ impl CustomerRepository {
 
     pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<Customer>> {
         let mut stmt = conn.prepare(
-            "SELECT id, name, phone, email, address, created_at, deleted_at 
+            "SELECT id, name, phone, email, address, created_at, deleted_at
              FROM customers WHERE id = ?1 AND deleted_at IS NULL",
         )?;
         let mut rows = stmt.query_map(params![id], |row: &rusqlite::Row| {
@@ -81,6 +83,53 @@ impl CustomerRepository {
             customers.push(row?);
         }
         Ok(customers)
+    }
+
+    pub(crate) fn get_page_with_conn(
+        conn: &Connection,
+        limit: u32,
+        offset: u32,
+        search: &str,
+    ) -> Result<Vec<Customer>> {
+        let (clause, patterns) =
+            like_search_clause(search, &["name", "email", "phone", "COALESCE(address, '')"]);
+        let sql = format!(
+            "SELECT id, name, phone, email, address, created_at, deleted_at
+             FROM customers WHERE deleted_at IS NULL{clause}
+             ORDER BY created_at DESC, id DESC
+             LIMIT ? OFFSET ?"
+        );
+        let mut values: Vec<Value> = Vec::with_capacity(patterns.len() + 2);
+        for pattern in patterns {
+            values.push(pattern.into());
+        }
+        values.push((limit as i64).into());
+        values.push((offset as i64).into());
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row: &rusqlite::Row| {
+            Ok(Customer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                phone: row.get(2)?,
+                email: row.get(3)?,
+                address: row.get(4)?,
+                created_at: row.get(5)?,
+                deleted_at: row.get(6)?,
+            })
+        })?;
+        let mut customers = Vec::new();
+        for row in rows {
+            customers.push(row?);
+        }
+        Ok(customers)
+    }
+
+    pub(crate) fn count_all_with_conn(conn: &Connection, search: &str) -> Result<i64> {
+        let (clause, patterns) =
+            like_search_clause(search, &["name", "email", "phone", "COALESCE(address, '')"]);
+        let sql = format!("SELECT COUNT(*) FROM customers WHERE deleted_at IS NULL{clause}");
+        let values: Vec<Value> = patterns.into_iter().map(Value::from).collect();
+        conn.query_row(&sql, params_from_iter(values), |row| row.get(0))
     }
 
     pub fn update(customer: &Customer) -> Result<()> {
@@ -181,5 +230,41 @@ mod tests {
         assert!(CustomerRepository::get_all_with_conn(&conn)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn page_search_filters_by_substring() {
+        let conn = setup_db();
+        let ana = Customer::new(
+            "Ana Silva".to_string(),
+            "41911111111".to_string(),
+            "ana@example.com".to_string(),
+            "Rua A".to_string(),
+        );
+        let bruno = Customer::new(
+            "Bruno Souza".to_string(),
+            "41922222222".to_string(),
+            "bruno@example.com".to_string(),
+            "Rua B".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &ana).unwrap();
+        CustomerRepository::create_with_conn(&conn, &bruno).unwrap();
+
+        let page = CustomerRepository::get_page_with_conn(&conn, 10, 0, "souza").unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].name, "Bruno Souza");
+
+        let phone_match = CustomerRepository::get_page_with_conn(&conn, 10, 0, "1111").unwrap();
+        assert_eq!(phone_match.len(), 1);
+        assert_eq!(phone_match[0].name, "Ana Silva");
+
+        assert_eq!(
+            CustomerRepository::count_all_with_conn(&conn, "").unwrap(),
+            2
+        );
+        assert_eq!(
+            CustomerRepository::count_all_with_conn(&conn, "inexistente").unwrap(),
+            0
+        );
     }
 }

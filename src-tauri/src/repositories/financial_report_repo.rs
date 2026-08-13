@@ -96,15 +96,12 @@ impl FinancialReportRepository {
             _ => "revenue",
         };
         let ranking_limit = ranking_limit.unwrap_or(5).clamp(5, 20);
-        let finalized_at = "COALESCE(so.closed_at, so.created_at)";
-        let period_filter = format!(
-            "so.status = 'Finalizada' AND so.deleted_at IS NULL AND date({finalized_at}, 'localtime') BETWEEN date(?1) AND date(?2) AND (?3 IS NULL OR so.user_id = ?3)"
-        );
+        let period_filter = "so.status = 'Finalizada' AND so.deleted_at IS NULL AND so.finalized_date BETWEEN date(?1) AND date(?2) AND (?3 IS NULL OR so.user_id = ?3)";
 
         let (total_revenue, total_cost, finalized_orders, total_discounts) =
             query_summary(conn, start, end, technician_id)?;
 
-        let created_in_period = "so.deleted_at IS NULL AND date(so.created_at, 'localtime') BETWEEN date(?1) AND date(?2) AND (?3 IS NULL OR so.user_id = ?3)";
+        let created_in_period = "so.deleted_at IS NULL AND so.created_date BETWEEN date(?1) AND date(?2) AND (?3 IS NULL OR so.user_id = ?3)";
         let operational_sql = format!(
             "SELECT
                 (SELECT COUNT(DISTINCT c.id) FROM customers c JOIN service_orders so ON so.customer_id = c.id WHERE c.deleted_at IS NULL AND date(c.created_at, 'localtime') BETWEEN date(?1) AND date(?2) AND {created_in_period}),
@@ -180,7 +177,7 @@ impl FinancialReportRepository {
         )?;
 
         let month_sql = format!(
-            "SELECT strftime('%Y-%m', {finalized_at}, 'localtime'),
+            "SELECT substr(so.finalized_date, 1, 7),
                     COALESCE(SUM((so.total_price_cents / 10000) * (10000 - so.discount_basis_points) + ((so.total_price_cents % 10000) * (10000 - so.discount_basis_points) + 5000) / 10000), 0),
                     COALESCE(SUM((so.total_price_cents / 10000) * (10000 - so.discount_basis_points) + ((so.total_price_cents % 10000) * (10000 - so.discount_basis_points) + 5000) / 10000) - SUM(COALESCE(costs.total_cost, 0)), 0),
                     COUNT(*)
@@ -273,7 +270,7 @@ fn query_allocated_line_breakdowns(
          FROM service_order_parts sop
          JOIN service_orders so ON sop.service_order_id = so.id
          WHERE so.status = 'Finalizada' AND so.deleted_at IS NULL
-           AND date(COALESCE(so.closed_at, so.created_at), 'localtime') BETWEEN date(?1) AND date(?2)
+           AND so.finalized_date BETWEEN date(?1) AND date(?2)
            AND (?3 IS NULL OR so.user_id = ?3)
          ORDER BY so.id, sop.id",
     )?;
@@ -444,16 +441,19 @@ fn query_summary(
     end: &str,
     technician_id: Option<&str>,
 ) -> Result<(i64, i64, i32, i64)> {
-    let mut orders = conn.prepare(
-        "SELECT so.id, so.total_price_cents, so.discount_basis_points
+    let mut stmt = conn.prepare(
+        "SELECT so.total_price_cents, so.discount_basis_points,
+                COALESCE(SUM(sop.quantity * sop.unit_cost_cents), 0)
          FROM service_orders so
+         LEFT JOIN service_order_parts sop ON sop.service_order_id = so.id
          WHERE so.status = 'Finalizada' AND so.deleted_at IS NULL
-           AND date(COALESCE(so.closed_at, so.created_at), 'localtime') BETWEEN date(?1) AND date(?2)
-           AND (?3 IS NULL OR so.user_id = ?3)",
+           AND so.finalized_date BETWEEN date(?1) AND date(?2)
+           AND (?3 IS NULL OR so.user_id = ?3)
+         GROUP BY so.id",
     )?;
-    let rows = orders.query_map(params![start, end, technician_id], |row| {
+    let rows = stmt.query_map(params![start, end, technician_id], |row| {
         Ok((
-            row.get::<_, String>(0)?,
+            row.get::<_, i64>(0)?,
             row.get::<_, i64>(1)?,
             row.get::<_, i64>(2)?,
         ))
@@ -463,7 +463,7 @@ fn query_summary(
     let mut discounts = 0_i64;
     let mut count = 0_i32;
     for row in rows {
-        let (order_id, gross, basis_points) = row?;
+        let (gross, basis_points, order_cost) = row?;
         let discounted =
             apply_discount(gross, basis_points).ok_or(rusqlite::Error::InvalidQuery)?;
         revenue = revenue
@@ -476,20 +476,10 @@ fn query_summary(
                     .ok_or(rusqlite::Error::InvalidQuery)?,
             )
             .ok_or(rusqlite::Error::InvalidQuery)?;
+        cost = cost
+            .checked_add(i128::from(order_cost))
+            .ok_or(rusqlite::Error::InvalidQuery)?;
         count = count.checked_add(1).ok_or(rusqlite::Error::InvalidQuery)?;
-
-        let mut parts = conn.prepare(
-            "SELECT quantity, unit_cost_cents FROM service_order_parts WHERE service_order_id = ?1",
-        )?;
-        let part_rows = parts.query_map([order_id], |part| {
-            Ok((part.get::<_, i64>(0)?, part.get::<_, i64>(1)?))
-        })?;
-        for part in part_rows {
-            let (quantity, unit_cost) = part?;
-            cost = cost
-                .checked_add(i128::from(quantity) * i128::from(unit_cost))
-                .ok_or(rusqlite::Error::InvalidQuery)?;
-        }
     }
     Ok((
         revenue,
@@ -642,7 +632,7 @@ mod tests {
 
         let finalized_at = "2030-01-01T01:00:00+00:00";
         conn.execute(
-            "UPDATE service_orders SET closed_at = ?1 WHERE id = ?2",
+            "UPDATE service_orders SET closed_at = ?1, finalized_date = date(?1, 'localtime') WHERE id = ?2",
             params![finalized_at, order.id],
         )
         .unwrap();
@@ -872,7 +862,7 @@ mod tests {
         );
         ServiceOrderRepository::create_with_conn(&conn, &mut previous_order).unwrap();
         conn.execute(
-            "UPDATE service_orders SET created_at = '2024-01-15T12:00:00+00:00' WHERE id = ?1",
+            "UPDATE service_orders SET created_at = '2024-01-15T12:00:00+00:00', created_date = date('2024-01-15T12:00:00+00:00', 'localtime') WHERE id = ?1",
             params![previous_order.id],
         )
         .unwrap();
@@ -884,7 +874,7 @@ mod tests {
         );
         ServiceOrderRepository::create_with_conn(&conn, &mut completed_order).unwrap();
         conn.execute(
-            "UPDATE service_orders SET status = 'Finalizada', created_at = '2024-02-10T12:00:00+00:00', closed_at = '2024-02-11T12:00:00+00:00' WHERE id = ?1",
+            "UPDATE service_orders SET status = 'Finalizada', created_at = '2024-02-10T12:00:00+00:00', created_date = date('2024-02-10T12:00:00+00:00', 'localtime'), closed_at = '2024-02-11T12:00:00+00:00', finalized_date = date('2024-02-11T12:00:00+00:00', 'localtime') WHERE id = ?1",
             params![completed_order.id],
         )
         .unwrap();
@@ -896,7 +886,7 @@ mod tests {
         );
         ServiceOrderRepository::create_with_conn(&conn, &mut cancelled_order).unwrap();
         conn.execute(
-            "UPDATE service_orders SET status = 'Cancelada', created_at = '2024-02-12T12:00:00+00:00', closed_at = '2024-02-12T18:00:00+00:00' WHERE id = ?1",
+            "UPDATE service_orders SET status = 'Cancelada', created_at = '2024-02-12T12:00:00+00:00', created_date = date('2024-02-12T12:00:00+00:00', 'localtime'), closed_at = '2024-02-12T18:00:00+00:00' WHERE id = ?1",
             params![cancelled_order.id],
         )
         .unwrap();
@@ -937,12 +927,12 @@ mod tests {
             ServiceOrder::new(customer.id, "Tablet".to_string(), "Reparo".to_string());
         ServiceOrderRepository::create_with_conn(&conn, &mut created_before_period).unwrap();
         conn.execute(
-            "UPDATE service_orders SET created_at = '2024-02-10T12:00:00+00:00', status = 'Finalizada', closed_at = '2025-03-01T12:00:00+00:00' WHERE id = ?1",
+            "UPDATE service_orders SET created_at = '2024-02-10T12:00:00+00:00', created_date = date('2024-02-10T12:00:00+00:00', 'localtime'), status = 'Finalizada', closed_at = '2025-03-01T12:00:00+00:00', finalized_date = date('2025-03-01T12:00:00+00:00', 'localtime') WHERE id = ?1",
             params![created_in_period.id],
         )
         .unwrap();
         conn.execute(
-            "UPDATE service_orders SET created_at = '2024-01-31T12:00:00+00:00', status = 'Finalizada', closed_at = '2024-02-10T12:00:00+00:00' WHERE id = ?1",
+            "UPDATE service_orders SET created_at = '2024-01-31T12:00:00+00:00', created_date = date('2024-01-31T12:00:00+00:00', 'localtime'), status = 'Finalizada', closed_at = '2024-02-10T12:00:00+00:00', finalized_date = date('2024-02-10T12:00:00+00:00', 'localtime') WHERE id = ?1",
             params![created_before_period.id],
         )
         .unwrap();
@@ -1009,7 +999,7 @@ mod tests {
         other_order.user_id = Some(other_technician.id);
         ServiceOrderRepository::create_with_conn(&conn, &mut other_order).unwrap();
         conn.execute(
-            "UPDATE service_orders SET status = 'Finalizada', closed_at = created_at WHERE id IN (?1, ?2)",
+            "UPDATE service_orders SET status = 'Finalizada', closed_at = created_at, finalized_date = date(COALESCE(closed_at, created_at), 'localtime') WHERE id IN (?1, ?2)",
             params![selected_order.id, other_order.id],
         )
         .unwrap();

@@ -11,6 +11,36 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.3.0",
+    date: "12/08/2026",
+    title: "Listagens mais rápidas e aplicativo mais leve",
+    sections: [
+      {
+        title: "Desempenho",
+        items: [
+          "Clientes, funcionários, estoque, modelos e ordens agora usam paginação e busca no banco de dados.",
+          "O aplicativo reutiliza a conexão protegida com o banco, reduzindo o tempo de abertura das telas.",
+          "Relatórios e indicadores financeiros processam datas e custos com muito mais eficiência.",
+        ],
+      },
+      {
+        title: "Interface",
+        items: [
+          "As listagens oferecem navegação por páginas, tamanhos configuráveis e retorno automático ao início da tabela.",
+          "Telas e detalhes são carregados sob demanda para reduzir o tamanho inicial do aplicativo.",
+          "A pré-visualização de documentos foi simplificada sem alterar o PDF salvo no computador.",
+        ],
+      },
+      {
+        title: "Estabilidade",
+        items: [
+          "A paginação mantém a página selecionada enquanto os dados são carregados.",
+          "O PDF temporário permanece disponível durante a visualização e é descartado somente após o fechamento.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.2.0",
     date: "09/08/2026",
     title: "Precisão financeira e estoque com alertas",

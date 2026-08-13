@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { 
@@ -14,6 +14,7 @@ import {
   Card, 
   CardContent, 
   CardDescription, 
+  CardFooter,
   CardHeader, 
   CardTitle 
 } from "@/components/ui/card";
@@ -35,65 +36,64 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChecklistTemplate } from "@/lib/types";
+import { ChecklistTemplate, Page } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { useSort } from "@/hooks/useSort";
-import { SortableHeader } from "@/components/shared/SortableHeader";
+import { Pagination } from "@/components/shared/Pagination";
+import { useDebounce } from "@/hooks/use-debounce";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
 import { ChecklistTemplateDetailSheet } from "@/components/shared/ChecklistTemplateDetailSheet";
 
-const fetchTemplates = async (): Promise<ChecklistTemplate[]> => {
-  return await invoke("get_checklist_templates");
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
+
+const fetchTemplatesPage = (args: {
+  limit: number;
+  offset: number;
+  search: string;
+}): Promise<Page<ChecklistTemplate>> => {
+  return invoke<Page<ChecklistTemplate>>("get_checklist_templates_page", args);
 };
 
 export function Templates() {
+  const listRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
   const [detailTemplate, setDetailTemplate] = useState<ChecklistTemplate | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const { sortConfig, cycleSort } = useSort();
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { data: templates = [], isLoading, error, refetch } = useQuery({
-    queryKey: ["checklist-templates"],
-    queryFn: fetchTemplates,
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["checklist-templates-page", page, pageSize, search],
+    queryFn: () =>
+      fetchTemplatesPage({
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        search,
+      }),
+    placeholderData: (previousData) => previousData,
   });
 
-  const getTemplateSortValue = (template: ChecklistTemplate, column: string): string | number => {
-    switch (column) {
-      case "title": return template.title;
-      case "items": return template.items.length;
-      case "createdAt": return template.createdAt || "";
-      default: return "";
-    }
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    if (data && page > totalPages) setPage(totalPages);
+  }, [data, totalPages, page]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
   };
-
-  const filteredTemplates = useMemo(() => {
-    let result = templates.filter(t => 
-      t.title.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    if (sortConfig.direction && sortConfig.column) {
-      const dir = sortConfig.direction;
-      const col = sortConfig.column;
-      result = [...result].sort((a, b) => {
-        const valA = getTemplateSortValue(a, col);
-        const valB = getTemplateSortValue(b, col);
-        if (valA == null && valB == null) return 0;
-        if (valA == null) return 1;
-        if (valB == null) return -1;
-        if (typeof valA === "string" && typeof valB === "string") {
-          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
-        }
-        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
-      });
-    }
-
-    return result;
-  }, [templates, searchTerm, sortConfig]);
 
   const handleAddTemplate = () => {
     setSelectedTemplate(null);
@@ -114,7 +114,7 @@ export function Templates() {
     try {
       setIsDeleting(true);
       await invoke("delete_checklist_template", { id: confirmDeleteId });
-      await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+      await queryClient.invalidateQueries({ queryKey: ["checklist-templates-page"] });
       toastSuccess("Template removido com sucesso.");
     } catch (error) {
       toastError(error, "Erro ao excluir template.");
@@ -149,7 +149,7 @@ export function Templates() {
         </Button>
       </div>
 
-      <Card>
+      <Card ref={listRef} className="scroll-mt-20">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -168,13 +168,13 @@ export function Templates() {
           </div>
         </CardHeader>
         <CardContent>
-            <div className="max-h-[500px] overflow-y-auto rounded-md border" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader column="title" label="Título" sortConfig={sortConfig} onSort={cycleSort} />
-                    <SortableHeader column="items" label="Itens" sortConfig={sortConfig} onSort={cycleSort} />
-                    <SortableHeader column="createdAt" label="Criado em" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <TableHead>Título</TableHead>
+                    <TableHead>Itens</TableHead>
+                    <TableHead className="hidden md:table-cell">Criado em</TableHead>
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -188,8 +188,8 @@ export function Templates() {
                       <TableCell><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
                     </TableRow>
                   ))
-                ) : filteredTemplates.length > 0 ? (
-                  filteredTemplates.map((template) => (
+                ) : data && data.items.length > 0 ? (
+                  data.items.map((template) => (
                     <TableRow
                       key={template.id}
                       className="cursor-pointer"
@@ -245,6 +245,18 @@ export function Templates() {
               </Table>
             </div>
           </CardContent>
+          <CardFooter className="border-t px-6 py-4">
+            <Pagination
+              className="w-full"
+              totalItems={total}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              scrollTargetRef={listRef}
+            />
+          </CardFooter>
         </Card>
 
       <ChecklistTemplateSheet

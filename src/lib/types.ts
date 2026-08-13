@@ -26,6 +26,11 @@ export interface User {
   deletedAt?: string | null;
 }
 
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -188,6 +193,12 @@ export interface AbcInventoryGroup {
 export interface InventoryInsights {
   inactiveItems: InactiveInventoryItem[];
   abcGroups: AbcInventoryGroup[];
+}
+
+export interface InventorySummary {
+  lowStock: number;
+  outOfStock: number;
+  totalStockValue: number;
 }
 
 export interface InventoryAlert {

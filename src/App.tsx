@@ -13,6 +13,7 @@ import { Customers } from "./views/Customers";
 import { Inventory } from "./views/Inventory";
 import { ServiceOrders } from "./views/ServiceOrders";
 import { Users } from "./views/Users";
+import { PaginationPreview } from "./views/PaginationPreview";
 import { Settings } from "./views/Settings";
 import { Templates } from "./views/Templates";
 import { Reports } from "./views/Reports";
@@ -130,6 +131,7 @@ function App() {
                 <Route path="/templates" element={<Templates />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/users" element={<Users />} />
+                <Route path="/users-pagination" element={<PaginationPreview />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </MainLayout>

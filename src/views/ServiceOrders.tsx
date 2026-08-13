@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -36,83 +36,102 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
-import { SortableHeader } from "@/components/shared/SortableHeader";
+import { Pagination } from "@/components/shared/Pagination";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
-import { useSort } from "@/hooks/useSort";
 import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   Customer,
   OSStatus,
+  Page,
   ServiceOrder,
   User as UserType,
 } from "@/lib/types";
 
-const fetchOrders = () => invoke<ServiceOrder[]>("get_service_orders");
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
+
+const fetchOrdersPage = (args: {
+  limit: number;
+  offset: number;
+  search: string;
+  status?: string;
+  userId?: string;
+  customerId?: string;
+}): Promise<Page<ServiceOrder>> => {
+  return invoke<Page<ServiceOrder>>("get_service_orders_page", args);
+};
 const fetchUsers = () => invoke<UserType[]>("get_users");
 const fetchCustomers = () => invoke<Customer[]>("get_customers");
-const EMPTY_ORDERS: ServiceOrder[] = [];
 
 export function ServiceOrders() {
+  const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openServiceOrder } = useServiceOrderDrawer();
   const { openCustomerHistory } = useCustomerDrawer();
-  const { sortConfig, cycleSort } = useSort();
   const [searchTerm, setSearchTerm] = useState("");
+  const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [statusFilter, setStatusFilter] = useState("all");
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const ordersQuery = useQuery({
-    queryKey: ["service-orders"],
-    queryFn: fetchOrders,
+    queryKey: [
+      "serviceOrdersPage",
+      page,
+      pageSize,
+      search,
+      statusFilter,
+      userFilter,
+      customerFilter,
+    ],
+    queryFn: () =>
+      fetchOrdersPage({
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        search,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        userId: userFilter ?? undefined,
+        customerId: customerFilter ?? undefined,
+      }),
+    placeholderData: (previousData) => previousData,
   });
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
   const customersQuery = useQuery({
     queryKey: ["customers"],
     queryFn: fetchCustomers,
   });
-  const orders = ordersQuery.data ?? EMPTY_ORDERS;
   const users = usersQuery.data ?? [];
   const customers = customersQuery.data ?? [];
-  const filteredOrders = useMemo(() => {
-    const result = orders.filter(
-      (order) =>
-        (order.displayId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.customerName
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          order.equipment.toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (statusFilter === "all" || order.status === statusFilter) &&
-        (!userFilter || order.userId === userFilter) &&
-        (!customerFilter || order.customerId === customerFilter),
-    );
-    if (!sortConfig.column || !sortConfig.direction) return result;
-    return [...result].sort((a, b) => {
-      const av = a[sortConfig.column as keyof ServiceOrder] ?? "";
-      const bv = b[sortConfig.column as keyof ServiceOrder] ?? "";
-      return sortConfig.direction === "asc"
-        ? String(av).localeCompare(String(bv), "pt-BR")
-        : String(bv).localeCompare(String(av), "pt-BR");
-    });
-  }, [
-    orders,
-    searchTerm,
-    statusFilter,
-    sortConfig,
-    userFilter,
-    customerFilter,
-  ]);
+  const total = ordersQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, pageSize, statusFilter, userFilter, customerFilter]);
+
+  useEffect(() => {
+    if (ordersQuery.data && page > totalPages) setPage(totalPages);
+  }, [ordersQuery.data, totalPages, page]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+  };
+
   const deleteOrder = async () => {
     if (!deleteId || isDeleting) return;
     setIsDeleting(true);
     try {
       await invoke("delete_service_order", { id: deleteId });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }),
       ]);
       toastSuccess("Ordem de serviço excluída.");
@@ -244,59 +263,45 @@ export function ServiceOrders() {
           </CardContent>
         </Card>
       )}
-      <Card>
+      <Card ref={listRef} className="scroll-mt-20">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHeader
-                  column="displayId"
-                  label="Nº da ordem"
-                  sortConfig={sortConfig}
-                  onSort={cycleSort}
-                />
-                <SortableHeader
-                  column="customerName"
-                  label="Cliente & Equipamento"
-                  sortConfig={sortConfig}
-                  onSort={cycleSort}
-                />
-                <SortableHeader
-                  column="status"
-                  label="Status"
-                  sortConfig={sortConfig}
-                  onSort={cycleSort}
-                  className="hidden md:table-cell"
-                />
-                <SortableHeader
-                  column="createdAt"
-                  label="Abertura"
-                  sortConfig={sortConfig}
-                  onSort={cycleSort}
-                  className="hidden lg:table-cell"
-                />
-                <SortableHeader
-                  column="totalPrice"
-                  label="Valor"
-                  sortConfig={sortConfig}
-                  onSort={cycleSort}
-                  align="right"
-                />
+                <TableHead>Nº da ordem</TableHead>
+                <TableHead>Cliente & Equipamento</TableHead>
+                <TableHead className="hidden md:table-cell">Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Abertura</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {ordersQuery.isLoading ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="h-24 text-center text-muted-foreground"
-                  >
-                    Carregando ordens de serviço...
-                  </TableCell>
-                </TableRow>
-              ) : filteredOrders.length ? (
-                filteredOrders.map((order) => (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+                    </TableCell>
+                    <TableCell>
+                      <div className="h-4 w-40 bg-muted animate-pulse rounded" />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="h-5 w-24 bg-muted animate-pulse rounded" />
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="h-4 w-20 bg-muted animate-pulse rounded ml-auto" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : ordersQuery.data && ordersQuery.data.items.length ? (
+                ordersQuery.data.items.map((order) => (
                   <TableRow
                     key={order.id}
                     className="cursor-pointer"
@@ -412,6 +417,18 @@ export function ServiceOrders() {
             </TableBody>
           </Table>
         </CardContent>
+        <CardFooter className="border-t px-6 py-4">
+          <Pagination
+            className="w-full"
+            totalItems={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            scrollTargetRef={listRef}
+          />
+        </CardFooter>
       </Card>
       {deleteId && (
         <div

@@ -22,20 +22,23 @@ const mockedInvoke = vi.mocked(invoke);
 describe("ServiceOrders", () => {
   it("opens customer history only from the customer name", async () => {
     mockedInvoke.mockImplementation((command) => {
-      if (command === "get_service_orders") {
-        return Promise.resolve([
-          {
-            id: "order-1",
-            customerId: "customer-1",
-            customerName: "Cliente Teste",
-            equipment: "iPhone 15",
-            status: "Orçamento",
-            totalPrice: 0,
-            createdAt: "2026-01-01T00:00:00Z",
-            displayId: "OS-000001",
-            discountBasisPoints: 0,
-          },
-        ]);
+      if (command === "get_service_orders_page") {
+        return Promise.resolve({
+          items: [
+            {
+              id: "order-1",
+              customerId: "customer-1",
+              customerName: "Cliente Teste",
+              equipment: "iPhone 15",
+              status: "Orçamento",
+              totalPrice: 0,
+              createdAt: "2026-01-01T00:00:00Z",
+              displayId: "OS-000001",
+              discountBasisPoints: 0,
+            },
+          ],
+          total: 1,
+        });
       }
       return Promise.resolve([]);
     });

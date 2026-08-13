@@ -169,15 +169,15 @@ export function InventoryItemSheet({
 
   const createItem = async (data: InventoryItemPayload) => {
     const created = await createMutation.mutateAsync(data);
-    queryClient.setQueryData<InventoryItem[]>(["inventory"], (items = []) => [
-      created,
-      ...items.filter((entry) => entry.id !== created.id),
-    ]);
     queryClient.setQueryData<InventoryItem[]>(
       ["inventory-lookup"],
       (items = []) => [created, ...items.filter((entry) => entry.id !== created.id)],
     );
-    await queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventorySummary"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory-insights"] }),
+    ]);
     onCreated?.(created);
     toastSuccess(
       isDuplicating ? "Item duplicado com sucesso." : "Item criado com sucesso.",
@@ -198,7 +198,8 @@ export function InventoryItemSheet({
       if (isEditing) {
         await updateMutation.mutateAsync({ ...formData, ...result.data });
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+          queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] }),
+          queryClient.invalidateQueries({ queryKey: ["inventorySummary"] }),
           queryClient.invalidateQueries({ queryKey: ["inventory-lookup"] }),
           queryClient.invalidateQueries({ queryKey: ["inventory-insights"] }),
         ]);

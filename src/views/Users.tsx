@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { 
@@ -18,6 +18,7 @@ import {
   Card, 
   CardContent, 
   CardDescription, 
+  CardFooter,
   CardHeader, 
   CardTitle 
 } from "@/components/ui/card";
@@ -40,7 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserType } from "@/lib/types";
+import { Page, User as UserType } from "@/lib/types";
 import {
   Sheet,
   SheetContent,
@@ -50,23 +51,33 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { userSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
-import { useSort } from "@/hooks/useSort";
-import { SortableHeader } from "@/components/shared/SortableHeader";
 import { DatePicker } from "@/components/shared/DatePicker";
+import { Pagination } from "@/components/shared/Pagination";
+import { useDebounce } from "@/hooks/use-debounce";
 import { formatBRPhone, formatCPF, formatDate, formatName } from "@/lib/formatters";
 import { toastSuccess, toastError } from "@/lib/errors";
 
-const fetchUsers = async (): Promise<UserType[]> => {
-  return await invoke<UserType[]>("get_users");
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
+
+const fetchUsersPage = (args: {
+  limit: number;
+  offset: number;
+  search: string;
+}): Promise<Page<UserType>> => {
+  return invoke<Page<UserType>>("get_users_page", args);
 };
 
 export function Users() {
+  const listRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const { sortConfig, cycleSort } = useSort();
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
@@ -76,17 +87,39 @@ export function Users() {
     joinDate: new Date().toISOString().split("T")[0],
   });
 
-  const { data: users = [], isLoading, error, refetch } = useQuery({
-    queryKey: ["users"],
-    queryFn: fetchUsers,
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["usersPage", page, pageSize, search],
+    queryFn: () =>
+      fetchUsersPage({
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        search,
+      }),
+    placeholderData: (previousData) => previousData,
   });
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    if (data && page > totalPages) setPage(totalPages);
+  }, [data, totalPages, page]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; email: string; phone?: string; cpf?: string; joinDate?: string }) => {
       return await invoke("create_user", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["usersPage"] });
       setIsSheetOpen(false);
       toastSuccess("Usuário criado com sucesso.");
     },
@@ -100,7 +133,7 @@ export function Users() {
       return await invoke("update_user", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["usersPage"] });
       setIsSheetOpen(false);
       toastSuccess("Usuário atualizado com sucesso.");
     },
@@ -114,47 +147,13 @@ export function Users() {
       return await invoke("delete_user", { id });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["usersPage"] });
       toastSuccess("Usuário excluído com sucesso.");
     },
     onError: (err) => {
       toastError(err, "Erro ao excluir usuário.");
     },
   });
-
-  const getUserSortValue = (user: UserType, column: string): string | number => {
-    switch (column) {
-      case "name": return user.name;
-      case "phone": return user.phone || "";
-      case "joinDate": return user.joinDate || "";
-      default: return "";
-    }
-  };
-
-  const filteredUsers = useMemo(() => {
-    let result = users.filter(user => 
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    if (sortConfig.direction && sortConfig.column) {
-      const dir = sortConfig.direction;
-      const col = sortConfig.column;
-      result = [...result].sort((a, b) => {
-        const valA = getUserSortValue(a, col);
-        const valB = getUserSortValue(b, col);
-        if (valA == null && valB == null) return 0;
-        if (valA == null) return 1;
-        if (valB == null) return -1;
-        if (typeof valA === "string" && typeof valB === "string") {
-          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
-        }
-        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
-      });
-    }
-
-    return result;
-  }, [users, searchTerm, sortConfig]);
 
   const handleAddUser = () => {
     setSelectedUser(null);
@@ -239,7 +238,7 @@ export function Users() {
         </Button>
       </div>
 
-      <Card>
+      <Card ref={listRef} className="scroll-mt-20">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -258,13 +257,13 @@ export function Users() {
           </div>
         </CardHeader>
         <CardContent>
-            <div className="max-h-[500px] overflow-y-auto rounded-md border" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader column="name" label="Nome" sortConfig={sortConfig} onSort={cycleSort} />
-                    <SortableHeader column="phone" label="Telefone" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
-                    <SortableHeader column="joinDate" label="Data Entrada" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell" />
+                    <TableHead>Nome</TableHead>
+                    <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                    <TableHead className="hidden md:table-cell">Data Entrada</TableHead>
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -278,8 +277,8 @@ export function Users() {
                       <TableCell><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
                     </TableRow>
                   ))
-                ) : filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => (
+                ) : data && data.items.length > 0 ? (
+                  data.items.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
                         <div className="flex flex-col gap-1">
@@ -334,6 +333,18 @@ export function Users() {
               </Table>
             </div>
           </CardContent>
+          <CardFooter className="border-t px-6 py-4">
+            <Pagination
+              className="w-full"
+              totalItems={total}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              scrollTargetRef={listRef}
+            />
+          </CardFooter>
         </Card>
 
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>

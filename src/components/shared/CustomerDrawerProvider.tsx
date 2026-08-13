@@ -1,5 +1,17 @@
-import { createContext, ReactNode, useContext, useState } from "react";
-import { CustomerHistorySheet } from "@/components/shared/CustomerHistorySheet";
+import {
+  createContext,
+  lazy,
+  ReactNode,
+  Suspense,
+  useContext,
+  useState,
+} from "react";
+
+const CustomerHistorySheet = lazy(() =>
+  import("@/components/shared/CustomerHistorySheet").then(
+    ({ CustomerHistorySheet }) => ({ default: CustomerHistorySheet }),
+  ),
+);
 
 interface CustomerDrawerContextValue {
   openCustomerHistory: (id: string) => void;
@@ -18,13 +30,17 @@ export function CustomerDrawerProvider({ children }: { children: ReactNode }) {
         openCustomerHistory: setCustomerId,
         closeCustomerHistory,
       }}
-    >
-      {children}
-      <CustomerHistorySheet
-        customerId={customerId}
-        open={customerId !== null}
-        onClose={closeCustomerHistory}
-      />
+      >
+        {children}
+      {customerId && (
+        <Suspense fallback={null}>
+          <CustomerHistorySheet
+            customerId={customerId}
+            open
+            onClose={closeCustomerHistory}
+          />
+        </Suspense>
+      )}
     </CustomerDrawerContext.Provider>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -7,15 +7,6 @@ import { toast } from "sonner";
 import { check } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { MainLayout } from "./layouts/MainLayout";
-import { Dashboard } from "./views/Dashboard";
-import { ServiceOrderCreate } from "./views/ServiceOrderCreate";
-import { Customers } from "./views/Customers";
-import { Inventory } from "./views/Inventory";
-import { ServiceOrders } from "./views/ServiceOrders";
-import { Users } from "./views/Users";
-import { Settings } from "./views/Settings";
-import { Templates } from "./views/Templates";
-import { Reports } from "./views/Reports";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
@@ -23,7 +14,47 @@ import { Button } from "./components/ui/button";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
 
+const Dashboard = lazy(() =>
+  import("./views/Dashboard").then(({ Dashboard }) => ({ default: Dashboard })),
+);
+const ServiceOrderCreate = lazy(() =>
+  import("./views/ServiceOrderCreate").then(({ ServiceOrderCreate }) => ({
+    default: ServiceOrderCreate,
+  })),
+);
+const Customers = lazy(() =>
+  import("./views/Customers").then(({ Customers }) => ({ default: Customers })),
+);
+const Inventory = lazy(() =>
+  import("./views/Inventory").then(({ Inventory }) => ({ default: Inventory })),
+);
+const ServiceOrders = lazy(() =>
+  import("./views/ServiceOrders").then(({ ServiceOrders }) => ({
+    default: ServiceOrders,
+  })),
+);
+const Users = lazy(() =>
+  import("./views/Users").then(({ Users }) => ({ default: Users })),
+);
+const Settings = lazy(() =>
+  import("./views/Settings").then(({ Settings }) => ({ default: Settings })),
+);
+const Templates = lazy(() =>
+  import("./views/Templates").then(({ Templates }) => ({ default: Templates })),
+);
+const Reports = lazy(() =>
+  import("./views/Reports").then(({ Reports }) => ({ default: Reports })),
+);
+
 type PendingPatchNotes = { version: string; body: string };
+
+function RouteLoading() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+      Carregando página...
+    </div>
+  );
+}
 
 // Create a client
 const queryClient = new QueryClient({
@@ -121,17 +152,19 @@ function App() {
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
             <MainLayout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/os" element={<ServiceOrders />} />
-                <Route path="/os/new" element={<ServiceOrderCreate />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/templates" element={<Templates />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
+              <Suspense fallback={<RouteLoading />}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/os" element={<ServiceOrders />} />
+                  <Route path="/os/new" element={<ServiceOrderCreate />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/inventory" element={<Inventory />} />
+                  <Route path="/templates" element={<Templates />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/users" element={<Users />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </Suspense>
             </MainLayout>
           </CustomerDrawerProvider>
         </ServiceOrderDrawerProvider>

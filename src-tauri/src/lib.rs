@@ -10,17 +10,21 @@ macro_rules! register_commands {
             commands::customer_commands::create_customer,
             commands::customer_commands::get_customer,
             commands::customer_commands::get_customers,
+            commands::customer_commands::get_customers_page,
             commands::customer_commands::update_customer,
             commands::customer_commands::delete_customer,
             commands::user_commands::create_user,
             commands::user_commands::get_user,
             commands::user_commands::get_user_by_email,
             commands::user_commands::get_users,
+            commands::user_commands::get_users_page,
             commands::user_commands::update_user,
             commands::user_commands::delete_user,
             commands::inventory_commands::create_inventory_item,
             commands::inventory_commands::get_inventory_item,
             commands::inventory_commands::get_inventory_items,
+            commands::inventory_commands::get_inventory_items_page,
+            commands::inventory_commands::get_inventory_summary,
             commands::inventory_commands::update_inventory_item,
             commands::inventory_commands::delete_inventory_item,
             commands::inventory_commands::restock_inventory_item,
@@ -31,6 +35,7 @@ macro_rules! register_commands {
             commands::service_order_commands::create_full_service_order,
             commands::service_order_commands::get_service_order,
             commands::service_order_commands::get_service_orders,
+            commands::service_order_commands::get_service_orders_page,
             commands::service_order_commands::get_service_orders_by_customer_id,
             commands::service_order_commands::get_service_order_events,
             commands::service_order_commands::update_service_order,
@@ -53,6 +58,7 @@ macro_rules! register_commands {
             commands::settings_commands::validate_backup_passphrase,
             commands::checklist_commands::create_checklist_template,
             commands::checklist_commands::get_checklist_templates,
+            commands::checklist_commands::get_checklist_templates_page,
             commands::checklist_commands::get_checklist_template_items,
             commands::checklist_commands::update_checklist_template,
             commands::checklist_commands::delete_checklist_template,
@@ -84,7 +90,10 @@ mod encryption;
 mod error;
 mod models;
 mod money;
+mod page;
 mod pdf_service;
+#[cfg(test)]
+mod performance_benchmarks;
 mod repositories;
 mod seeds;
 #[cfg(test)]

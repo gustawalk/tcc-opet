@@ -164,6 +164,7 @@ export function ServiceOrderEditorSheet({
   const invalidateOrder = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
       queryClient.invalidateQueries({ queryKey: ["service-order", orderId] }),
       queryClient.invalidateQueries({
         queryKey: ["service-order-parts", orderId],

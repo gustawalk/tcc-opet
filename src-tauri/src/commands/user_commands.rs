@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::models::user::User;
+use crate::page::Page;
 use crate::repositories::user_repo::UserRepository;
 use tauri::command;
 
@@ -36,6 +37,23 @@ pub fn get_user_by_email(email: String) -> Result<Option<User>, AppError> {
 #[command]
 pub fn get_users() -> Result<Vec<User>, AppError> {
     Ok(UserRepository::get_all()?)
+}
+
+const USERS_PAGE_DEFAULT_LIMIT: u32 = 200;
+
+#[command]
+pub fn get_users_page(
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+) -> Result<Page<User>, AppError> {
+    let conn = crate::database::get_db()?;
+    let limit = limit.unwrap_or(USERS_PAGE_DEFAULT_LIMIT).clamp(1, 1000);
+    let offset = offset.unwrap_or(0);
+    let search = search.unwrap_or_default();
+    let items = UserRepository::get_page_with_conn(&conn, limit, offset, &search)?;
+    let total = UserRepository::count_all_with_conn(&conn, &search)?;
+    Ok(Page { items, total })
 }
 
 #[command]

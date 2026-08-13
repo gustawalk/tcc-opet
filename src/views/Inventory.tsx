@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -18,6 +18,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
@@ -40,7 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { InventoryInsights, InventoryItem, InventoryMovement } from "@/lib/types";
+import { InventoryInsights, InventoryItem, InventoryMovement, InventorySummary, Page } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
 import {
@@ -60,9 +61,9 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { quantitySchema, parseErrors, ValidationErrors } from "@/lib/validation";
-import { useSort } from "@/hooks/useSort";
+import { Pagination } from "@/components/shared/Pagination";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Copyable } from "@/components/shared/Copyable";
-import { SortableHeader } from "@/components/shared/SortableHeader";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
 import {
@@ -74,8 +75,16 @@ import {
   sanitizeIntegerInput,
 } from "@/lib/numeric-input";
 
-const fetchInventory = async (): Promise<InventoryItem[]> => {
-  return await invoke<InventoryItem[]>("get_inventory_items");
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
+
+const fetchInventoryPage = (args: {
+  itemType: "part" | "service";
+  limit: number;
+  offset: number;
+  search: string;
+}): Promise<Page<InventoryItem>> => {
+  return invoke<Page<InventoryItem>>("get_inventory_items_page", args);
 };
 
 const fetchMovements = async (itemId: string): Promise<InventoryMovement[]> => {
@@ -87,7 +96,14 @@ const deleteInventoryItem = async (id: string) => {
 };
 
 export function Inventory() {
+  const partsListRef = useRef<HTMLDivElement>(null);
+  const servicesListRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
+  const [partsPage, setPartsPage] = useState(1);
+  const [partsPageSize, setPartsPageSize] = useState(20);
+  const [servicesPage, setServicesPage] = useState(1);
+  const [servicesPageSize, setServicesPageSize] = useState(20);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [duplicateItem, setDuplicateItem] = useState<InventoryItem | null>(null);
@@ -111,18 +127,65 @@ export function Inventory() {
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  const { data: items = [], isLoading, error, refetch } = useQuery({
-    queryKey: ["inventory"],
-    queryFn: fetchInventory,
+  const queryClient = useQueryClient();
+
+  const partsQuery = useQuery({
+    queryKey: ["inventoryItemsPage", "part", partsPage, partsPageSize, search],
+    queryFn: () =>
+      fetchInventoryPage({
+        itemType: "part",
+        limit: partsPageSize,
+        offset: (partsPage - 1) * partsPageSize,
+        search,
+      }),
+    placeholderData: (previousData) => previousData,
   });
 
-  const queryClient = useQueryClient();
-  const { sortConfig, cycleSort } = useSort();
+  const servicesQuery = useQuery({
+    queryKey: ["inventoryItemsPage", "service", servicesPage, servicesPageSize, search],
+    queryFn: () =>
+      fetchInventoryPage({
+        itemType: "service",
+        limit: servicesPageSize,
+        offset: (servicesPage - 1) * servicesPageSize,
+        search,
+      }),
+    placeholderData: (previousData) => previousData,
+  });
+
+  const partsTotal = partsQuery.data?.total ?? 0;
+  const partsTotalPages = Math.max(1, Math.ceil(partsTotal / partsPageSize));
+  const servicesTotal = servicesQuery.data?.total ?? 0;
+  const servicesTotalPages = Math.max(
+    1,
+    Math.ceil(servicesTotal / servicesPageSize),
+  );
+
+  useEffect(() => {
+    setPartsPage(1);
+    setServicesPage(1);
+  }, [search, partsPageSize, servicesPageSize]);
+
+  useEffect(() => {
+    if (partsQuery.data && partsPage > partsTotalPages) setPartsPage(partsTotalPages);
+  }, [partsQuery.data, partsTotalPages, partsPage]);
+
+  useEffect(() => {
+    if (servicesQuery.data && servicesPage > servicesTotalPages) {
+      setServicesPage(servicesTotalPages);
+    }
+  }, [servicesQuery.data, servicesTotalPages, servicesPage]);
+
+  const { data: summary, isLoading: isSummaryLoading } = useQuery({
+    queryKey: ["inventorySummary"],
+    queryFn: () => invoke<InventorySummary>("get_inventory_summary"),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: deleteInventoryItem,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] });
+      queryClient.invalidateQueries({ queryKey: ["inventorySummary"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       toastSuccess("Item excluído com sucesso.");
     },
@@ -134,7 +197,8 @@ export function Inventory() {
       return await invoke("restock_inventory_item", { id, quantity, unitCost, reason });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] });
+      queryClient.invalidateQueries({ queryKey: ["inventorySummary"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRestockItem(null);
@@ -150,7 +214,8 @@ export function Inventory() {
       return await invoke("remove_stock_inventory_item", { id, quantity });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] });
+      queryClient.invalidateQueries({ queryKey: ["inventorySummary"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-insights"] });
       setRemoveItem(null);
@@ -172,104 +237,6 @@ export function Inventory() {
         inactiveDays: integerInputToNumber(inactiveDays) ?? 0,
       }),
   });
-
-  const parts = useMemo(() => items.filter(i => i.type === "part"), [items]);
-  const services = useMemo(() => items.filter(i => i.type === "service"), [items]);
-
-  const getPartSortValue = (item: InventoryItem, column: string): string | number => {
-    switch (column) {
-      case "name": return item.name;
-      case "currentQuantity": return item.currentQuantity;
-      case "costPrice": return item.costPrice;
-      case "salePrice": return item.salePrice;
-      default: return "";
-    }
-  };
-
-  const getServiceSortValue = (item: InventoryItem, column: string): string | number => {
-    switch (column) {
-      case "name": return item.name;
-      case "costPrice": return item.costPrice;
-      case "salePrice": return item.salePrice;
-      default: return "";
-    }
-  };
-
-  const filteredParts = useMemo(() => {
-    let result = parts.filter(item =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    if (sortConfig.direction && sortConfig.column) {
-      const dir = sortConfig.direction;
-      const col = sortConfig.column;
-      result = [...result].sort((a, b) => {
-        const valA = getPartSortValue(a, col);
-        const valB = getPartSortValue(b, col);
-        if (valA == null && valB == null) return 0;
-        if (valA == null) return 1;
-        if (valB == null) return -1;
-        if (typeof valA === "string" && typeof valB === "string") {
-          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
-        }
-        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
-      });
-    } else {
-      result = [...result].sort((a, b) => {
-        const priA = a.currentQuantity === 0 ? 0
-          : a.currentQuantity <= a.minQuantity ? 1 : 2;
-        const priB = b.currentQuantity === 0 ? 0
-          : b.currentQuantity <= b.minQuantity ? 1 : 2;
-        if (priA !== priB) return priA - priB;
-
-        const tA = a.updatedAt
-          ? new Date(a.updatedAt).getTime()
-          : new Date(a.createdAt ?? 0).getTime();
-        const tB = b.updatedAt
-          ? new Date(b.updatedAt).getTime()
-          : new Date(b.createdAt ?? 0).getTime();
-        return tB - tA;
-      });
-    }
-
-    return result;
-  }, [parts, searchTerm, sortConfig]);
-
-  const filteredServices = useMemo(() => {
-    let result = services.filter(item =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    if (sortConfig.direction && sortConfig.column) {
-      const dir = sortConfig.direction;
-      const col = sortConfig.column;
-      result = [...result].sort((a, b) => {
-        const valA = getServiceSortValue(a, col);
-        const valB = getServiceSortValue(b, col);
-        if (valA == null && valB == null) return 0;
-        if (valA == null) return 1;
-        if (valB == null) return -1;
-        if (typeof valA === "string" && typeof valB === "string") {
-          return dir === "asc" ? valA.localeCompare(valB, "pt-BR") : valB.localeCompare(valA, "pt-BR");
-        }
-        return dir === "asc" ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
-      });
-    } else {
-      result = [...result].sort((a, b) => {
-        const tA = a.updatedAt
-          ? new Date(a.updatedAt).getTime()
-          : new Date(a.createdAt ?? 0).getTime();
-        const tB = b.updatedAt
-          ? new Date(b.updatedAt).getTime()
-          : new Date(b.createdAt ?? 0).getTime();
-        return tB - tA;
-      });
-    }
-
-    return result;
-  }, [services, searchTerm, sortConfig]);
 
   const handleAddItem = (type: "part" | "service" = "part") => {
     setSelectedItem(null);
@@ -324,13 +291,15 @@ export function Inventory() {
     return descriptions[classification] ?? "valor em estoque";
   };
 
-  if (error) {
+  const partsError = partsQuery.error;
+
+  if (partsError) {
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
         <AlertTriangle className="h-12 w-12 text-destructive" />
         <h3 className="text-xl font-bold">Erro ao carregar inventário</h3>
         <p className="text-muted-foreground text-center max-w-sm">Não foi possível carregar o inventário. Tente novamente.</p>
-        <Button onClick={() => refetch()}>Tentar Novamente</Button>
+        <Button onClick={() => partsQuery.refetch()}>Tentar Novamente</Button>
       </div>
     );
   }
@@ -363,7 +332,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
               <div className="text-2xl font-bold">
-                {parts.filter(i => i.currentQuantity <= i.minQuantity && i.currentQuantity > 0).length}
+                {isSummaryLoading ? "…" : summary?.lowStock ?? 0}
               </div>
               <span className="text-xs text-muted-foreground mt-1">abaixo do mínimo</span>
             </div>
@@ -377,7 +346,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <Package className="h-5 w-5 text-destructive" />
               <div className="text-2xl font-bold">
-                {parts.filter(i => i.currentQuantity === 0).length}
+                {isSummaryLoading ? "…" : summary?.outOfStock ?? 0}
               </div>
               <span className="text-xs text-muted-foreground mt-1">itens sem estoque</span>
             </div>
@@ -391,7 +360,7 @@ export function Inventory() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <div className="text-2xl font-bold">
-                {formatCurrency(parts.reduce((acc, i) => acc + ((i.averageCost || i.costPrice) * i.currentQuantity), 0))}
+                {isSummaryLoading ? "…" : formatCurrency(summary?.totalStockValue ?? 0)}
               </div>
               <span className="text-xs text-muted-foreground mt-1">custo médio</span>
             </div>
@@ -417,7 +386,7 @@ export function Inventory() {
       </Card>
 
       <div className="space-y-6">
-        <Card>
+        <Card ref={partsListRef} className="scroll-mt-20">
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -427,7 +396,7 @@ export function Inventory() {
               <div className="relative w-full md:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar peça..."
+                  placeholder="Buscar peça ou serviço..."
                   className="pl-9"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -436,19 +405,19 @@ export function Inventory() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[500px] overflow-y-auto rounded-md border" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader column="name" label="Peça / Descrição" sortConfig={sortConfig} onSort={cycleSort} />
-                    <SortableHeader column="currentQuantity" label="Estoque Atual" sortConfig={sortConfig} onSort={cycleSort} className="text-center" align="center" />
-                    <SortableHeader column="costPrice" label="Custo Médio" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
-                    <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
+                    <TableHead>Peça / Descrição</TableHead>
+                    <TableHead className="text-center">Estoque Atual</TableHead>
+                    <TableHead className="hidden md:table-cell text-right">Custo Médio</TableHead>
+                    <TableHead className="text-right">Preço de Venda</TableHead>
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
+                  {partsQuery.isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
                         <TableCell><div className="h-5 w-48 bg-muted animate-pulse rounded" /></TableCell>
@@ -458,8 +427,8 @@ export function Inventory() {
                         <TableCell><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : filteredParts.length > 0 ? (
-                    filteredParts.map((item) => (
+                  ) : partsQuery.data && partsQuery.data.items.length > 0 ? (
+                    partsQuery.data.items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="flex flex-col gap-1">
@@ -532,9 +501,21 @@ export function Inventory() {
                   </Table>
                 </div>
               </CardContent>
+              <CardFooter className="border-t px-6 py-4">
+                <Pagination
+                  className="w-full"
+                  totalItems={partsTotal}
+                  page={partsPage}
+                  pageSize={partsPageSize}
+                  onPageChange={setPartsPage}
+                  onPageSizeChange={setPartsPageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  scrollTargetRef={partsListRef}
+                />
+              </CardFooter>
             </Card>
 
-        <Card>
+        <Card ref={servicesListRef} className="scroll-mt-20">
           <CardHeader>
             <div>
               <CardTitle>Catálogo de Serviços</CardTitle>
@@ -542,18 +523,18 @@ export function Inventory() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[500px] overflow-y-auto rounded-md border" style={{ contentVisibility: 'auto' as const, containIntrinsicSize: '500px' }}>
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader column="name" label="Serviço / Mão de obra" sortConfig={sortConfig} onSort={cycleSort} />
-                    <SortableHeader column="costPrice" label="Custo Estimado" sortConfig={sortConfig} onSort={cycleSort} className="hidden md:table-cell text-right" align="right" />
-                    <SortableHeader column="salePrice" label="Preço de Venda" sortConfig={sortConfig} onSort={cycleSort} className="text-right" align="right" />
+                    <TableHead>Serviço / Mão de obra</TableHead>
+                    <TableHead className="hidden md:table-cell text-right">Custo Estimado</TableHead>
+                    <TableHead className="text-right">Preço de Venda</TableHead>
                     <TableHead className="text-right w-[100px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
+                  {servicesQuery.isLoading ? (
                     Array.from({ length: 2 }).map((_, i) => (
                       <TableRow key={i}>
                         <TableCell><div className="h-5 w-48 bg-muted animate-pulse rounded" /></TableCell>
@@ -562,8 +543,8 @@ export function Inventory() {
                         <TableCell><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : filteredServices.length > 0 ? (
-                    filteredServices.map((item) => (
+                  ) : servicesQuery.data && servicesQuery.data.items.length > 0 ? (
+                    servicesQuery.data.items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="flex flex-col gap-1">
@@ -615,6 +596,18 @@ export function Inventory() {
                   </Table>
                 </div>
               </CardContent>
+              <CardFooter className="border-t px-6 py-4">
+                <Pagination
+                  className="w-full"
+                  totalItems={servicesTotal}
+                  page={servicesPage}
+                  pageSize={servicesPageSize}
+                  onPageChange={setServicesPage}
+                  onPageSizeChange={setServicesPageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  scrollTargetRef={servicesListRef}
+                />
+              </CardFooter>
             </Card>
           </div>
 

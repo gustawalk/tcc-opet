@@ -518,8 +518,8 @@ fn seed_service_orders(conn: &rusqlite::Connection) -> Result<(), String> {
 
         // Insert service order
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, created_date, finalized_date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, date(?10, 'localtime'), CASE WHEN ?8 = 'Finalizada' THEN date(COALESCE(?12, ?10), 'localtime') END)",
             params![
                 order_id,
                 customer_id,

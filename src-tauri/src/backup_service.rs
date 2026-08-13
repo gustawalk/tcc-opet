@@ -714,6 +714,9 @@ pub fn restore_backup_with_paths(
             let _ = fs::remove_dir_all(previous_attachments);
         }
 
+        // The shared connection referenced the replaced file; force a fresh open.
+        crate::database::invalidate_shared_connection();
+
         Ok(BackupSummary {
             path: source.to_string_lossy().to_string(),
             attachment_count,

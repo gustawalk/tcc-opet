@@ -7,7 +7,7 @@ import {
   ClipboardList,
   ChartNoAxesCombined,
   Plus,
-  User
+  User,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -32,7 +32,7 @@ const menuItems = [
   { icon: ClipboardList, label: "Modelos de checklist", path: "/templates" },
   { icon: ChartNoAxesCombined, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
-  { icon: User, label: "Funcionários", path: "/users" }
+  { icon: User, label: "Funcionários", path: "/users" },
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {

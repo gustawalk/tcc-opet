@@ -167,3 +167,248 @@ fn core_commands_preserve_the_frontend_ipc_contract() {
         .unwrap()
         .contains("não podem ser negativos"));
 }
+
+#[test]
+fn paginated_list_commands_return_items_and_total() {
+    let _backend = setup_global_backend();
+    let app = register_commands!(mock_builder())
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+
+    let orders_page = get_ipc_response(
+        &webview,
+        request(
+            "get_service_orders_page",
+            json!({ "limit": 1, "offset": 0 }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(orders_page["items"].is_array());
+    assert!(orders_page["total"].is_i64());
+
+    let inventory_page = get_ipc_response(
+        &webview,
+        request(
+            "get_inventory_items_page",
+            json!({ "limit": 1, "offset": 0 }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(inventory_page["items"].is_array());
+    assert!(inventory_page["total"].is_i64());
+
+    let customer_id = get_ipc_response(
+        &webview,
+        request(
+            "create_customer",
+            json!({
+                "name": "Cliente Busca",
+                "phone": "41955557777",
+                "email": "busca@example.com",
+                "address": "Rua Busca"
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<String>()
+    .unwrap();
+
+    let part = get_ipc_response(
+        &webview,
+        request(
+            "create_inventory_item",
+            json!({
+                "name": "Peça FiltroBusca",
+                "description": "Usada para validar o LIKE no estoque",
+                "type": "part",
+                "minQuantity": 1,
+                "currentQuantity": 0,
+                "costPrice": 2000,
+                "salePrice": 7000,
+                "supplierName": "Fornecedor FiltroBusca"
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    let part_id = part["id"].as_str().unwrap().to_string();
+
+    get_ipc_response(
+        &webview,
+        request(
+            "restock_inventory_item",
+            json!({
+                "id": &part_id,
+                "quantity": 3,
+                "unitCost": 2000,
+                "reason": "Teste busca paginada"
+            }),
+        ),
+    )
+    .unwrap();
+
+    let order_id = get_ipc_response(
+        &webview,
+        request(
+            "create_full_service_order",
+            json!({
+                "request": {
+                    "customerAction": { "type": "existing", "id": customer_id, "update": null },
+                    "userId": null,
+                    "equipment": "Equipamento FiltroBusca",
+                    "imei": null,
+                    "description": "OS de busca paginada",
+                    "parts": [{ "inventoryItemId": &part_id, "quantity": 1 }],
+                    "checklistItems": [],
+                    "attachmentToken": null
+                }
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<String>()
+    .unwrap();
+    assert!(!order_id.is_empty());
+
+    let searched_orders = get_ipc_response(
+        &webview,
+        request(
+            "get_service_orders_page",
+            json!({ "limit": 10, "offset": 0, "search": "FiltroBusca" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(searched_orders["total"].as_i64().unwrap() >= 1);
+    for item in searched_orders["items"].as_array().unwrap() {
+        let haystack = format!(
+            "{} {} {} {}",
+            item["customerName"].as_str().unwrap_or(""),
+            item["equipment"].as_str().unwrap_or(""),
+            item["description"].as_str().unwrap_or(""),
+            item["displayId"].as_str().unwrap_or(""),
+        );
+        assert!(haystack.to_lowercase().contains("filtrobusca"));
+    }
+
+    let searched_items = get_ipc_response(
+        &webview,
+        request(
+            "get_inventory_items_page",
+            json!({ "limit": 10, "offset": 0, "search": "FiltroBusca" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(searched_items["total"].as_i64().unwrap() >= 1);
+    for item in searched_items["items"].as_array().unwrap() {
+        let haystack = format!(
+            "{} {} {}",
+            item["name"].as_str().unwrap_or(""),
+            item["description"].as_str().unwrap_or(""),
+            item["supplierName"].as_str().unwrap_or(""),
+        );
+        assert!(haystack.to_lowercase().contains("filtrobusca"));
+    }
+
+    let no_match = get_ipc_response(
+        &webview,
+        request(
+            "get_inventory_items_page",
+            json!({ "limit": 10, "offset": 0, "search": "zzzz-inexistente" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(no_match["total"], 0);
+    assert!(no_match["items"].as_array().unwrap().is_empty());
+
+    let customers_page = get_ipc_response(
+        &webview,
+        request(
+            "get_customers_page",
+            json!({ "limit": 10, "offset": 0, "search": "Cliente" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(customers_page["total"].as_i64().unwrap() >= 1);
+    assert!(customers_page["items"].is_array());
+
+    let users_page = get_ipc_response(
+        &webview,
+        request("get_users_page", json!({ "limit": 10, "offset": 0 })),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(users_page["total"].is_i64());
+    assert!(users_page["items"].is_array());
+
+    get_ipc_response(
+        &webview,
+        request(
+            "create_checklist_template",
+            json!({ "title": "Template FiltroBusca", "items": ["Tela"] }),
+        ),
+    )
+    .unwrap();
+
+    let templates_page = get_ipc_response(
+        &webview,
+        request(
+            "get_checklist_templates_page",
+            json!({ "limit": 10, "offset": 0, "search": "FiltroBusca" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(templates_page["total"].as_i64().unwrap() >= 1);
+
+    let parts_only = get_ipc_response(
+        &webview,
+        request(
+            "get_inventory_items_page",
+            json!({ "limit": 10, "offset": 0, "itemType": "part" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    for item in parts_only["items"].as_array().unwrap() {
+        assert_eq!(item["type"], "part");
+    }
+
+    let cancelled_orders = get_ipc_response(
+        &webview,
+        request(
+            "get_service_orders_page",
+            json!({ "limit": 10, "offset": 0, "status": "Cancelada" }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(cancelled_orders["total"], 0);
+
+    let summary = get_ipc_response(&webview, request("get_inventory_summary", json!({})))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert!(summary["lowStock"].is_i64());
+    assert!(summary["outOfStock"].is_i64());
+    assert!(summary["totalStockValue"].is_i64());
+}

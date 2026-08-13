@@ -253,8 +253,8 @@ pub(crate) fn sum_discounted_revenue(
         "SELECT total_price_cents, discount_basis_points
          FROM service_orders
          WHERE status = 'Finalizada' AND deleted_at IS NULL
-           AND (?1 IS NULL OR date(COALESCE(closed_at, created_at), 'localtime') >= date(?1))
-           AND (?2 IS NULL OR date(COALESCE(closed_at, created_at), 'localtime') <= date(?2))
+           AND (?1 IS NULL OR finalized_date >= date(?1))
+           AND (?2 IS NULL OR finalized_date <= date(?2))
            AND (?3 IS NULL OR user_id = ?3)",
     )?;
     let rows = stmt.query_map(rusqlite::params![start, end, technician_id], |row| {

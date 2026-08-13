@@ -318,7 +318,9 @@ export function ServiceOrderCreate() {
       if (pendingAttachments) setPendingAttachments(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["customers-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["service-order"] }),
         queryClient.invalidateQueries({
           queryKey: ["service-order-attachments"],

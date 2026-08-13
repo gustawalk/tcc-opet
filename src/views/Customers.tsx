@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -20,6 +20,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -53,7 +54,7 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { Customer } from "@/lib/types";
+import { Customer, Page } from "@/lib/types";
 import { formatBRPhone } from "@/lib/formatters";
 import {
   customerSchema,
@@ -61,12 +62,19 @@ import {
   clearFieldError,
   ValidationErrors,
 } from "@/lib/validation";
-import { useSort } from "@/hooks/useSort";
-import { SortableHeader } from "@/components/shared/SortableHeader";
+import { Pagination } from "@/components/shared/Pagination";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 
-const fetchCustomers = async (): Promise<Customer[]> => {
-  return await invoke<Customer[]>("get_customers");
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
+
+const fetchCustomersPage = (args: {
+  limit: number;
+  offset: number;
+  search: string;
+}): Promise<Page<Customer>> => {
+  return invoke<Page<Customer>>("get_customers_page", args);
 };
 
 const initialFormData = {
@@ -78,7 +86,11 @@ const initialFormData = {
 
 export function Customers() {
   const { openCustomerHistory } = useCustomerDrawer();
+  const listRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isInternational, setIsInternational] = useState(false);
@@ -88,19 +100,40 @@ export function Customers() {
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const { sortConfig, cycleSort } = useSort();
+
+  const queryClient = useQueryClient();
 
   const {
-    data: customers = [],
+    data,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["customers"],
-    queryFn: fetchCustomers,
+    queryKey: ["customersPage", page, pageSize, search],
+    queryFn: () =>
+      fetchCustomersPage({
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        search,
+      }),
+    placeholderData: (previousData) => previousData,
   });
 
-  const queryClient = useQueryClient();
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    if (data && page > totalPages) setPage(totalPages);
+  }, [data, totalPages, page]);
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+  };
 
   const createCustomerMutation = useMutation({
     mutationFn: async (data: {
@@ -112,7 +145,7 @@ export function Customers() {
       return await invoke("create_customer", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customersPage"] });
       setIsSheetOpen(false);
       setFormData(initialFormData);
       toastSuccess("Cliente criado com sucesso.");
@@ -131,7 +164,7 @@ export function Customers() {
       return await invoke("update_customer", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customersPage"] });
       setIsSheetOpen(false);
       setFormData(initialFormData);
       toastSuccess("Cliente atualizado com sucesso.");
@@ -144,62 +177,11 @@ export function Customers() {
       return await invoke("delete_customer", { id });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customersPage"] });
       toastSuccess("Cliente excluído com sucesso.");
     },
     onError: (err) => toastError(err, "Erro ao excluir cliente."),
   });
-
-  const getCustomerSortValue = (
-    customer: Customer,
-    column: string,
-  ): string | number => {
-    switch (column) {
-      case "name":
-        return customer.name;
-      case "phone":
-        return customer.phone;
-      case "email":
-        return customer.email;
-      case "address":
-        return customer.address;
-      case "createdAt":
-        return customer.createdAt || "";
-      default:
-        return "";
-    }
-  };
-
-  const filteredCustomers = useMemo(() => {
-    let result = customers.filter(
-      (customer) =>
-        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone.includes(searchTerm),
-    );
-
-    if (sortConfig.direction && sortConfig.column) {
-      const dir = sortConfig.direction;
-      const col = sortConfig.column;
-      result = [...result].sort((a, b) => {
-        const valA = getCustomerSortValue(a, col);
-        const valB = getCustomerSortValue(b, col);
-        if (valA == null && valB == null) return 0;
-        if (valA == null) return 1;
-        if (valB == null) return -1;
-        if (typeof valA === "string" && typeof valB === "string") {
-          return dir === "asc"
-            ? valA.localeCompare(valB, "pt-BR")
-            : valB.localeCompare(valA, "pt-BR");
-        }
-        return dir === "asc"
-          ? (valA as number) - (valB as number)
-          : (valB as number) - (valA as number);
-      });
-    }
-
-    return result;
-  }, [customers, searchTerm, sortConfig]);
 
   const handleAddCustomer = () => {
     setIsEditing(false);
@@ -307,7 +289,7 @@ export function Customers() {
         </Button>
       </div>
 
-      <Card>
+      <Card ref={listRef} className="scroll-mt-20">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -328,43 +310,20 @@ export function Customers() {
           </div>
         </CardHeader>
         <CardContent>
-          <div
-            className="max-h-[500px] overflow-y-auto rounded-md border"
-            style={{
-              contentVisibility: "auto" as const,
-              containIntrinsicSize: "500px",
-            }}
-          >
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHeader
-                    column="name"
-                    label="Cliente"
-                    sortConfig={sortConfig}
-                    onSort={cycleSort}
-                  />
-                  <SortableHeader
-                    column="phone"
-                    label="Contato"
-                    sortConfig={sortConfig}
-                    onSort={cycleSort}
-                    className="hidden md:table-cell"
-                  />
-                  <SortableHeader
-                    column="address"
-                    label="Endereço"
-                    sortConfig={sortConfig}
-                    onSort={cycleSort}
-                    className="hidden lg:table-cell"
-                  />
-                  <SortableHeader
-                    column="createdAt"
-                    label="Cadastrado em"
-                    sortConfig={sortConfig}
-                    onSort={cycleSort}
-                    className="hidden md:table-cell"
-                  />
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Contato
+                  </TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    Endereço
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Cadastrado em
+                  </TableHead>
                   <TableHead className="text-right w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -389,8 +348,8 @@ export function Customers() {
                       </TableCell>
                     </TableRow>
                   ))
-                ) : filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => (
+                ) : data && data.items.length > 0 ? (
+                  data.items.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">
                         <div className="flex flex-col">
@@ -474,6 +433,18 @@ export function Customers() {
             </Table>
           </div>
         </CardContent>
+        <CardFooter className="border-t px-6 py-4">
+          <Pagination
+            className="w-full"
+            totalItems={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            scrollTargetRef={listRef}
+          />
+        </CardFooter>
       </Card>
 
       {/* Sheet para Adicionar/Editar Cliente */}

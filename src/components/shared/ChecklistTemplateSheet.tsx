@@ -84,6 +84,7 @@ export function ChecklistTemplateSheet({
       if (template) {
         await invoke("update_checklist_template", { id: template.id, title, items });
         await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
+        await queryClient.invalidateQueries({ queryKey: ["checklist-templates-page"] });
         toastSuccess("Template atualizado com sucesso.");
       } else {
         const id = await invoke<string>("create_checklist_template", { title, items });
@@ -95,6 +96,7 @@ export function ChecklistTemplateSheet({
             ...templates.filter((entry) => entry.id !== created.id),
           ],
         );
+        await queryClient.invalidateQueries({ queryKey: ["checklist-templates-page"] });
         onCreated?.(created);
         toastSuccess("Modelo de checklist criado com sucesso.");
       }

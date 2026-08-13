@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tauri::Manager;
 use uuid::Uuid;
 
@@ -16,11 +16,17 @@ use uuid::Uuid;
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
 static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
+
+// Single shared SQLCipher connection, reused across requests. Reopening the
+// connection on every call was the dominant fixed cost (~2.5ms/request: key
+// derivation, page cache warmup). Invalidated after a restore replaces the file.
+static DB_CONNECTION: LazyLock<Mutex<Option<Connection>>> = LazyLock::new(|| Mutex::new(None));
+
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
 
 pub struct DatabaseConnection {
-    connection: Connection,
+    connection: MutexGuard<'static, Option<Connection>>,
     _guard: RwLockReadGuard<'static, ()>,
 }
 
@@ -28,13 +34,25 @@ impl Deref for DatabaseConnection {
     type Target = Connection;
 
     fn deref(&self) -> &Self::Target {
-        &self.connection
+        self.connection
+            .as_ref()
+            .expect("database connection must be initialized")
     }
 }
 
 impl DerefMut for DatabaseConnection {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
+        self.connection
+            .as_mut()
+            .expect("database connection must be initialized")
+    }
+}
+
+/// Replaces the shared connection with a fresh one. Called after a restore
+/// swaps the database file (fs::rename), where the old inode would be stale.
+pub(crate) fn invalidate_shared_connection() {
+    if let Ok(mut connection) = DB_CONNECTION.lock() {
+        *connection = None;
     }
 }
 
@@ -628,6 +646,30 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
         }
     }
 
+    // Performance: denormalized local-date columns so the financial/dashboard date
+    // filters are sargable. The old filters wrapped the column in
+    // date(COALESCE(closed_at, created_at), 'localtime'), which blocks index use and
+    // forces full table scans on every aggregation query. Values are maintained on
+    // write (create/transition/seeds); this migration backfills existing rows.
+    add_column_if_missing(conn, "service_orders", "created_date", "TEXT")?;
+    add_column_if_missing(conn, "service_orders", "finalized_date", "TEXT")?;
+    conn.execute(
+        "UPDATE service_orders
+         SET created_date = COALESCE(created_date, date(created_at, 'localtime')),
+             finalized_date = CASE
+                 WHEN status = 'Finalizada' THEN COALESCE(finalized_date, date(COALESCE(closed_at, created_at), 'localtime'))
+             END",
+        [],
+    )?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_service_orders_finalized
+             ON service_orders(status, deleted_at, finalized_date);
+         CREATE INDEX IF NOT EXISTS idx_service_orders_created
+             ON service_orders(deleted_at, created_date);
+         CREATE INDEX IF NOT EXISTS idx_service_order_parts_order
+             ON service_order_parts(service_order_id);",
+    )?;
+
     migrate_integer_money(conn)?;
     Ok(())
 }
@@ -789,7 +831,12 @@ pub fn get_db() -> Result<DatabaseConnection> {
     let guard = STORAGE_OPERATION_LOCK
         .read()
         .map_err(|_| database_error("Storage operation lock is unavailable."))?;
-    let connection = open_encrypted_database(&database_path())?;
+    let mut connection = DB_CONNECTION
+        .lock()
+        .map_err(|_| database_error("Database connection lock is unavailable."))?;
+    if connection.is_none() {
+        *connection = Some(open_encrypted_database(&database_path())?);
+    }
     Ok(DatabaseConnection {
         connection,
         _guard: guard,

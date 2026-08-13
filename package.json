@@ -1,7 +1,7 @@
 {
   "name": "tcc-opet",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,7 +35,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
-    "pdfjs-dist": "^6.1.200",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-is": "^19.2.8",

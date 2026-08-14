@@ -56,6 +56,8 @@ macro_rules! register_commands {
             commands::settings_commands::restore_backup,
             commands::settings_commands::inspect_backup,
             commands::settings_commands::validate_backup_passphrase,
+            commands::settings_commands::get_automatic_backup_status,
+            commands::settings_commands::update_automatic_backup_settings,
             commands::checklist_commands::create_checklist_template,
             commands::checklist_commands::get_checklist_templates,
             commands::checklist_commands::get_checklist_templates_page,
@@ -81,6 +83,7 @@ macro_rules! register_commands {
 }
 
 mod attachment_service;
+mod automatic_backup;
 #[cfg(test)]
 mod backend_e2e_tests;
 mod backup_service;
@@ -116,6 +119,8 @@ pub fn run() {
             .plugin(tauri_plugin_process::init())
             .plugin(tauri_plugin_updater::Builder::new().build()),
         commands::settings_commands::select_company_logo,
+        commands::settings_commands::select_automatic_backup_directory,
+        commands::settings_commands::run_automatic_backup_now,
         commands::attachment_commands::select_service_order_attachments,
         commands::attachment_commands::select_pending_service_order_attachments,
         commands::pdf_commands::save_pdf_preview,
@@ -124,6 +129,7 @@ pub fn run() {
         let _ = dotenv();
         // Startup must fail visibly when the local data store cannot initialize.
         database::init_db(app)?;
+        automatic_backup::start_scheduler(app.handle().clone())?;
         Ok(())
     })
     .run(tauri::generate_context!())

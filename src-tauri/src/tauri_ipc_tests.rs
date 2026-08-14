@@ -149,6 +149,34 @@ fn core_commands_preserve_the_frontend_ipc_contract() {
     assert_eq!(top_item["displayLabel"], "Peça IPC");
     assert!(top_item["key"].as_str().unwrap().contains(&part_id));
 
+    let automatic_backup =
+        get_ipc_response(&webview, request("get_automatic_backup_status", json!({})))
+            .unwrap()
+            .deserialize::<Value>()
+            .unwrap();
+    assert!(automatic_backup["enabled"].is_boolean());
+    assert!(automatic_backup["intervalHours"].is_u64());
+    assert!(automatic_backup["running"].is_boolean());
+
+    let updated_automatic_backup = get_ipc_response(
+        &webview,
+        request(
+            "update_automatic_backup_settings",
+            json!({
+                "settings": {
+                    "enabled": false,
+                    "destination": null,
+                    "intervalHours": 48
+                }
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(updated_automatic_backup["enabled"], false);
+    assert_eq!(updated_automatic_backup["intervalHours"], 48);
+
     let error = get_ipc_response(
         &webview,
         request(

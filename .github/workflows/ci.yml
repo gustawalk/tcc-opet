@@ -104,4 +104,4 @@ jobs:
 
       - name: Test backup restore with Windows file locking
         working-directory: src-tauri
-        run: cargo test encrypted_backup_round_trip_restores_commands_and_attachments -- --test-threads=1
+        run: cargo test encrypted_backup_round_trip_restores_commands_and_attachments -- --test-threads=1 --nocapture

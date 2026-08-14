@@ -12,6 +12,22 @@ fn main() {
     }
     println!("cargo:rustc-env=OPETS_DATA_KEY_V1={key}");
 
-    // Run the Tauri build
-    tauri_build::build();
+    let mut attributes = tauri_build::Attributes::new();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+        embed_windows_manifest();
+    }
+
+    tauri_build::try_build(attributes).expect("failed to run Tauri build script");
+}
+
+fn embed_windows_manifest() {
+    let manifest = std::env::current_dir()
+        .expect("failed to resolve the crate directory")
+        .join("windows-app-manifest.xml");
+
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
 }

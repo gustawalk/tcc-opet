@@ -337,6 +337,8 @@ pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
 pub(crate) fn secure_private_file(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 

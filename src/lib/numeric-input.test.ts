@@ -7,6 +7,7 @@ import {
   integerInputToNumber,
   normalizeCurrencyInput,
   normalizeIntegerInput,
+  sanitizeBoundedIntegerInput,
   sanitizeDecimalInput,
   sanitizeIntegerInput,
 } from "@/lib/numeric-input";
@@ -17,6 +18,14 @@ describe("numeric input helpers", () => {
     expect(integerInputToNumber("123")).toBe(123);
     expect(integerInputToNumber("")).toBeUndefined();
     expect(normalizeIntegerInput("")).toBe("0");
+  });
+
+  it("limits integer input to the available maximum", () => {
+    expect(sanitizeBoundedIntegerInput("12 itens", 10)).toBe("10");
+    expect(sanitizeBoundedIntegerInput("7", 10)).toBe("7");
+    expect(sanitizeBoundedIntegerInput("", 10)).toBe("");
+    expect(sanitizeBoundedIntegerInput("90071992547409999", 10)).toBe("10");
+    expect(sanitizeBoundedIntegerInput("12 itens")).toBe("12");
   });
 
   it("formats and parses Brazilian currency values", () => {

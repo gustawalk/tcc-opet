@@ -53,6 +53,7 @@ import { toastError, toastSuccess } from "@/lib/errors";
 import { formatCurrency } from "@/lib/formatters";
 import type {
   FinancialBreakdown,
+  FinancialItemBreakdown,
   FinancialReport,
   PdfPreview,
   User as AppUser,
@@ -95,14 +96,18 @@ function reportFilters(
 
 const fetchUsers = () => invoke<AppUser[]>("get_users");
 
-function BreakdownTable({
+function BreakdownTable<T extends FinancialBreakdown>({
   items,
   label,
   countLabel,
+  getKey,
+  getLabel,
 }: {
-  items: FinancialBreakdown[];
+  items: T[];
   label: string;
   countLabel: string;
+  getKey?: (item: T) => string;
+  getLabel?: (item: T) => string;
 }) {
   if (!items.length)
     return (
@@ -124,8 +129,10 @@ function BreakdownTable({
       </TableHeader>
       <TableBody>
         {items.map((item) => (
-          <TableRow key={item.label}>
-            <TableCell className="font-medium">{item.label}</TableCell>
+          <TableRow key={getKey?.(item) ?? item.label}>
+            <TableCell className="font-medium">
+              {getLabel?.(item) ?? item.label}
+            </TableCell>
             <TableCell className="text-right">
               {formatCurrency(item.revenue)}
             </TableCell>
@@ -261,7 +268,7 @@ function TopItemsChart({
   items,
   metric,
 }: {
-  items: FinancialBreakdown[];
+  items: FinancialItemBreakdown[];
   metric: RankingMetric;
 }) {
   const isQuantity = metric === "quantity";
@@ -270,7 +277,7 @@ function TopItemsChart({
       <BarChart data={items} layout="vertical" margin={{ top: 16, right: 32, left: 8, bottom: 18 }}>
         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
         <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={isQuantity ? formatChartQuantity : formatChartCurrency} tick={{ fontSize: 11 }} />
-        <YAxis type="category" dataKey="label" width={128} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+        <YAxis type="category" dataKey="displayLabel" width={128} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
         <Tooltip formatter={isQuantity ? formatChartQuantity : formatChartCurrency} />
         <Bar dataKey={isQuantity ? "count" : "revenue"} name={isQuantity ? "Quantidade" : "Faturamento"} fill="#d97706" radius={[0, 4, 4, 0]} />
       </BarChart>
@@ -724,6 +731,8 @@ export function Reports() {
                       items={report.topItems}
                       label="Item / Serviço"
                       countLabel="Quantidade"
+                      getKey={(item) => item.key}
+                      getLabel={(item) => item.displayLabel}
                     />
                   </CardContent>
                 </Card>

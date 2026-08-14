@@ -368,7 +368,9 @@ fn build_financial_report_html(
             .iter()
             .map(|item| {
                 serde_json::json!({
-                    "label": item.label,
+                    "display_label": item.display_label,
+                    "inventory_item_id": item.inventory_item_id,
+                    "item_type": item.item_type,
                     "revenue": format_brl(item.revenue),
                     "cost": format_brl(item.cost),
                     "profit": format_brl(item.profit),
@@ -497,7 +499,7 @@ mod tests {
     use crate::models::service_order::ServiceOrder;
     use crate::repositories::customer_repo::CustomerRepository;
     use crate::repositories::financial_report_repo::{
-        FinancialBreakdown, FinancialMonth, FinancialReport,
+        FinancialBreakdown, FinancialItemBreakdown, FinancialMonth, FinancialReport,
     };
     use crate::repositories::inventory_repo::InventoryRepository;
     use crate::test_helpers::setup_db;
@@ -583,6 +585,17 @@ mod tests {
             profit: 83_450,
             count: 3,
         };
+        let item_breakdown = FinancialItemBreakdown {
+            key: "item-1|part|Tela".to_string(),
+            inventory_item_id: "item-1".to_string(),
+            label: "Tela".to_string(),
+            item_type: "part".to_string(),
+            display_label: "Tela (Peça · item-1)".to_string(),
+            revenue: 123_450,
+            cost: 40_000,
+            profit: 83_450,
+            count: 3,
+        };
         let report = FinancialReport {
             start_date: "2026-01-01".to_string(),
             end_date: "2026-01-31".to_string(),
@@ -603,7 +616,7 @@ mod tests {
             ranking_limit: 5,
             by_technician: vec![breakdown.clone()],
             by_item_type: vec![breakdown.clone()],
-            top_items: vec![breakdown],
+            top_items: vec![item_breakdown],
             by_month: vec![FinancialMonth {
                 month: "2026-01".to_string(),
                 revenue: 123_450,
@@ -618,5 +631,6 @@ mod tests {
         assert!(html.contains("R$ 1.234,50"));
         assert!(html.contains("Lucro bruto estimado"));
         assert!(html.contains("Quantidade vendida"));
+        assert!(html.contains("Tela (Peça · item-1)"));
     }
 }

@@ -465,6 +465,21 @@ fn exclusive_storage_operation_waits_for_active_database_connections() {
 }
 
 #[test]
+fn exclusive_storage_operation_can_close_and_reopen_the_shared_connection() {
+    let backend = setup_global_backend();
+    assert!(crate::database::shared_connection_is_open());
+
+    let guard = crate::database::exclusive_storage_guard().unwrap();
+    crate::database::close_shared_connection(backend.database_path(), &guard).unwrap();
+    assert!(!crate::database::shared_connection_is_open());
+    drop(guard);
+
+    let connection = crate::database::get_db().unwrap();
+    drop(connection);
+    assert!(crate::database::shared_connection_is_open());
+}
+
+#[test]
 fn attachment_delete_failure_preserves_metadata_and_storage_entry() {
     let backend = setup_global_backend();
     let attachment_path = backend.temp_file(
@@ -609,6 +624,7 @@ fn encrypted_backup_round_trip_restores_commands_and_attachments() {
         Some("senha-e2e".to_string()),
     )
     .unwrap();
+    assert!(!crate::database::shared_connection_is_open());
     assert!(service_order_commands::get_service_order(order_id)
         .unwrap()
         .is_some());
@@ -648,12 +664,14 @@ fn invalid_backup_passphrase_does_not_replace_current_data() {
         "Rua Atual".to_string(),
     )
     .unwrap();
+    assert!(crate::database::shared_connection_is_open());
 
     assert!(settings_commands::restore_backup(
         backup_path.to_string_lossy().into_owned(),
         Some("senha-incorreta".to_string()),
     )
     .is_err());
+    assert!(crate::database::shared_connection_is_open());
     assert!(customer_commands::get_customer(current_customer_id)
         .unwrap()
         .is_some());
@@ -670,10 +688,12 @@ fn corrupted_backup_does_not_replace_current_data() {
     )
     .unwrap();
     let corrupted = backend.temp_file("corrupted-backup", "osbkp", b"not a backup");
+    assert!(crate::database::shared_connection_is_open());
 
     assert!(
         settings_commands::restore_backup(corrupted.to_string_lossy().into_owned(), None,).is_err()
     );
+    assert!(crate::database::shared_connection_is_open());
     assert!(customer_commands::get_customer(customer_id)
         .unwrap()
         .is_some());

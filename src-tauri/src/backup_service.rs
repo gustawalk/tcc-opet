@@ -568,6 +568,7 @@ pub fn restore_backup_with_paths(
     source: &Path,
     database_path: &Path,
     attachments_path: &Path,
+    storage_guard: &crate::database::ExclusiveStorageGuard,
 ) -> Result<BackupSummary, AppError> {
     let parent = database_path.parent().ok_or_else(|| {
         AppError::new(
@@ -665,6 +666,11 @@ pub fn restore_backup_with_paths(
         )?;
         drop(encrypted_connection);
 
+        // Windows does not allow replacing an open SQLite file. The exclusive
+        // storage guard guarantees that no command is still borrowing this pool.
+        crate::database::close_shared_connection(database_path, storage_guard)
+            .map_err(backup_error)?;
+
         let previous_database = parent.join(format!(".opet-previous-{}.db", Uuid::new_v4()));
         let previous_attachments =
             parent.join(format!(".opet-previous-attachments-{}", Uuid::new_v4()));
@@ -714,9 +720,6 @@ pub fn restore_backup_with_paths(
             let _ = fs::remove_dir_all(previous_attachments);
         }
 
-        // The shared connection referenced the replaced file; force a fresh open.
-        crate::database::invalidate_shared_connection();
-
         Ok(BackupSummary {
             path: source.to_string_lossy().to_string(),
             attachment_count,
@@ -732,6 +735,7 @@ pub fn restore_backup_with_passphrase(
     database_path: &Path,
     attachments_path: &Path,
     passphrase: Option<&str>,
+    storage_guard: &crate::database::ExclusiveStorageGuard,
 ) -> Result<BackupSummary, AppError> {
     let source_metadata = fs::symlink_metadata(source).map_err(backup_error)?;
     if !source_metadata.file_type().is_file() || source_metadata.len() > MAX_BACKUP_FILE_SIZE_BYTES
@@ -742,7 +746,7 @@ pub fn restore_backup_with_passphrase(
     }
     let bytes = fs::read(source).map_err(backup_error)?;
     let Some(archive) = decrypt_backup_archive(&bytes, passphrase)? else {
-        return restore_backup_with_paths(source, database_path, attachments_path);
+        return restore_backup_with_paths(source, database_path, attachments_path, storage_guard);
     };
     let parent = database_path
         .parent()
@@ -751,7 +755,12 @@ pub fn restore_backup_with_passphrase(
     let result = (|| -> Result<BackupSummary, AppError> {
         fs::write(&temporary_archive, archive).map_err(backup_error)?;
         crate::database::secure_private_file(&temporary_archive).map_err(backup_error)?;
-        restore_backup_with_paths(&temporary_archive, database_path, attachments_path)
+        restore_backup_with_paths(
+            &temporary_archive,
+            database_path,
+            attachments_path,
+            storage_guard,
+        )
     })();
     let _ = fs::remove_file(temporary_archive);
     result
@@ -792,9 +801,14 @@ mod tests {
         fs::create_dir_all(&restore_dir).unwrap();
         let restore_database = restore_dir.join("database.db");
         let restore_attachments = restore_dir.join("database.attachments");
-        let restored =
-            restore_backup_with_paths(&archive_path, &restore_database, &restore_attachments)
-                .unwrap();
+        let guard = crate::database::exclusive_storage_guard().unwrap();
+        let restored = restore_backup_with_paths(
+            &archive_path,
+            &restore_database,
+            &restore_attachments,
+            &guard,
+        )
+        .unwrap();
         assert_eq!(restored.attachment_count, 1);
         assert!(!restore_attachments.join("photo.jpg").exists());
 
@@ -827,10 +841,12 @@ mod tests {
         archive.write_all(b"not-a-database").unwrap();
         archive.finish().unwrap();
 
+        let guard = crate::database::exclusive_storage_guard().unwrap();
         let error = restore_backup_with_paths(
             &archive_path,
             &temp_dir.join("database.db"),
             &temp_dir.join("database.attachments"),
+            &guard,
         )
         .unwrap_err();
 
@@ -917,7 +933,14 @@ mod tests {
 
         let restore_database = temp_dir.join("database.db");
         let restore_attachments = temp_dir.join("database.attachments");
-        restore_backup_with_paths(&archive_path, &restore_database, &restore_attachments).unwrap();
+        let guard = crate::database::exclusive_storage_guard().unwrap();
+        restore_backup_with_paths(
+            &archive_path,
+            &restore_database,
+            &restore_attachments,
+            &guard,
+        )
+        .unwrap();
 
         assert!(restore_database.exists());
         let _ = fs::remove_dir_all(temp_dir);
@@ -938,10 +961,12 @@ mod tests {
         }
         archive.finish().unwrap();
 
+        let guard = crate::database::exclusive_storage_guard().unwrap();
         let error = restore_backup_with_paths(
             &archive_path,
             &temp_dir.join("database.db"),
             &temp_dir.join("database.attachments"),
+            &guard,
         )
         .unwrap_err();
 

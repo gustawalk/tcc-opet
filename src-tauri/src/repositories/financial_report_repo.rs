@@ -17,6 +17,20 @@ pub struct FinancialBreakdown {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FinancialItemBreakdown {
+    pub key: String,
+    pub inventory_item_id: String,
+    pub label: String,
+    pub item_type: String,
+    pub display_label: String,
+    pub revenue: i64,
+    pub cost: i64,
+    pub profit: i64,
+    pub count: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FinancialMonth {
     pub month: String,
     pub revenue: i64,
@@ -46,7 +60,7 @@ pub struct FinancialReport {
     pub ranking_limit: i32,
     pub by_technician: Vec<FinancialBreakdown>,
     pub by_item_type: Vec<FinancialBreakdown>,
-    pub top_items: Vec<FinancialBreakdown>,
+    pub top_items: Vec<FinancialItemBreakdown>,
     pub by_month: Vec<FinancialMonth>,
 }
 
@@ -238,6 +252,7 @@ impl FinancialReportRepository {
 struct ReportLine {
     id: String,
     order_id: String,
+    inventory_item_id: String,
     name: String,
     item_type: String,
     quantity: i64,
@@ -262,9 +277,9 @@ fn query_allocated_line_breakdowns(
     technician_id: Option<&str>,
     ranking_metric: &str,
     ranking_limit: i32,
-) -> Result<(Vec<FinancialBreakdown>, Vec<FinancialBreakdown>)> {
+) -> Result<(Vec<FinancialBreakdown>, Vec<FinancialItemBreakdown>)> {
     let mut stmt = conn.prepare(
-        "SELECT sop.id, so.id, sop.inventory_item_name, sop.item_type, sop.quantity,
+        "SELECT sop.id, so.id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, sop.quantity,
                 sop.quantity * sop.unit_price_cents, sop.quantity * sop.unit_cost_cents,
                 so.total_price_cents, so.discount_basis_points
          FROM service_order_parts sop
@@ -279,19 +294,20 @@ fn query_allocated_line_breakdowns(
             Ok(ReportLine {
                 id: row.get(0)?,
                 order_id: row.get(1)?,
-                name: row.get(2)?,
-                item_type: row.get(3)?,
-                quantity: row.get(4)?,
-                gross: row.get(5)?,
-                cost: row.get(6)?,
-                order_gross: row.get(7)?,
-                discount_basis_points: row.get(8)?,
+                inventory_item_id: row.get(2)?,
+                name: row.get(3)?,
+                item_type: row.get(4)?,
+                quantity: row.get(5)?,
+                gross: row.get(6)?,
+                cost: row.get(7)?,
+                order_gross: row.get(8)?,
+                discount_basis_points: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut by_type: BTreeMap<String, LineAggregate> = BTreeMap::new();
-    let mut by_name: BTreeMap<String, LineAggregate> = BTreeMap::new();
+    let mut by_item: BTreeMap<(String, String, String), LineAggregate> = BTreeMap::new();
     let mut start_index = 0;
     while start_index < lines.len() {
         let order_id = &lines[start_index].order_id;
@@ -360,7 +376,17 @@ fn query_allocated_line_breakdowns(
                 line,
                 revenue,
             )?;
-            add_line_aggregate(by_name.entry(line.name.clone()).or_default(), line, revenue)?;
+            add_line_aggregate(
+                by_item
+                    .entry((
+                        line.inventory_item_id.clone(),
+                        line.name.clone(),
+                        line.item_type.clone(),
+                    ))
+                    .or_default(),
+                line,
+                revenue,
+            )?;
         }
         start_index = end_index;
     }
@@ -376,9 +402,21 @@ fn query_allocated_line_breakdowns(
             .then_with(|| left.label.cmp(&right.label))
     });
 
-    let mut top_items = by_name
+    let mut name_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, label, _) in by_item.keys() {
+        *name_counts.entry(label.clone()).or_default() += 1;
+    }
+    let mut top_items = by_item
         .into_iter()
-        .map(|(label, aggregate)| breakdown_from_aggregate(label, aggregate, false))
+        .map(|((inventory_item_id, label, item_type), aggregate)| {
+            item_breakdown_from_aggregate(
+                inventory_item_id,
+                label,
+                item_type,
+                aggregate,
+                &name_counts,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     top_items.sort_by(|left, right| {
         let metric_order = if ranking_metric == "quantity" {
@@ -386,10 +424,46 @@ fn query_allocated_line_breakdowns(
         } else {
             right.revenue.cmp(&left.revenue)
         };
-        metric_order.then_with(|| left.label.cmp(&right.label))
+        metric_order
+            .then_with(|| left.label.cmp(&right.label))
+            .then_with(|| left.item_type.cmp(&right.item_type))
+            .then_with(|| left.inventory_item_id.cmp(&right.inventory_item_id))
     });
     top_items.truncate(usize::try_from(ranking_limit).map_err(|_| rusqlite::Error::InvalidQuery)?);
     Ok((by_item_type, top_items))
+}
+
+fn item_breakdown_from_aggregate(
+    inventory_item_id: String,
+    label: String,
+    item_type: String,
+    aggregate: LineAggregate,
+    name_counts: &BTreeMap<String, usize>,
+) -> Result<FinancialItemBreakdown> {
+    let display_label = if name_counts.get(&label).copied().unwrap_or_default() > 1 {
+        let type_label = match item_type.as_str() {
+            "part" => "Peça",
+            "service" => "Serviço",
+            value => value,
+        };
+        format!("{label} ({type_label} · {inventory_item_id})")
+    } else {
+        label.clone()
+    };
+    Ok(FinancialItemBreakdown {
+        key: format!("{inventory_item_id}|{item_type}|{label}"),
+        inventory_item_id,
+        label,
+        item_type,
+        display_label,
+        revenue: aggregate.revenue,
+        cost: aggregate.cost,
+        profit: aggregate
+            .revenue
+            .checked_sub(aggregate.cost)
+            .ok_or(rusqlite::Error::InvalidQuery)?,
+        count: i32::try_from(aggregate.quantity).map_err(|_| rusqlite::Error::InvalidQuery)?,
+    })
 }
 
 fn add_line_aggregate(
@@ -606,6 +680,88 @@ mod tests {
         assert_eq!(report.by_item_type[0].label, "Peças");
         assert_eq!(report.by_item_type[0].revenue, 18_000);
         assert_eq!(report.by_item_type[0].count, 1);
+    }
+
+    #[test]
+    fn keeps_different_inventory_items_with_the_same_name_separate() {
+        let mut conn = setup_db();
+        let customer = Customer::new(
+            "Ana".to_string(),
+            "41".to_string(),
+            "ana@example.com".to_string(),
+            "Rua A".to_string(),
+        );
+        CustomerRepository::create_with_conn(&conn, &customer).unwrap();
+        let first = InventoryItem::new(
+            "Tela".to_string(),
+            "Primeira tela".to_string(),
+            "part".to_string(),
+            0,
+            5,
+            1_000,
+            10_000,
+        );
+        let second = InventoryItem::new(
+            "Tela".to_string(),
+            "Segunda tela".to_string(),
+            "part".to_string(),
+            0,
+            5,
+            2_000,
+            20_000,
+        );
+        InventoryRepository::create_with_conn(&conn, &first).unwrap();
+        InventoryRepository::create_with_conn(&conn, &second).unwrap();
+        let mut order = ServiceOrder::new(customer.id, "iPhone".to_string(), "Telas".to_string());
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        ServiceOrderRepository::add_part_to_service_order_with_conn(
+            &mut conn, &order.id, &first.id, 1,
+        )
+        .unwrap();
+        ServiceOrderRepository::add_part_to_service_order_with_conn(
+            &mut conn, &order.id, &second.id, 2,
+        )
+        .unwrap();
+        ServiceOrderRepository::transition_status_with_conn(
+            &conn,
+            &order.id,
+            "Em Manutenção",
+            false,
+        )
+        .unwrap();
+        ServiceOrderRepository::transition_status_with_conn(&conn, &order.id, "Finalizada", false)
+            .unwrap();
+
+        let report = FinancialReportRepository::get_report_with_conn(
+            &conn,
+            Some("2000-01-01"),
+            Some("2099-12-31"),
+        )
+        .unwrap();
+
+        assert_eq!(report.top_items.len(), 2);
+        let first_result = report
+            .top_items
+            .iter()
+            .find(|item| item.inventory_item_id == first.id)
+            .unwrap();
+        let second_result = report
+            .top_items
+            .iter()
+            .find(|item| item.inventory_item_id == second.id)
+            .unwrap();
+        assert_eq!(first_result.label, "Tela");
+        assert_eq!(first_result.revenue, 10_000);
+        assert_eq!(first_result.cost, 1_000);
+        assert_eq!(first_result.count, 1);
+        assert_eq!(second_result.label, "Tela");
+        assert_eq!(second_result.revenue, 40_000);
+        assert_eq!(second_result.cost, 4_000);
+        assert_eq!(second_result.count, 2);
+        assert_ne!(first_result.key, second_result.key);
+        assert_ne!(first_result.display_label, second_result.display_label);
+        assert!(first_result.display_label.contains(&first.id));
+        assert!(second_result.display_label.contains(&second.id));
     }
 
     #[test]

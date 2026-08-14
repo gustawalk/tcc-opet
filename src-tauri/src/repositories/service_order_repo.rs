@@ -28,6 +28,87 @@ pub struct ServiceOrderPart {
 
 pub struct ServiceOrderRepository;
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ServiceOrderFilters<'a> {
+    pub status: Option<&'a str>,
+    pub user_id: Option<&'a str>,
+    pub customer_id: Option<&'a str>,
+    pub created_date_from: Option<&'a str>,
+    pub created_date_to: Option<&'a str>,
+    pub finalized_date_from: Option<&'a str>,
+    pub finalized_date_to: Option<&'a str>,
+}
+
+struct QueryFilterBuilder {
+    clause: String,
+    parameters: Vec<String>,
+}
+
+impl QueryFilterBuilder {
+    fn new(clause: String, parameters: Vec<String>) -> Self {
+        Self { clause, parameters }
+    }
+
+    fn equals(&mut self, column: &str, value: Option<&str>) {
+        if let Some(value) = value {
+            self.clause.push_str(&format!(" AND {column} = ?"));
+            self.parameters.push(value.to_string());
+        }
+    }
+
+    fn date_from(&mut self, column: &str, value: Option<&str>) {
+        if let Some(value) = value {
+            self.clause.push_str(&format!(" AND {column} >= date(?)"));
+            self.parameters.push(value.to_string());
+        }
+    }
+
+    fn date_to(&mut self, column: &str, value: Option<&str>) {
+        if let Some(value) = value {
+            self.clause.push_str(&format!(" AND {column} <= date(?)"));
+            self.parameters.push(value.to_string());
+        }
+    }
+
+    fn literal(&mut self, clause: &str) {
+        self.clause.push_str(clause);
+    }
+
+    fn finish(self) -> (String, Vec<String>) {
+        (self.clause, self.parameters)
+    }
+}
+
+fn build_service_order_filters(
+    search: &str,
+    filters: ServiceOrderFilters<'_>,
+) -> (String, Vec<String>) {
+    let (clause, parameters) = like_search_clause(
+        search,
+        &[
+            "COALESCE(so.customer_name, c.name)",
+            "so.equipment",
+            "so.imei",
+            "so.description",
+            "so.display_id",
+        ],
+    );
+    let mut builder = QueryFilterBuilder::new(clause, parameters);
+    builder.equals("so.status", filters.status);
+    builder.equals("so.user_id", filters.user_id);
+    builder.equals("so.customer_id", filters.customer_id);
+    if filters.status.is_none()
+        && (filters.finalized_date_from.is_some() || filters.finalized_date_to.is_some())
+    {
+        builder.literal(" AND so.status = 'Finalizada'");
+    }
+    builder.date_from("so.created_date", filters.created_date_from);
+    builder.date_to("so.created_date", filters.created_date_to);
+    builder.date_from("so.finalized_date", filters.finalized_date_from);
+    builder.date_to("so.finalized_date", filters.finalized_date_to);
+    builder.finish()
+}
+
 impl ServiceOrderRepository {
     pub fn get_service_order_parts(service_order_id: &str) -> Result<Vec<ServiceOrderPart>> {
         let conn = get_db()?;
@@ -548,32 +629,9 @@ impl ServiceOrderRepository {
         limit: u32,
         offset: u32,
         search: &str,
-        status: Option<&str>,
-        user_id: Option<&str>,
-        customer_id: Option<&str>,
+        filters: ServiceOrderFilters<'_>,
     ) -> Result<Vec<ServiceOrder>> {
-        let (mut clause, mut patterns) = like_search_clause(
-            search,
-            &[
-                "COALESCE(so.customer_name, c.name)",
-                "so.equipment",
-                "so.imei",
-                "so.description",
-                "so.display_id",
-            ],
-        );
-        if let Some(status) = status {
-            clause.push_str(" AND so.status = ?");
-            patterns.push(status.to_string());
-        }
-        if let Some(user_id) = user_id {
-            clause.push_str(" AND so.user_id = ?");
-            patterns.push(user_id.to_string());
-        }
-        if let Some(customer_id) = customer_id {
-            clause.push_str(" AND so.customer_id = ?");
-            patterns.push(customer_id.to_string());
-        }
+        let (clause, patterns) = build_service_order_filters(search, filters);
         let sql = format!(
             "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
              FROM service_orders so
@@ -619,32 +677,9 @@ impl ServiceOrderRepository {
     pub(crate) fn count_all_with_conn(
         conn: &Connection,
         search: &str,
-        status: Option<&str>,
-        user_id: Option<&str>,
-        customer_id: Option<&str>,
+        filters: ServiceOrderFilters<'_>,
     ) -> Result<i64> {
-        let (mut clause, mut patterns) = like_search_clause(
-            search,
-            &[
-                "COALESCE(so.customer_name, c.name)",
-                "so.equipment",
-                "so.imei",
-                "so.description",
-                "so.display_id",
-            ],
-        );
-        if let Some(status) = status {
-            clause.push_str(" AND so.status = ?");
-            patterns.push(status.to_string());
-        }
-        if let Some(user_id) = user_id {
-            clause.push_str(" AND so.user_id = ?");
-            patterns.push(user_id.to_string());
-        }
-        if let Some(customer_id) = customer_id {
-            clause.push_str(" AND so.customer_id = ?");
-            patterns.push(customer_id.to_string());
-        }
+        let (clause, patterns) = build_service_order_filters(search, filters);
         let sql = format!(
             "SELECT COUNT(*) FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
@@ -1202,6 +1237,117 @@ mod tests {
     }
 
     #[test]
+    fn page_filters_orders_by_creation_and_finalization_dates() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let mut january = build_order(&customer.id);
+        let mut february = build_order(&customer.id);
+        let mut march = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut january).unwrap();
+        ServiceOrderRepository::create_with_conn(&conn, &mut february).unwrap();
+        ServiceOrderRepository::create_with_conn(&conn, &mut march).unwrap();
+
+        for (order, created_date, finalized_date) in [
+            (&january, "2026-01-10", None),
+            (&february, "2026-02-10", Some("2026-03-15")),
+            (&march, "2026-03-10", Some("2026-04-15")),
+        ] {
+            conn.execute(
+                "UPDATE service_orders
+                 SET created_at = ?1,
+                     created_date = ?1,
+                     status = CASE WHEN ?2 IS NULL THEN 'Orçamento' ELSE 'Finalizada' END,
+                     closed_at = ?2,
+                     finalized_date = ?2
+                 WHERE id = ?3",
+                params![created_date, finalized_date, order.id],
+            )
+            .unwrap();
+        }
+
+        let created_in_february = ServiceOrderRepository::get_page_with_conn(
+            &conn,
+            10,
+            0,
+            "",
+            ServiceOrderFilters {
+                created_date_from: Some("2026-02-01"),
+                created_date_to: Some("2026-02-28"),
+                ..ServiceOrderFilters::default()
+            },
+        )
+        .unwrap();
+        let finalized_through_march = ServiceOrderRepository::get_page_with_conn(
+            &conn,
+            10,
+            0,
+            "",
+            ServiceOrderFilters {
+                finalized_date_to: Some("2026-03-31"),
+                ..ServiceOrderFilters::default()
+            },
+        )
+        .unwrap();
+        let finalized_count = ServiceOrderRepository::count_all_with_conn(
+            &conn,
+            "",
+            ServiceOrderFilters {
+                finalized_date_from: Some("2026-04-01"),
+                finalized_date_to: Some("2026-04-30"),
+                ..ServiceOrderFilters::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(created_in_february.len(), 1);
+        assert_eq!(created_in_february[0].id, february.id);
+        assert_eq!(finalized_through_march.len(), 1);
+        assert_eq!(finalized_through_march[0].id, february.id);
+        assert_eq!(finalized_count, 1);
+    }
+
+    #[test]
+    fn filter_builder_keeps_all_parameters_in_placeholder_order() {
+        let (clause, parameters) = build_service_order_filters(
+            "Busca",
+            ServiceOrderFilters {
+                status: Some("Finalizada"),
+                user_id: Some("user-1"),
+                customer_id: Some("customer-1"),
+                created_date_from: Some("2026-01-01"),
+                created_date_to: Some("2026-01-31"),
+                finalized_date_from: Some("2026-02-01"),
+                finalized_date_to: Some("2026-02-28"),
+            },
+        );
+
+        assert!(clause.contains("so.status = ?"));
+        assert!(clause.contains("so.user_id = ?"));
+        assert!(clause.contains("so.customer_id = ?"));
+        assert!(clause.contains("so.created_date >= date(?)"));
+        assert!(clause.contains("so.created_date <= date(?)"));
+        assert!(clause.contains("so.finalized_date >= date(?)"));
+        assert!(clause.contains("so.finalized_date <= date(?)"));
+        assert_eq!(
+            parameters,
+            vec![
+                "%Busca%",
+                "%Busca%",
+                "%Busca%",
+                "%Busca%",
+                "%Busca%",
+                "Finalizada",
+                "user-1",
+                "customer-1",
+                "2026-01-01",
+                "2026-01-31",
+                "2026-02-01",
+                "2026-02-28",
+            ]
+        );
+    }
+
+    #[test]
     fn update_persists_metadata_without_overwriting_status() {
         let conn = setup_db();
         let customer = seed_customer(&conn);
@@ -1455,6 +1601,48 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn finalized_date_is_set_and_cleared_with_the_finalized_status() {
+        let conn = setup_db();
+        let customer = seed_customer(&conn);
+        let mut order = build_order(&customer.id);
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        ServiceOrderRepository::transition_status_with_conn(
+            &conn,
+            &order.id,
+            "Em Manutenção",
+            false,
+        )
+        .unwrap();
+
+        ServiceOrderRepository::transition_status_with_conn(&conn, &order.id, "Finalizada", false)
+            .unwrap();
+        let finalized_date: Option<String> = conn
+            .query_row(
+                "SELECT finalized_date FROM service_orders WHERE id = ?1",
+                params![order.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(finalized_date.is_some());
+
+        ServiceOrderRepository::transition_status_with_conn(
+            &conn,
+            &order.id,
+            "Em Manutenção",
+            false,
+        )
+        .unwrap();
+        let reopened_date: Option<String> = conn
+            .query_row(
+                "SELECT finalized_date FROM service_orders WHERE id = ?1",
+                params![order.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(reopened_date.is_none());
     }
 
     #[test]

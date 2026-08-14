@@ -86,3 +86,22 @@ jobs:
       - name: Test Rust backend with coverage
         working-directory: src-tauri
         run: cargo llvm-cov --workspace --summary-only --fail-under-lines 75
+
+  validate-windows-restore:
+    name: Validate backup restore on Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Test backup restore with Windows file locking
+        working-directory: src-tauri
+        run: cargo test encrypted_backup_round_trip_restores_commands_and_attachments -- --test-threads=1

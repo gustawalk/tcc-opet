@@ -19,8 +19,10 @@ static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::n
 
 // Single shared SQLCipher connection, reused across requests. Reopening the
 // connection on every call was the dominant fixed cost (~2.5ms/request: key
-// derivation, page cache warmup). Invalidated after a restore replaces the file.
+// derivation, page cache warmup). Closed before a restore replaces the file.
 static DB_CONNECTION: LazyLock<Mutex<Option<Connection>>> = LazyLock::new(|| Mutex::new(None));
+
+pub(crate) type ExclusiveStorageGuard = RwLockWriteGuard<'static, ()>;
 
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
@@ -48,12 +50,37 @@ impl DerefMut for DatabaseConnection {
     }
 }
 
-/// Replaces the shared connection with a fresh one. Called after a restore
-/// swaps the database file (fs::rename), where the old inode would be stale.
-pub(crate) fn invalidate_shared_connection() {
-    if let Ok(mut connection) = DB_CONNECTION.lock() {
-        *connection = None;
+/// Closes the shared connection before an exclusive storage operation replaces
+/// the database file. The caller must hold the exclusive storage guard.
+pub(crate) fn close_shared_connection(
+    database_path: &Path,
+    _storage_guard: &ExclusiveStorageGuard,
+) -> Result<()> {
+    if DB_PATH
+        .get()
+        .is_none_or(|active_path| active_path != database_path)
+    {
+        return Ok(());
     }
+    let mut shared = DB_CONNECTION
+        .lock()
+        .map_err(|_| database_error("Database connection lock is unavailable."))?;
+    let Some(connection) = shared.take() else {
+        return Ok(());
+    };
+    if let Err((connection, error)) = connection.close() {
+        *shared = Some(connection);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn shared_connection_is_open() -> bool {
+    DB_CONNECTION
+        .lock()
+        .map(|connection| connection.is_some())
+        .unwrap_or(false)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -843,7 +870,7 @@ pub fn get_db() -> Result<DatabaseConnection> {
     })
 }
 
-pub(crate) fn exclusive_storage_guard() -> Result<RwLockWriteGuard<'static, ()>> {
+pub(crate) fn exclusive_storage_guard() -> Result<ExclusiveStorageGuard> {
     STORAGE_OPERATION_LOCK
         .write()
         .map_err(|_| database_error("Storage operation lock is unavailable."))

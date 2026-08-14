@@ -234,6 +234,13 @@ export interface FinancialBreakdown {
   count: number;
 }
 
+export interface FinancialItemBreakdown extends FinancialBreakdown {
+  key: string;
+  inventoryItemId: string;
+  itemType: "part" | "service" | string;
+  displayLabel: string;
+}
+
 export interface FinancialMonth {
   month: string;
   revenue: number;
@@ -261,7 +268,7 @@ export interface FinancialReport {
   rankingLimit: number;
   byTechnician: FinancialBreakdown[];
   byItemType: FinancialBreakdown[];
-  topItems: FinancialBreakdown[];
+  topItems: FinancialItemBreakdown[];
   byMonth: FinancialMonth[];
 }
 

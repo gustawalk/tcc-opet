@@ -6,6 +6,7 @@ import {
   Calendar,
   Edit,
   Eye,
+  Filter,
   MoreVertical,
   Plus,
   Search,
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -36,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { Pagination } from "@/components/shared/Pagination";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
@@ -52,6 +55,7 @@ import {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const SEARCH_DEBOUNCE_MS = 300;
+const LOOKUP_LIMIT = 20;
 
 const fetchOrdersPage = (args: {
   limit: number;
@@ -60,11 +64,25 @@ const fetchOrdersPage = (args: {
   status?: string;
   userId?: string;
   customerId?: string;
+  createdDateFrom?: string;
+  createdDateTo?: string;
+  finalizedDateFrom?: string;
+  finalizedDateTo?: string;
 }): Promise<Page<ServiceOrder>> => {
   return invoke<Page<ServiceOrder>>("get_service_orders_page", args);
 };
-const fetchUsers = () => invoke<UserType[]>("get_users");
-const fetchCustomers = () => invoke<Customer[]>("get_customers");
+const fetchUsersPage = (search: string) =>
+  invoke<Page<UserType>>("get_users_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
+const fetchCustomersPage = (search: string) =>
+  invoke<Page<Customer>>("get_customers_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
 
 export function ServiceOrders() {
   const listRef = useRef<HTMLDivElement>(null);
@@ -79,6 +97,19 @@ export function ServiceOrders() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [userLookupSearch, setUserLookupSearch] = useState("");
+  const [customerLookupSearch, setCustomerLookupSearch] = useState("");
+  const debouncedUserLookup = useDebounce(userLookupSearch, SEARCH_DEBOUNCE_MS);
+  const debouncedCustomerLookup = useDebounce(
+    customerLookupSearch,
+    SEARCH_DEBOUNCE_MS,
+  );
+  const [createdDateFrom, setCreatedDateFrom] = useState("");
+  const [createdDateTo, setCreatedDateTo] = useState("");
+  const [finalizedDateFrom, setFinalizedDateFrom] = useState("");
+  const [finalizedDateTo, setFinalizedDateTo] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const ordersQuery = useQuery({
@@ -90,6 +121,10 @@ export function ServiceOrders() {
       statusFilter,
       userFilter,
       customerFilter,
+      createdDateFrom,
+      createdDateTo,
+      finalizedDateFrom,
+      finalizedDateTo,
     ],
     queryFn: () =>
       fetchOrdersPage({
@@ -99,22 +134,41 @@ export function ServiceOrders() {
         status: statusFilter === "all" ? undefined : statusFilter,
         userId: userFilter ?? undefined,
         customerId: customerFilter ?? undefined,
+        createdDateFrom: createdDateFrom || undefined,
+        createdDateTo: createdDateTo || undefined,
+        finalizedDateFrom: finalizedDateFrom || undefined,
+        finalizedDateTo: finalizedDateTo || undefined,
       }),
     placeholderData: (previousData) => previousData,
   });
-  const usersQuery = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
-  const customersQuery = useQuery({
-    queryKey: ["customers"],
-    queryFn: fetchCustomers,
+  const usersQuery = useQuery({
+    queryKey: ["usersLookup", debouncedUserLookup],
+    queryFn: () => fetchUsersPage(debouncedUserLookup),
+    placeholderData: (previousData) => previousData,
   });
-  const users = usersQuery.data ?? [];
-  const customers = customersQuery.data ?? [];
+  const customersQuery = useQuery({
+    queryKey: ["customersLookup", debouncedCustomerLookup],
+    queryFn: () => fetchCustomersPage(debouncedCustomerLookup),
+    placeholderData: (previousData) => previousData,
+  });
+  const users = usersQuery.data?.items ?? [];
+  const customers = customersQuery.data?.items ?? [];
   const total = ordersQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
     setPage(1);
-  }, [search, pageSize, statusFilter, userFilter, customerFilter]);
+  }, [
+    search,
+    pageSize,
+    statusFilter,
+    userFilter,
+    customerFilter,
+    createdDateFrom,
+    createdDateTo,
+    finalizedDateFrom,
+    finalizedDateTo,
+  ]);
 
   useEffect(() => {
     if (ordersQuery.data && page > totalPages) setPage(totalPages);
@@ -123,6 +177,19 @@ export function ServiceOrders() {
   const handlePageSizeChange = (nextPageSize: number) => {
     setPageSize(nextPageSize);
     setPage(1);
+  };
+
+  const activeDateFilters = [
+    createdDateFrom,
+    createdDateTo,
+    finalizedDateFrom,
+    finalizedDateTo,
+  ].filter(Boolean).length;
+  const clearDateFilters = () => {
+    setCreatedDateFrom("");
+    setCreatedDateTo("");
+    setFinalizedDateFrom("");
+    setFinalizedDateTo("");
   };
 
   const deleteOrder = async () => {
@@ -168,7 +235,7 @@ export function ServiceOrders() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Ordens
+            Ordens de Serviço
           </h2>
           <p className="text-muted-foreground mt-1">
             Acompanhe atendimentos, ordens e orçamentos.
@@ -179,9 +246,186 @@ export function ServiceOrders() {
           Nova Ordem
         </Button>
       </div>
-      <Tabs defaultValue="all" onValueChange={setStatusFilter}>
-        <div className="flex flex-col gap-4 xl:flex-row xl:justify-between">
-          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_14rem_14rem]">
+            <div className="relative w-full md:col-span-2 xl:col-span-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por ID, cliente ou equipamento..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </div>
+            <div className="flex min-w-0 items-center gap-1">
+              <SearchableSelect
+                options={customers}
+                value={customerFilter}
+                onSelect={(customer) => {
+                  const shouldClear = customerFilter === customer.id;
+                  setCustomerFilter(shouldClear ? null : customer.id);
+                  setSelectedCustomer(shouldClear ? null : customer);
+                }}
+                onSearchChange={setCustomerLookupSearch}
+                selectedLabel={selectedCustomer?.name}
+                isLoading={
+                  customersQuery.isFetching ||
+                  customerLookupSearch !== debouncedCustomerLookup
+                }
+                errorMessage={
+                  customersQuery.isError
+                    ? "Não foi possível buscar clientes."
+                    : undefined
+                }
+                ariaLabel={
+                  selectedCustomer
+                    ? `Filtrar por cliente. Selecionado: ${selectedCustomer.name}`
+                    : "Filtrar por cliente"
+                }
+                placeholder="Clientes"
+                searchPlaceholder="Buscar cliente..."
+                maxOptions={5}
+                getKey={(customer) => customer.id}
+                getLabel={(customer) => customer.name}
+                getSubtitle={(customer) => customer.phone}
+                className="min-w-0 flex-1"
+              />
+              {customerFilter && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  aria-label="Limpar filtro de cliente"
+                  title="Limpar filtro de cliente"
+                  onClick={() => {
+                    setCustomerFilter(null);
+                    setSelectedCustomer(null);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+            <div className="flex min-w-0 items-center gap-1">
+              <SearchableSelect
+                options={users}
+                value={userFilter}
+                onSelect={(user) => {
+                  const shouldClear = userFilter === user.id;
+                  setUserFilter(shouldClear ? null : user.id);
+                  setSelectedUser(shouldClear ? null : user);
+                }}
+                onSearchChange={setUserLookupSearch}
+                selectedLabel={selectedUser?.name}
+                isLoading={
+                  usersQuery.isFetching || userLookupSearch !== debouncedUserLookup
+                }
+                errorMessage={
+                  usersQuery.isError
+                    ? "Não foi possível buscar funcionários."
+                    : undefined
+                }
+                ariaLabel={
+                  selectedUser
+                    ? `Filtrar por funcionário. Selecionado: ${selectedUser.name}`
+                    : "Filtrar por funcionário"
+                }
+                placeholder="Funcionários"
+                searchPlaceholder="Buscar funcionário..."
+                maxOptions={5}
+                getKey={(user) => user.id}
+                getLabel={(user) => user.name}
+                getSubtitle={(user) => user.email}
+                className="min-w-0 flex-1"
+              />
+              {userFilter && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  aria-label="Limpar filtro de funcionário"
+                  title="Limpar filtro de funcionário"
+                  onClick={() => {
+                    setUserFilter(null);
+                    setSelectedUser(null);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <details className="group rounded-md border bg-muted/10">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium marker:content-none">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              Mais filtros
+              {activeDateFilters > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {activeDateFilters}
+                </Badge>
+              )}
+            </summary>
+            <div className="grid gap-4 border-t p-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="created-date-from">Data inicial da criação</Label>
+                <DatePicker
+                  id="created-date-from"
+                  value={createdDateFrom}
+                  onChange={setCreatedDateFrom}
+                  placeholder="Data inicial"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="created-date-to">Data final da criação</Label>
+                <DatePicker
+                  id="created-date-to"
+                  value={createdDateTo}
+                  onChange={setCreatedDateTo}
+                  placeholder="Data final"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="finalized-date-from">
+                  Data inicial de finalização
+                </Label>
+                <DatePicker
+                  id="finalized-date-from"
+                  value={finalizedDateFrom}
+                  onChange={setFinalizedDateFrom}
+                  placeholder="Data inicial"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="finalized-date-to">
+                  Data final de finalização
+                </Label>
+                <DatePicker
+                  id="finalized-date-to"
+                  value={finalizedDateTo}
+                  onChange={setFinalizedDateTo}
+                  placeholder="Data final"
+                />
+              </div>
+              <div className="sm:col-span-2 xl:col-span-4 xl:text-right">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearDateFilters}
+                  disabled={activeDateFilters === 0}
+                >
+                  Limpar datas
+                </Button>
+              </div>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
+      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
           <TabsList className="w-max">
             <TabsTrigger value="all">Todas</TabsTrigger>
             <TabsTrigger value="Orçamento">Orçamentos</TabsTrigger>
@@ -190,70 +434,6 @@ export function ServiceOrders() {
             <TabsTrigger value="Finalizada">Finalizadas</TabsTrigger>
             <TabsTrigger value="Cancelada">Canceladas</TabsTrigger>
           </TabsList>
-          </div>
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:items-center">
-            <div className="flex items-center gap-1">
-              <SearchableSelect
-                options={customers}
-                value={customerFilter}
-                onSelect={(customer) =>
-                  setCustomerFilter(
-                    customerFilter === customer.id ? null : customer.id,
-                  )
-                }
-                placeholder="Clientes"
-                searchPlaceholder="Buscar cliente..."
-                getKey={(customer) => customer.id}
-                getLabel={(customer) => customer.name}
-                className="w-full md:w-44"
-              />
-              {customerFilter && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  title="Limpar filtro de cliente"
-                  onClick={() => setCustomerFilter(null)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <SearchableSelect
-                options={users}
-                value={userFilter}
-                onSelect={(user) =>
-                  setUserFilter(userFilter === user.id ? null : user.id)
-                }
-                placeholder="Funcionários"
-                searchPlaceholder="Buscar funcionário..."
-                getKey={(user) => user.id}
-                getLabel={(user) => user.name}
-                className="w-full md:w-44"
-              />
-              {userFilter && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  title="Limpar filtro de funcionário"
-                  onClick={() => setUserFilter(null)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-            <div className="relative w-full sm:col-span-2 xl:w-72">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Buscar por ID, Cliente ou Equipamento..."
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-            </div>
-          </div>
         </div>
       </Tabs>
       {ordersQuery.isError && (

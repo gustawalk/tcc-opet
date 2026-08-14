@@ -143,6 +143,11 @@ fn core_commands_preserve_the_frontend_ipc_contract() {
     assert_eq!(report["estimatedGrossProfit"], 5000);
     assert!(report.get("netProfit").is_none());
     assert_eq!(report["finalizedOrders"], 1);
+    let top_item = &report["topItems"][0];
+    assert_eq!(top_item["inventoryItemId"], part_id);
+    assert_eq!(top_item["itemType"], "part");
+    assert_eq!(top_item["displayLabel"], "Peça IPC");
+    assert!(top_item["key"].as_str().unwrap().contains(&part_id));
 
     let error = get_ipc_response(
         &webview,
@@ -299,6 +304,60 @@ fn paginated_list_commands_return_items_and_total() {
         );
         assert!(haystack.to_lowercase().contains("filtrobusca"));
     }
+
+    let created_orders = get_ipc_response(
+        &webview,
+        request(
+            "get_service_orders_page",
+            json!({
+                "limit": 10,
+                "offset": 0,
+                "createdDateFrom": "2000-01-01",
+                "createdDateTo": "2100-12-31"
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(created_orders["total"].as_i64().unwrap() >= 1);
+
+    get_ipc_response(
+        &webview,
+        request(
+            "transition_service_order_status",
+            json!({ "id": &order_id, "status": "Em Manutenção", "restoreStock": false }),
+        ),
+    )
+    .unwrap();
+    get_ipc_response(
+        &webview,
+        request(
+            "transition_service_order_status",
+            json!({ "id": &order_id, "status": "Finalizada", "restoreStock": false }),
+        ),
+    )
+    .unwrap();
+    let finalized_orders = get_ipc_response(
+        &webview,
+        request(
+            "get_service_orders_page",
+            json!({
+                "limit": 10,
+                "offset": 0,
+                "finalizedDateFrom": "2000-01-01",
+                "finalizedDateTo": "2100-12-31"
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(finalized_orders["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == order_id));
 
     let searched_items = get_ipc_response(
         &webview,

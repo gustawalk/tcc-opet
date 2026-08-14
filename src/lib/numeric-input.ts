@@ -7,6 +7,14 @@ export function sanitizeIntegerInput(value: string) {
   return value.replace(/\D/g, "");
 }
 
+export function sanitizeBoundedIntegerInput(value: string, maximum?: number) {
+  const digits = sanitizeIntegerInput(value);
+  if (!digits || maximum === undefined) return digits;
+
+  const parsed = integerInputToNumber(digits);
+  return parsed === undefined || parsed > maximum ? String(maximum) : digits;
+}
+
 export function integerInputToNumber(value: string) {
   if (!value) return undefined;
   const parsed = Number(value);

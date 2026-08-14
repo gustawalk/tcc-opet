@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -75,7 +75,6 @@ const fetchInventory = () => invoke<InventoryItem[]>("get_inventory_items");
 export function ServiceOrderCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const customerRef = useRef<HTMLDivElement>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
@@ -133,18 +132,6 @@ export function ServiceOrderCreate() {
     usersQuery.isError ||
     templatesQuery.isError ||
     inventoryQuery.isError;
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (
-        customerRef.current &&
-        !customerRef.current.contains(event.target as Node)
-      )
-        setShowCustomers(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
 
   useEffect(() => {
     const token = pendingAttachments?.token;
@@ -344,9 +331,11 @@ export function ServiceOrderCreate() {
     <form className="mx-auto flex max-w-5xl flex-col gap-4 animate-in fade-in duration-200 sm:gap-6" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
       <div className="flex items-start gap-3 sm:items-center sm:gap-4">
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           className="rounded-full"
+          aria-label="Voltar"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -400,20 +389,32 @@ export function ServiceOrderCreate() {
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            <div ref={customerRef} className="relative">
-              <Label>Nome do Cliente</Label>
+            <div
+              className="relative"
+              onFocusCapture={() => setShowCustomers(true)}
+              onBlurCapture={(event) => {
+                const nextTarget = event.relatedTarget;
+                if (
+                  !(nextTarget instanceof Node) ||
+                  !event.currentTarget.contains(nextTarget)
+                ) {
+                  setShowCustomers(false);
+                  setCustomerSearch((current) => formatName(current));
+                }
+              }}
+            >
+              <Label htmlFor="customer-name">Nome do Cliente</Label>
               <div className="relative mt-1">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="customer-name"
                   className="pl-9"
                   value={customerSearch}
-                  onFocus={() => setShowCustomers(true)}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
                     setShowCustomers(true);
                     setErrors(clearFieldError(errors, "name"));
                   }}
-                  onBlur={() => setCustomerSearch(formatName(customerSearch))}
                 />
               </div>
               {errors.name && !selectedCustomer && (
@@ -641,8 +642,9 @@ export function ServiceOrderCreate() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Label>Equipamento</Label>
+            <Label htmlFor="equipment">Equipamento</Label>
             <Input
+              id="equipment"
               value={formData.equipment}
               onChange={(e) => {
                 setFormData((data) => ({ ...data, equipment: e.target.value }));
@@ -652,15 +654,17 @@ export function ServiceOrderCreate() {
             {errors.equipment && (
               <p className="text-xs text-destructive">{errors.equipment}</p>
             )}
-            <Label>IMEI / Serial</Label>
+            <Label htmlFor="imei">IMEI / Serial</Label>
             <Input
+              id="imei"
               value={formData.imei}
               onChange={(e) =>
                 setFormData((data) => ({ ...data, imei: e.target.value }))
               }
             />
-            <Label>Descrição do Problema</Label>
+            <Label htmlFor="problem-description">Descrição do Problema</Label>
             <Textarea
+              id="problem-description"
               value={formData.description}
               onChange={(e) => {
                 setFormData((data) => ({
@@ -688,6 +692,7 @@ export function ServiceOrderCreate() {
           </CardHeader>
           <CardContent className="space-y-3">
             <Button
+              type="button"
               variant="outline"
               className="gap-2"
               onClick={selectAttachments}
@@ -707,9 +712,11 @@ export function ServiceOrderCreate() {
                       {fileName}
                     </span>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0 text-destructive"
+                      aria-label="Remover anexos selecionados"
                       onClick={() => setPendingAttachments(null)}
                       disabled={isSubmitting}
                     >
@@ -727,6 +734,7 @@ export function ServiceOrderCreate() {
         </Card>
         <div className="flex justify-stretch md:col-span-3 md:justify-end">
           <Button
+            type="button"
             onClick={handleSave}
             disabled={isSubmitting || lookupLoading || lookupError}
             className="w-full gap-2 sm:w-auto"

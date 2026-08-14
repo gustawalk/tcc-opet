@@ -201,12 +201,13 @@ pub fn restore_backup(
     source: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
-    let _guard = crate::database::exclusive_storage_guard()?;
+    let guard = crate::database::exclusive_storage_guard()?;
     crate::backup_service::restore_backup_with_passphrase(
         Path::new(&source),
         &crate::database::database_path(),
         &crate::database::attachments_dir(),
         passphrase.as_deref(),
+        &guard,
     )
 }
 

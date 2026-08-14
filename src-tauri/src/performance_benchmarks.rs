@@ -4,7 +4,7 @@ use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::customer_repo::CustomerRepository;
 use crate::repositories::financial_report_repo::FinancialReportRepository;
 use crate::repositories::inventory_repo::InventoryRepository;
-use crate::repositories::service_order_repo::ServiceOrderRepository;
+use crate::repositories::service_order_repo::{ServiceOrderFilters, ServiceOrderRepository};
 use crate::repositories::user_repo::UserRepository;
 use crate::test_helpers::setup_global_backend;
 use rusqlite::{params, Connection};
@@ -543,11 +543,17 @@ fn performance_benchmarks() {
     };
     let optimized_payload = {
         let conn = get_db().unwrap();
-        let items =
-            ServiceOrderRepository::get_page_with_conn(&conn, PAGE_SIZE, 0, "", None, None, None)
-                .unwrap();
+        let items = ServiceOrderRepository::get_page_with_conn(
+            &conn,
+            PAGE_SIZE,
+            0,
+            "",
+            ServiceOrderFilters::default(),
+        )
+        .unwrap();
         let total =
-            ServiceOrderRepository::count_all_with_conn(&conn, "", None, None, None).unwrap();
+            ServiceOrderRepository::count_all_with_conn(&conn, "", ServiceOrderFilters::default())
+                .unwrap();
         json(&Page { items, total })
     };
     comparisons.push(Comparison {
@@ -559,11 +565,19 @@ fn performance_benchmarks() {
         optimized: measure(WARMUPS, ITERATIONS, || {
             let conn = get_db().unwrap();
             let items = ServiceOrderRepository::get_page_with_conn(
-                &conn, PAGE_SIZE, 0, "", None, None, None,
+                &conn,
+                PAGE_SIZE,
+                0,
+                "",
+                ServiceOrderFilters::default(),
             )
             .unwrap();
-            let total =
-                ServiceOrderRepository::count_all_with_conn(&conn, "", None, None, None).unwrap();
+            let total = ServiceOrderRepository::count_all_with_conn(
+                &conn,
+                "",
+                ServiceOrderFilters::default(),
+            )
+            .unwrap();
             json(&Page { items, total })
         }),
         baseline_bytes: baseline_payload.len(),
@@ -579,11 +593,17 @@ fn performance_benchmarks() {
     };
     let optimized_payload = {
         let conn = get_db().unwrap();
-        let items =
-            ServiceOrderRepository::get_page_with_conn(&conn, PAGE_SIZE, 0, "", None, None, None)
-                .unwrap();
+        let items = ServiceOrderRepository::get_page_with_conn(
+            &conn,
+            PAGE_SIZE,
+            0,
+            "",
+            ServiceOrderFilters::default(),
+        )
+        .unwrap();
         let total =
-            ServiceOrderRepository::count_all_with_conn(&conn, "", None, None, None).unwrap();
+            ServiceOrderRepository::count_all_with_conn(&conn, "", ServiceOrderFilters::default())
+                .unwrap();
         let customers = CustomerRepository::get_all_with_conn(&conn).unwrap();
         let users = UserRepository::get_all_with_conn(&conn).unwrap();
         json(&(Page { items, total }, customers, users))
@@ -600,11 +620,19 @@ fn performance_benchmarks() {
         optimized: measure(WARMUPS, ITERATIONS, || {
             let conn = get_db().unwrap();
             let items = ServiceOrderRepository::get_page_with_conn(
-                &conn, PAGE_SIZE, 0, "", None, None, None,
+                &conn,
+                PAGE_SIZE,
+                0,
+                "",
+                ServiceOrderFilters::default(),
             )
             .unwrap();
-            let total =
-                ServiceOrderRepository::count_all_with_conn(&conn, "", None, None, None).unwrap();
+            let total = ServiceOrderRepository::count_all_with_conn(
+                &conn,
+                "",
+                ServiceOrderFilters::default(),
+            )
+            .unwrap();
             let customers = CustomerRepository::get_all_with_conn(&conn).unwrap();
             let users = UserRepository::get_all_with_conn(&conn).unwrap();
             json(&(Page { items, total }, customers, users))

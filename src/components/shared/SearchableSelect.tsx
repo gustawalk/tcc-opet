@@ -15,6 +15,11 @@ interface SearchableSelectProps<T> {
   getKey: (item: T) => string;
   getLabel: (item: T) => string;
   getSubtitle?: (item: T) => string | undefined;
+  onSearchChange?: (value: string) => void;
+  selectedLabel?: string;
+  isLoading?: boolean;
+  errorMessage?: string;
+  ariaLabel?: string;
   createLabel?: string;
   onCreate?: () => void;
   className?: string;
@@ -32,6 +37,11 @@ export function SearchableSelect<T>({
   getKey,
   getLabel,
   getSubtitle,
+  onSearchChange,
+  selectedLabel: providedSelectedLabel,
+  isLoading = false,
+  errorMessage,
+  ariaLabel,
   createLabel,
   onCreate,
   className,
@@ -45,20 +55,26 @@ export function SearchableSelect<T>({
   const listboxId = useId();
 
   const filteredOptions = useMemo(() => {
+    if (onSearchChange) return options;
     if (!search.trim()) return options;
     const term = search.toLowerCase();
     return options.filter((item) =>
       getLabel(item).toLowerCase().includes(term),
     );
-  }, [options, search, getLabel]);
+  }, [options, search, getLabel, onSearchChange]);
 
   const maxHeight = maxOptions * OPTION_HEIGHT;
 
   const selectedLabel = useMemo(() => {
     if (!value) return null;
     const selected = options.find((item) => getKey(item) === value);
-    return selected ? getLabel(selected) : null;
-  }, [options, value, getKey, getLabel]);
+    return selected ? getLabel(selected) : providedSelectedLabel ?? null;
+  }, [options, value, getKey, getLabel, providedSelectedLabel]);
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    onSearchChange?.(value);
+  };
 
   const close = (restoreFocus = false) => {
     setIsOpen(false);
@@ -66,7 +82,7 @@ export function SearchableSelect<T>({
   };
 
   const open = (direction?: "first" | "last") => {
-    setSearch("");
+    changeSearch("");
     const selectedIndex = filteredOptions.findIndex(
       (item) => getKey(item) === value,
     );
@@ -104,7 +120,7 @@ export function SearchableSelect<T>({
   };
 
   const moveActiveOption = (step: number) => {
-    if (!filteredOptions.length) return;
+    if (isLoading || !filteredOptions.length) return;
     setActiveIndex((index) => {
       const current = index < 0 ? (step > 0 ? -1 : 0) : index;
       return Math.max(0, Math.min(filteredOptions.length - 1, current + step));
@@ -123,7 +139,7 @@ export function SearchableSelect<T>({
         break;
       case "Enter":
         event.preventDefault();
-        if (activeIndex >= 0 && filteredOptions[activeIndex])
+        if (!isLoading && activeIndex >= 0 && filteredOptions[activeIndex])
           handleSelect(filteredOptions[activeIndex]);
         break;
       case "Escape":
@@ -144,6 +160,7 @@ export function SearchableSelect<T>({
         variant="outline"
         className="w-full justify-between text-left font-normal"
         aria-haspopup="listbox"
+        aria-label={ariaLabel}
         aria-expanded={isOpen}
         aria-controls={listboxId}
         onClick={() => (isOpen ? close() : open())}
@@ -176,11 +193,15 @@ export function SearchableSelect<T>({
               <Input
                 ref={searchInputRef}
                 role="combobox"
+                aria-label={searchPlaceholder}
                 aria-autocomplete="list"
                 aria-controls={listboxId}
                 aria-expanded="true"
                 aria-activedescendant={
-                  activeIndex >= 0
+                  activeIndex >= 0 &&
+                  !isLoading &&
+                  !errorMessage &&
+                  filteredOptions[activeIndex]
                     ? `${listboxId}-option-${activeIndex}`
                     : undefined
                 }
@@ -188,7 +209,7 @@ export function SearchableSelect<T>({
                 className="h-8 pl-8 text-sm"
                 value={search}
                 onChange={(event) => {
-                  setSearch(event.target.value);
+                  changeSearch(event.target.value);
                   setActiveIndex(0);
                 }}
                 onKeyDown={handleListKeyDown}
@@ -199,10 +220,19 @@ export function SearchableSelect<T>({
             id={listboxId}
             role="listbox"
             aria-label={placeholder}
+            aria-busy={isLoading}
             className="overflow-y-auto"
             style={{ maxHeight }}
           >
-            {filteredOptions.length > 0 ? (
+            {isLoading ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                Carregando...
+              </div>
+            ) : errorMessage ? (
+              <div className="p-4 text-center text-xs text-destructive">
+                {errorMessage}
+              </div>
+            ) : filteredOptions.length > 0 ? (
               filteredOptions.map((item, index) => (
                 <div
                   key={getKey(item)}

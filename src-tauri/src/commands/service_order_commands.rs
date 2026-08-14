@@ -9,7 +9,9 @@ use crate::repositories::checklist_repo::ChecklistRepository;
 use crate::repositories::customer_repo::CustomerRepository;
 use crate::repositories::inventory_repo::InventoryRepository;
 use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
-use crate::repositories::service_order_repo::{ServiceOrderPart, ServiceOrderRepository};
+use crate::repositories::service_order_repo::{
+    ServiceOrderFilters, ServiceOrderPart, ServiceOrderRepository,
+};
 use serde::Deserialize;
 use std::path::PathBuf;
 use tauri::command;
@@ -373,6 +375,7 @@ pub fn get_service_orders() -> Result<Vec<ServiceOrder>, AppError> {
 const SERVICE_ORDERS_PAGE_DEFAULT_LIMIT: u32 = 200;
 
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub fn get_service_orders_page(
     limit: Option<u32>,
     offset: Option<u32>,
@@ -380,6 +383,10 @@ pub fn get_service_orders_page(
     status: Option<String>,
     user_id: Option<String>,
     customer_id: Option<String>,
+    created_date_from: Option<String>,
+    created_date_to: Option<String>,
+    finalized_date_from: Option<String>,
+    finalized_date_to: Option<String>,
 ) -> Result<Page<ServiceOrder>, AppError> {
     let conn = crate::database::get_db()?;
     let limit = limit
@@ -390,22 +397,21 @@ pub fn get_service_orders_page(
     let status = status.filter(|value| !value.trim().is_empty());
     let user_id = user_id.filter(|value| !value.trim().is_empty());
     let customer_id = customer_id.filter(|value| !value.trim().is_empty());
-    let items = ServiceOrderRepository::get_page_with_conn(
-        &conn,
-        limit,
-        offset,
-        &search,
-        status.as_deref(),
-        user_id.as_deref(),
-        customer_id.as_deref(),
-    )?;
-    let total = ServiceOrderRepository::count_all_with_conn(
-        &conn,
-        &search,
-        status.as_deref(),
-        user_id.as_deref(),
-        customer_id.as_deref(),
-    )?;
+    let created_date_from = created_date_from.filter(|value| !value.trim().is_empty());
+    let created_date_to = created_date_to.filter(|value| !value.trim().is_empty());
+    let finalized_date_from = finalized_date_from.filter(|value| !value.trim().is_empty());
+    let finalized_date_to = finalized_date_to.filter(|value| !value.trim().is_empty());
+    let filters = ServiceOrderFilters {
+        status: status.as_deref(),
+        user_id: user_id.as_deref(),
+        customer_id: customer_id.as_deref(),
+        created_date_from: created_date_from.as_deref(),
+        created_date_to: created_date_to.as_deref(),
+        finalized_date_from: finalized_date_from.as_deref(),
+        finalized_date_to: finalized_date_to.as_deref(),
+    };
+    let items = ServiceOrderRepository::get_page_with_conn(&conn, limit, offset, &search, filters)?;
+    let total = ServiceOrderRepository::count_all_with_conn(&conn, &search, filters)?;
     Ok(Page { items, total })
 }
 

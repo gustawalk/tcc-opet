@@ -9,6 +9,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { MainLayout } from "./layouts/MainLayout";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
+import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 
@@ -149,6 +150,7 @@ function App() {
       <BrowserRouter>
         <UpdateAvailabilityNotice />
         <UpdatePatchNotes />
+        <AutomaticBackupProgress />
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
             <MainLayout>

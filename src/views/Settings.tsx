@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, Database, Eye, EyeOff, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,6 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -33,6 +34,9 @@ import {
   type SystemInfo,
   type BackupSummary,
   type BackupInspection,
+  type AutomaticBackupRunResult,
+  type AutomaticBackupSettings,
+  type AutomaticBackupStatus,
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
@@ -54,6 +58,19 @@ const fetchSettings = async (): Promise<Settings> => {
 
 const fetchSystemInfo = async (): Promise<SystemInfo> => {
   return await invoke<SystemInfo>("get_system_info");
+};
+
+const fetchAutomaticBackupStatus = async (): Promise<AutomaticBackupStatus> => {
+  return await invoke<AutomaticBackupStatus>("get_automatic_backup_status");
+};
+
+const formatBackupDate = (value?: string | null) =>
+  value ? new Date(value).toLocaleString("pt-BR") : "Ainda não executado";
+
+const formatBackupSize = (value?: number | null) => {
+  if (value == null) return "";
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 type UpdateProgress = {
@@ -100,11 +117,22 @@ export function Settings() {
     queryFn: fetchSystemInfo,
   });
 
+  const { data: automaticBackupStatus, isError: isAutomaticBackupError, refetch: refetchAutomaticBackup } = useQuery({
+    queryKey: ["automatic-backup-status"],
+    queryFn: fetchAutomaticBackupStatus,
+    refetchInterval: (query) => query.state.data?.running ? 1000 : false,
+  });
+
   const [localSettings, setLocalSettings] = useState<Settings>({
     companyName: "",
     cnpj: "",
     address: "",
     logoPath: "",
+  });
+  const [automaticBackupSettings, setAutomaticBackupSettings] = useState<AutomaticBackupSettings>({
+    enabled: false,
+    destination: null,
+    intervalHours: 24,
   });
 
   useEffect(() => {
@@ -112,6 +140,16 @@ export function Settings() {
       setLocalSettings(settingsData);
     }
   }, [settingsData]);
+
+  useEffect(() => {
+    if (automaticBackupStatus) {
+      setAutomaticBackupSettings({
+        enabled: automaticBackupStatus.enabled,
+        destination: automaticBackupStatus.destination,
+        intervalHours: automaticBackupStatus.intervalHours,
+      });
+    }
+  }, [automaticBackupStatus]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Settings) => {
@@ -129,6 +167,29 @@ export function Settings() {
       invoke<BackupSummary>("export_backup", { destination, passphrase }),
     onSuccess: (backup) => toastSuccess(`Backup exportado com ${backup.attachmentCount} anexo(s).`),
     onError: (err) => toastError(err, "Erro ao exportar backup."),
+  });
+
+  const automaticBackupSettingsMutation = useMutation({
+    mutationFn: async (settings: AutomaticBackupSettings) =>
+      invoke<AutomaticBackupStatus>("update_automatic_backup_settings", { settings }),
+    onSuccess: (status) => {
+      queryClient.setQueryData(["automatic-backup-status"], status);
+      toastSuccess("Configuração do backup automático salva.");
+    },
+    onError: (err) => toastError(err, "Erro ao salvar o backup automático."),
+  });
+
+  const automaticBackupNowMutation = useMutation({
+    mutationFn: async () => invoke<AutomaticBackupRunResult>("run_automatic_backup_now"),
+    onSuccess: (result) => {
+      if (result.created) {
+        toastSuccess("Backup automático criado e validado com sucesso.");
+      } else if (result.skippedUnchanged) {
+        toastSuccess("Os dados não mudaram; nenhum novo arquivo foi necessário.");
+      }
+    },
+    onError: (err) => toastError(err, "Erro ao executar o backup automático."),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["automatic-backup-status"] }),
   });
 
   const restoreMutation = useMutation({
@@ -250,6 +311,24 @@ export function Settings() {
     } finally {
       setIsLogoUploading(false);
     }
+  };
+
+  const handleSelectAutomaticBackupDirectory = async () => {
+    try {
+      const destination = await invoke<string | null>("select_automatic_backup_directory");
+      if (destination) {
+        setAutomaticBackupSettings((current) => ({ ...current, destination }));
+      }
+    } catch (err) {
+      toastError(err, "Erro ao selecionar a pasta do backup automático.");
+    }
+  };
+
+  const handleSaveAutomaticBackup = () => {
+    automaticBackupSettingsMutation.mutate({
+      ...automaticBackupSettings,
+      intervalHours: Math.max(1, Math.min(168, automaticBackupSettings.intervalHours)),
+    });
   };
 
   const handleExport = async (passphrase: string) => {
@@ -465,6 +544,117 @@ export function Settings() {
                   <Button variant="outline" size="sm" onClick={() => refetchSystemInfo()}>Tentar novamente</Button>
                 </div>
               )}
+              <Separator />
+              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="automatic-backup-enabled"
+                    checked={automaticBackupSettings.enabled}
+                    onChange={(event) => setAutomaticBackupSettings((current) => ({
+                      ...current,
+                      enabled: event.target.checked,
+                    }))}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="automatic-backup-enabled">Backup automático</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Verificado ao abrir o OpetS e a cada hora. Arquivos iguais não são duplicados.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="automatic-backup-destination">Pasta de destino</Label>
+                  <code
+                    id="automatic-backup-destination"
+                    className="block truncate rounded bg-muted p-2 text-[10px]"
+                    title={automaticBackupSettings.destination ?? undefined}
+                  >
+                    {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => void handleSelectAutomaticBackupDirectory()}
+                  >
+                    <FolderOpen className="h-4 w-4" /> Selecionar pasta
+                  </Button>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
+                  <Input
+                    id="automatic-backup-interval"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={automaticBackupSettings.intervalHours}
+                    onChange={(event) => setAutomaticBackupSettings((current) => ({
+                      ...current,
+                      intervalHours: Number(event.target.value) || 1,
+                    }))}
+                  />
+                  {automaticBackupSettings.intervalHours > 24 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Intervalos acima de 24 horas aumentam o risco de perda de dados recentes.
+                    </p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveAutomaticBackup}
+                    disabled={automaticBackupSettingsMutation.isPending}
+                  >
+                    {automaticBackupSettingsMutation.isPending ? "Salvando..." : "Salvar automático"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => automaticBackupNowMutation.mutate()}
+                    disabled={
+                      automaticBackupNowMutation.isPending ||
+                      !automaticBackupSettings.destination ||
+                      automaticBackupSettings.destination !== automaticBackupStatus?.destination
+                    }
+                  >
+                    <HardDriveDownload className="h-4 w-4" />
+                    {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
+                  </Button>
+                </div>
+                {automaticBackupStatus && (
+                  <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                    <p>
+                      Último backup: {formatBackupDate(automaticBackupStatus.lastSuccessAt)}
+                      {automaticBackupStatus.lastBackupSizeBytes != null
+                        ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
+                        : ""}
+                    </p>
+                    <p>Última verificação: {formatBackupDate(automaticBackupStatus.lastVerifiedAt)}</p>
+                    {automaticBackupStatus.enabled && (
+                      <p>Próxima verificação elegível: {formatBackupDate(automaticBackupStatus.nextBackupAt)}</p>
+                    )}
+                    {automaticBackupStatus.lastError && (
+                      <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
+                    )}
+                  </div>
+                )}
+                {isAutomaticBackupError && (
+                  <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+                    <span>Não foi possível carregar o status.</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                )}
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Retenção leve: 7 pontos diários e 4 semanais. Use uma pasta sincronizada, rede ou unidade externa; não mova o banco ativo.
+                </p>
+              </div>
+              <Separator />
               <div className="flex flex-col gap-2">
                 <Button
                   variant="outline"

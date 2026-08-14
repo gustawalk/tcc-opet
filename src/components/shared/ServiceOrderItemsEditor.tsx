@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/formatters";
 import { InventoryItem } from "@/lib/types";
-import { normalizeIntegerInput, sanitizeIntegerInput } from "@/lib/numeric-input";
+import {
+  normalizeIntegerInput,
+  sanitizeBoundedIntegerInput,
+} from "@/lib/numeric-input";
 import { quantitySchema } from "@/lib/validation";
 
 export type ServiceOrderItemLine = {
@@ -117,16 +120,48 @@ export function ServiceOrderItemsEditor({
   const changeQuantity = (line: ServiceOrderItemLine, value: string) => {
     setQuantityInputs((current) => ({
       ...current,
-      [line.id]: sanitizeIntegerInput(value),
+      [line.id]: sanitizeBoundedIntegerInput(value, line.maxQuantity),
     }));
   };
   const commitQuantity = (line: ServiceOrderItemLine) => {
     const value = normalizeIntegerInput(
       quantityInputs[line.id] ?? String(line.quantity),
+      line.quantity,
     );
-    setQuantityInputs((current) => ({ ...current, [line.id]: value }));
     const result = quantitySchema.safeParse({ quantity: value });
-    if (result.success) void onQuantityChange(line, result.data.quantity);
+    if (!result.success) {
+      setQuantityInputs((current) => {
+        const next = { ...current };
+        delete next[line.id];
+        return next;
+      });
+      return;
+    }
+
+    const quantity =
+      line.maxQuantity === undefined
+        ? result.data.quantity
+        : Math.min(result.data.quantity, line.maxQuantity);
+    setQuantityInputs((current) => ({
+      ...current,
+      [line.id]: String(quantity),
+    }));
+    const clearCommittedInput = () => {
+      setQuantityInputs((current) => {
+        if (current[line.id] !== String(quantity)) return current;
+        const next = { ...current };
+        delete next[line.id];
+        return next;
+      });
+    };
+    try {
+      void Promise.resolve(onQuantityChange(line, quantity)).then(
+        clearCommittedInput,
+        clearCommittedInput,
+      );
+    } catch {
+      clearCommittedInput();
+    }
   };
   const createItem = (type: "part" | "service") => {
     setSearch("");
@@ -265,6 +300,11 @@ export function ServiceOrderItemsEditor({
                     <p className="text-xs text-primary">
                       {formatCurrency(line.unitPrice)}
                     </p>
+                    {line.maxQuantity !== undefined && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Máximo disponível: {line.maxQuantity}
+                      </p>
+                    )}
                   </div>
                   <Input
                     className="h-8 w-16 text-center"
@@ -279,6 +319,7 @@ export function ServiceOrderItemsEditor({
                     {formatCurrency(line.unitPrice * line.quantity)}
                   </span>
                   <Button
+                    type="button"
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7 text-destructive"

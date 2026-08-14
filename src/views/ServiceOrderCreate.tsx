@@ -237,9 +237,11 @@ export function ServiceOrderCreate() {
   };
   const changeQuantity = (line: ServiceOrderItemLine, next: number) => {
     if (!Number.isSafeInteger(next) || next < 1) return;
+    const quantity =
+      line.maxQuantity === undefined ? next : Math.min(next, line.maxQuantity);
     setLines((current) =>
       current.map((entry) =>
-        entry.id === line.id ? { ...entry, quantity: next } : entry,
+        entry.id === line.id ? { ...entry, quantity } : entry,
       ),
     );
   };

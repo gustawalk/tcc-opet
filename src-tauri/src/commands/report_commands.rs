@@ -37,7 +37,10 @@ fn validate_report_money_for_ipc(report: &FinancialReport) -> Result<(), AppErro
         .by_technician
         .iter()
         .chain(&report.by_item_type)
-        .chain(&report.top_items)
+        .flat_map(|item| [item.revenue, item.cost, item.profit]);
+    let items = report
+        .top_items
+        .iter()
         .flat_map(|item| [item.revenue, item.cost, item.profit]);
     let months = report
         .by_month
@@ -46,6 +49,7 @@ fn validate_report_money_for_ipc(report: &FinancialReport) -> Result<(), AppErro
     if summary
         .into_iter()
         .chain(breakdowns)
+        .chain(items)
         .chain(months)
         .all(is_js_safe_integer)
     {
@@ -116,7 +120,7 @@ fn financial_report_csv(report: &FinancialReport) -> String {
     for item in &report.top_items {
         csv.push_str(&format!(
             "{},{},{},{},{}\n",
-            csv_escape(&item.label),
+            csv_escape(&item.display_label),
             format_csv(item.revenue),
             format_csv(item.cost),
             format_csv(item.profit),
@@ -163,12 +167,25 @@ pub fn export_financial_report_csv(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::financial_report_repo::{FinancialBreakdown, FinancialMonth};
+    use crate::repositories::financial_report_repo::{
+        FinancialBreakdown, FinancialItemBreakdown, FinancialMonth,
+    };
 
     #[test]
     fn renders_escaped_csv_with_quantity_ranking() {
         let breakdown = FinancialBreakdown {
             label: "Técnica \"Ana\"".to_string(),
+            revenue: 12_000,
+            cost: 5_000,
+            profit: 7_000,
+            count: 2,
+        };
+        let item_breakdown = FinancialItemBreakdown {
+            key: "item-1|part|Tela".to_string(),
+            inventory_item_id: "item-1".to_string(),
+            label: "Tela".to_string(),
+            item_type: "part".to_string(),
+            display_label: "Tela (Peça · item-1)".to_string(),
             revenue: 12_000,
             cost: 5_000,
             profit: 7_000,
@@ -194,7 +211,7 @@ mod tests {
             ranking_limit: 5,
             by_technician: vec![breakdown.clone()],
             by_item_type: vec![breakdown.clone()],
-            top_items: vec![breakdown],
+            top_items: vec![item_breakdown],
             by_month: vec![FinancialMonth {
                 month: "2026-01".to_string(),
                 revenue: 12_000,
@@ -208,6 +225,7 @@ mod tests {
         assert!(csv.contains("\"Técnica \"\"Ana\"\"\",120.00,50.00,70.00,2"));
         assert!(csv.contains("Lucro bruto estimado"));
         assert!(csv.contains("Itens e serviços mais vendidos por quantidade"));
+        assert!(csv.contains("Tela (Peça · item-1)"));
     }
 
     #[test]

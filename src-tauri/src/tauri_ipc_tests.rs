@@ -143,6 +143,11 @@ fn core_commands_preserve_the_frontend_ipc_contract() {
     assert_eq!(report["estimatedGrossProfit"], 5000);
     assert!(report.get("netProfit").is_none());
     assert_eq!(report["finalizedOrders"], 1);
+    let top_item = &report["topItems"][0];
+    assert_eq!(top_item["inventoryItemId"], part_id);
+    assert_eq!(top_item["itemType"], "part");
+    assert_eq!(top_item["displayLabel"], "Peça IPC");
+    assert!(top_item["key"].as_str().unwrap().contains(&part_id));
 
     let error = get_ipc_response(
         &webview,

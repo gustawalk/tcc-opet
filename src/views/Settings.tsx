@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Monitor, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -44,10 +44,24 @@ import { RelativeDate } from "@/components/shared/RelativeDate";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { releaseNotes } from "@/lib/release-notes";
 import {
+  THEME_OPTIONS,
   getThemePreference,
   setThemePreference,
-  Theme,
+  type Theme,
 } from "@/lib/theme";
+import {
+  FONT_SCALE_OPTIONS,
+  getFontScalePreference,
+  setFontScalePreference,
+  type FontScale,
+} from "@/lib/font-scale";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "error sending request for url (https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json)": "Não foi possível verificar as atualizações."
@@ -104,6 +118,7 @@ export function Settings() {
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
+  const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
     queryKey: ["settings"],
@@ -409,10 +424,13 @@ export function Settings() {
     setIsResetStarting(true);
     requestAnimationFrame(() => resetMutation.mutate());
   };
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
+  const handleThemeChange = (nextTheme: Theme) => {
     setTheme(nextTheme);
     setThemePreference(nextTheme);
+  };
+  const handleFontScaleChange = (nextScale: FontScale) => {
+    setFontScale(nextScale);
+    setFontScalePreference(nextScale);
   };
   const closeBackupPassphraseDialog = () => {
     setBackupPassphraseDialog(null);
@@ -544,30 +562,70 @@ export function Settings() {
           <CardHeader>
             <CardTitle className="text-lg">Aparência</CardTitle>
             <CardDescription>
-              A preferência é salva somente neste dispositivo.
+              As preferências são salvas somente neste dispositivo.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Tema escuro</p>
-              <p className="text-sm text-muted-foreground">
-                {theme === "dark" ? "Ativado" : "Desativado"}
-              </p>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium whitespace-nowrap">Tema</p>
+                <p className="text-sm text-muted-foreground whitespace-nowrap">
+                  {theme === "system"
+                    ? "Segue o sistema"
+                    : theme === "dark"
+                      ? "Tema escuro"
+                      : "Tema claro"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {theme === "system" ? (
+                  <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : theme === "dark" ? (
+                  <Moon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <Sun className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <Select
+                  value={theme}
+                  onValueChange={(value) => handleThemeChange(value as Theme)}
+                >
+                  <SelectTrigger aria-label="Tema" className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {THEME_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              aria-pressed={theme === "dark"}
-              onClick={toggleTheme}
-            >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-              {theme === "dark" ? "Usar tema claro" : "Usar tema escuro"}
-            </Button>
+            <Separator />
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium whitespace-nowrap">Tamanho da fonte</p>
+                <p className="text-sm text-muted-foreground whitespace-nowrap">
+                  Escala textos e interface.
+                </p>
+              </div>
+              <Select
+                value={fontScale}
+                onValueChange={(value) => handleFontScaleChange(value as FontScale)}
+              >
+                <SelectTrigger aria-label="Tamanho da fonte" className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FONT_SCALE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
 

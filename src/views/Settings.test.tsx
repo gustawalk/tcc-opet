@@ -142,3 +142,63 @@ describe("Settings automatic backup", () => {
     expect(screen.queryByRole("button", { name: "Salvando..." })).not.toBeInTheDocument();
   });
 });
+
+describe("Settings appearance", () => {
+  const originalMatchMedia = window.matchMedia;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.removeProperty("--font-scale");
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: "(prefers-color-scheme: dark)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as MediaQueryList);
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_settings") {
+        return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
+      }
+      if (command === "get_system_info") {
+        return Promise.resolve({ databasePath: "/data/database.db", appVersion: "0.3.0", tauriVersion: "2", environment: "Teste" });
+      }
+      if (command === "get_automatic_backup_status") return Promise.resolve(automaticStatus);
+      return Promise.resolve(null);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("defaults the theme select to system and the font scale to standard", async () => {
+    renderSettings();
+    const themeSelect = await screen.findByRole("combobox", { name: "Tema" });
+    expect(themeSelect).toHaveTextContent("Sistema");
+    expect(screen.getByRole("combobox", { name: "Tamanho da fonte" })).toHaveTextContent("Padrão");
+  });
+
+  it("changes the theme to dark from the select", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await user.click(await screen.findByRole("combobox", { name: "Tema" }));
+    await user.click(await screen.findByRole("option", { name: "Escuro" }));
+
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(window.localStorage.getItem("opets-theme")).toBe("dark");
+  });
+
+  it("changes the font scale to large from the select", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await user.click(await screen.findByRole("combobox", { name: "Tamanho da fonte" }));
+    await user.click(await screen.findByRole("option", { name: "Grande" }));
+
+    expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1.1");
+    expect(window.localStorage.getItem("opets-font-scale")).toBe("lg");
+  });
+});

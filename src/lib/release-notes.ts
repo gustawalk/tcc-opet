@@ -11,6 +11,31 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.3.1",
+    date: "16/08/2026",
+    title: "Backup automático reforçado e novo visual",
+    sections: [
+      {
+        title: "Backup automático",
+        items: [
+          "A configuração e os arquivos temporários passaram a ficar na pasta de dados do aplicativo, com migração automática.",
+          "Cada instalação registra localmente os arquivos que criou; a retenção nunca remove backups de outras máquinas ou manuais.",
+          "Novos arquivos de backup nunca sobrescrevem um arquivo existente e a configuração corrompida é recuperada da versão anterior.",
+          "O agendador espera a data do próximo backup e acorda somente quando necessário; com o recurso desativado, nenhuma verificação de hora em hora roda.",
+          "O progresso aparece em um diálogo fixo e as datas do último backup são exibidas de forma relativa (hoje/ontem).",
+        ],
+      },
+      {
+        title: "Aparência",
+        items: [
+          "Tema com as opções Claro, Escuro e Sistema, seguindo automaticamente o sistema operacional.",
+          "Tamanho da fonte com as opções Pequena, Padrão e Grande, ajustando textos e interface.",
+          "As preferências são salvas somente neste dispositivo.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.3.0",
     date: "12/08/2026",
     title: "Listagens mais rápidas e aplicativo mais leve",

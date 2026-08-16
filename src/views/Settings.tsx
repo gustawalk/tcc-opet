@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, Database, Eye, EyeOff, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Monitor, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,6 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -33,16 +34,34 @@ import {
   type SystemInfo,
   type BackupSummary,
   type BackupInspection,
+  type AutomaticBackupRunResult,
+  type AutomaticBackupSettings,
+  type AutomaticBackupStatus,
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
+import { RelativeDate } from "@/components/shared/RelativeDate";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { releaseNotes } from "@/lib/release-notes";
 import {
+  THEME_OPTIONS,
   getThemePreference,
   setThemePreference,
-  Theme,
+  type Theme,
 } from "@/lib/theme";
+import {
+  FONT_SCALE_OPTIONS,
+  getFontScalePreference,
+  setFontScalePreference,
+  type FontScale,
+} from "@/lib/font-scale";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "error sending request for url (https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json)": "Não foi possível verificar as atualizações."
@@ -54,6 +73,16 @@ const fetchSettings = async (): Promise<Settings> => {
 
 const fetchSystemInfo = async (): Promise<SystemInfo> => {
   return await invoke<SystemInfo>("get_system_info");
+};
+
+const fetchAutomaticBackupStatus = async (): Promise<AutomaticBackupStatus> => {
+  return await invoke<AutomaticBackupStatus>("get_automatic_backup_status");
+};
+
+const formatBackupSize = (value?: number | null) => {
+  if (value == null) return "";
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 type UpdateProgress = {
@@ -89,6 +118,7 @@ export function Settings() {
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
+  const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
     queryKey: ["settings"],
@@ -100,18 +130,44 @@ export function Settings() {
     queryFn: fetchSystemInfo,
   });
 
+  const { data: automaticBackupStatus, isLoading: isAutomaticBackupLoading, isError: isAutomaticBackupError, refetch: refetchAutomaticBackup } = useQuery({
+    queryKey: ["automatic-backup-status"],
+    queryFn: fetchAutomaticBackupStatus,
+    refetchInterval: (query) => query.state.data?.running ? 1000 : false,
+  });
+
   const [localSettings, setLocalSettings] = useState<Settings>({
     companyName: "",
     cnpj: "",
     address: "",
     logoPath: "",
   });
+  const [automaticBackupSettings, setAutomaticBackupSettings] = useState<AutomaticBackupSettings>({
+    enabled: false,
+    destination: null,
+    intervalHours: 24,
+  });
+  const [isAutomaticBackupDirty, setIsAutomaticBackupDirty] = useState(false);
+  const automaticBackupInitialized = useRef(false);
+  const [settingsSaveIsToggle, setSettingsSaveIsToggle] = useState(false);
+  const settingsMutationIsToggle = useRef(false);
 
   useEffect(() => {
     if (settingsData) {
       setLocalSettings(settingsData);
     }
   }, [settingsData]);
+
+  useEffect(() => {
+    if (automaticBackupStatus && (!automaticBackupInitialized.current || !isAutomaticBackupDirty)) {
+      setAutomaticBackupSettings({
+        enabled: automaticBackupStatus.enabled,
+        destination: automaticBackupStatus.destination,
+        intervalHours: automaticBackupStatus.intervalHours,
+      });
+      automaticBackupInitialized.current = true;
+    }
+  }, [automaticBackupStatus, isAutomaticBackupDirty]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Settings) => {
@@ -129,6 +185,44 @@ export function Settings() {
       invoke<BackupSummary>("export_backup", { destination, passphrase }),
     onSuccess: (backup) => toastSuccess(`Backup exportado com ${backup.attachmentCount} anexo(s).`),
     onError: (err) => toastError(err, "Erro ao exportar backup."),
+  });
+
+  const automaticBackupSettingsMutation = useMutation({
+    mutationFn: async (settings: AutomaticBackupSettings) =>
+      invoke<AutomaticBackupStatus>("update_automatic_backup_settings", { settings }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["automatic-backup-status"] });
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData(["automatic-backup-status"], status);
+      setAutomaticBackupSettings({
+        enabled: status.enabled,
+        destination: status.destination,
+        intervalHours: status.intervalHours,
+      });
+      setIsAutomaticBackupDirty(false);
+      if (!settingsMutationIsToggle.current) {
+        toastSuccess("Configuração do backup automático salva.");
+      }
+    },
+    onError: (err) => toastError(err, "Erro ao salvar o backup automático."),
+    onSettled: () => {
+      settingsMutationIsToggle.current = false;
+      setSettingsSaveIsToggle(false);
+    },
+  });
+
+  const automaticBackupNowMutation = useMutation({
+    mutationFn: async () => invoke<AutomaticBackupRunResult>("run_automatic_backup_now"),
+    onSuccess: (result) => {
+      if (result.created) {
+        toastSuccess("Backup automático criado e validado com sucesso.");
+      } else if (result.skippedUnchanged) {
+        toastSuccess("Os dados não mudaram; nenhum novo arquivo foi necessário.");
+      }
+    },
+    onError: (err) => toastError(err, "Erro ao executar o backup automático."),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["automatic-backup-status"] }),
   });
 
   const restoreMutation = useMutation({
@@ -252,6 +346,44 @@ export function Settings() {
     }
   };
 
+  const handleSelectAutomaticBackupDirectory = async () => {
+    try {
+      const destination = await invoke<string | null>("select_automatic_backup_directory");
+      if (destination) {
+        setAutomaticBackupSettings((current) => ({ ...current, destination }));
+        setIsAutomaticBackupDirty(true);
+      }
+    } catch (err) {
+      toastError(err, "Erro ao selecionar a pasta do backup automático.");
+    }
+  };
+
+  const validatedAutomaticBackupSettings = (enabled = automaticBackupSettings.enabled) => {
+    if (!Number.isInteger(automaticBackupSettings.intervalHours) || automaticBackupSettings.intervalHours < 1 || automaticBackupSettings.intervalHours > 168) {
+      toastError("O intervalo deve ser um número inteiro entre 1 e 168 horas.");
+      return null;
+    }
+    if (enabled && !automaticBackupSettings.destination) {
+      toastError("Selecione uma pasta antes de ativar o backup automático.");
+      return null;
+    }
+    return { ...automaticBackupSettings, enabled };
+  };
+
+  const handleSaveAutomaticBackup = () => {
+    const settings = validatedAutomaticBackupSettings();
+    if (settings) automaticBackupSettingsMutation.mutate(settings);
+  };
+
+  const handleAutomaticBackupToggle = (enabled: boolean) => {
+    const settings = validatedAutomaticBackupSettings(enabled);
+    if (settings) {
+      settingsMutationIsToggle.current = true;
+      setSettingsSaveIsToggle(true);
+      automaticBackupSettingsMutation.mutate(settings);
+    }
+  };
+
   const handleExport = async (passphrase: string) => {
     try {
       const destination = await save({
@@ -292,10 +424,13 @@ export function Settings() {
     setIsResetStarting(true);
     requestAnimationFrame(() => resetMutation.mutate());
   };
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
+  const handleThemeChange = (nextTheme: Theme) => {
     setTheme(nextTheme);
     setThemePreference(nextTheme);
+  };
+  const handleFontScaleChange = (nextScale: FontScale) => {
+    setFontScale(nextScale);
+    setFontScalePreference(nextScale);
   };
   const closeBackupPassphraseDialog = () => {
     setBackupPassphraseDialog(null);
@@ -337,6 +472,14 @@ export function Settings() {
   const updateProgressPercentage = updateProgress?.totalBytes
     ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
     : null;
+  const automaticBackupControlsDisabled =
+    isAutomaticBackupLoading ||
+    isAutomaticBackupError ||
+    automaticBackupStatus?.running ||
+    automaticBackupSettingsMutation.isPending ||
+    automaticBackupNowMutation.isPending;
+  const automaticBackupActionsDisabled =
+    automaticBackupControlsDisabled || !automaticBackupSettings.enabled;
 
   return (
     <form className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-4xl mx-auto" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
@@ -414,39 +557,134 @@ export function Settings() {
           </CardContent>
         </Card>
 
+        <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Aparência</CardTitle>
             <CardDescription>
-              A preferência é salva somente neste dispositivo.
+              As preferências são salvas somente neste dispositivo.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Tema escuro</p>
-              <p className="text-sm text-muted-foreground">
-                {theme === "dark" ? "Ativado" : "Desativado"}
-              </p>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium whitespace-nowrap">Tema</p>
+                <p className="text-sm text-muted-foreground whitespace-nowrap">
+                  {theme === "system"
+                    ? "Segue o sistema"
+                    : theme === "dark"
+                      ? "Tema escuro"
+                      : "Tema claro"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {theme === "system" ? (
+                  <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : theme === "dark" ? (
+                  <Moon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <Sun className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <Select
+                  value={theme}
+                  onValueChange={(value) => handleThemeChange(value as Theme)}
+                >
+                  <SelectTrigger aria-label="Tema" className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {THEME_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              aria-pressed={theme === "dark"}
-              onClick={toggleTheme}
-            >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-              {theme === "dark" ? "Usar tema claro" : "Usar tema escuro"}
-            </Button>
+            <Separator />
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium whitespace-nowrap">Tamanho da fonte</p>
+                <p className="text-sm text-muted-foreground whitespace-nowrap">
+                  Escala textos e interface.
+                </p>
+              </div>
+              <Select
+                value={fontScale}
+                onValueChange={(value) => handleFontScaleChange(value as FontScale)}
+              >
+                <SelectTrigger aria-label="Tamanho da fonte" className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FONT_SCALE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
+            </CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => setIsReleaseHistoryOpen(true)}
+            >
+              <History className="h-4 w-4" /> Histórico de versões
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Versão do App:</span>
+                <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tauri Core:</span>
+                <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Ambiente:</span>
+                <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
+              </div>
+            </div>
+            <div className="pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => updateCheckMutation.mutate()}
+                disabled={updateCheckMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
+                {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
+              </Button>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {updateInfo === null
+                  ? "Clique em Verificar Atualizações para buscar novas versões."
+                  : updateInfo.available
+                    ? `Versão ${updateInfo.version} disponível.`
+                    : "Seu aplicativo está atualizado."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        </div>
+
+        <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup
@@ -483,77 +721,160 @@ export function Settings() {
                   <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
                 </Button>
               </div>
+              <Separator />
+              <details className="group rounded-lg border bg-muted/20">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
+                  <div className="flex items-center gap-2">
+                    <HardDriveDownload className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Backup automático</span>
+                    <Badge variant={automaticBackupStatus?.enabled ? "default" : "secondary"}>
+                      {isAutomaticBackupLoading
+                        ? "Carregando"
+                        : automaticBackupStatus?.enabled
+                          ? "Ativado"
+                          : "Desativado"}
+                    </Badge>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t p-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="automatic-backup-enabled"
+                      checked={automaticBackupSettings.enabled}
+                      disabled={automaticBackupControlsDisabled}
+                      onChange={(event) => handleAutomaticBackupToggle(event.target.checked)}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="automatic-backup-enabled">Ativar backup automático</Label>
+                      <p className="text-xs text-muted-foreground">
+                        O primeiro backup será executado após o intervalo configurado. Arquivos iguais não são duplicados.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Pasta de destino</Label>
+                    <code
+                      className="block truncate rounded bg-muted p-2 text-[10px]"
+                      title={automaticBackupSettings.destination ?? undefined}
+                    >
+                      {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2"
+                      disabled={automaticBackupControlsDisabled}
+                      onClick={() => void handleSelectAutomaticBackupDirectory()}
+                    >
+                      <FolderOpen className="h-4 w-4" /> Selecionar pasta
+                    </Button>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
+                    <Input
+                      id="automatic-backup-interval"
+                      type="number"
+                      min={1}
+                      max={168}
+                      step={1}
+                      disabled={automaticBackupActionsDisabled}
+                      value={automaticBackupSettings.intervalHours}
+                      onChange={(event) => {
+                        setAutomaticBackupSettings((current) => ({
+                          ...current,
+                          intervalHours: Number(event.target.value),
+                        }));
+                        setIsAutomaticBackupDirty(true);
+                      }}
+                    />
+                    {automaticBackupSettings.intervalHours > 48 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Intervalos acima de 48 horas aumentam o risco de perda de dados recentes.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveAutomaticBackup}
+                      disabled={automaticBackupActionsDisabled || !isAutomaticBackupDirty}
+                    >
+                      {automaticBackupSettingsMutation.isPending && !settingsSaveIsToggle ? "Salvando..." : "Salvar configurações"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => automaticBackupNowMutation.mutate()}
+                      disabled={
+                        automaticBackupActionsDisabled ||
+                        automaticBackupNowMutation.isPending ||
+                        automaticBackupStatus?.running ||
+                        !automaticBackupSettings.destination ||
+                        automaticBackupSettings.destination !== automaticBackupStatus?.destination
+                      }
+                    >
+                      <HardDriveDownload className="h-4 w-4" />
+                      {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
+                    </Button>
+                  </div>
+                  {automaticBackupStatus && (
+                    <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                      <p>
+                        Último backup:{" "}
+                        <RelativeDate value={automaticBackupStatus.lastSuccessAt} fallback="Ainda não executado" />
+                        {automaticBackupStatus.lastBackupSizeBytes != null
+                          ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
+                          : ""}
+                      </p>
+                      <p>
+                        Última verificação:{" "}
+                        <RelativeDate value={automaticBackupStatus.lastVerifiedAt} fallback="Ainda não executado" />
+                      </p>
+                      {automaticBackupStatus.enabled && (
+                        <p>
+                          Próxima verificação elegível:{" "}
+                          <RelativeDate value={automaticBackupStatus.nextBackupAt} fallback="Ainda não executado" />
+                        </p>
+                      )}
+                      {automaticBackupStatus.lastError && (
+                        <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
+                      )}
+                    </div>
+                  )}
+                  {isAutomaticBackupError && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+                      <span>Não foi possível carregar o status.</span>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Retenção leve: 7 pontos diários e 4 semanais.
+                  </p>
+                </div>
+              </details>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
-              </CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-2"
-                onClick={() => setIsReleaseHistoryOpen(true)}
-              >
-                <History className="h-4 w-4" /> Histórico de versões
-              </Button>
+          <Card className="border-destructive/20">
+            <CardHeader>
+              <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Versão do App:</span>
-                  <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tauri Core:</span>
-                  <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Ambiente:</span>
-                  <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
-                </div>
-              </div>
-              <div className="pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full gap-2"
-                  onClick={() => updateCheckMutation.mutate()}
-                  disabled={updateCheckMutation.isPending}
-                >
-                  <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
-                  {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
-                </Button>
-                <p className="mt-2 text-center text-xs text-muted-foreground">
-                  {updateInfo === null
-                    ? "Clique em Verificar Atualizações para buscar novas versões."
-                    : updateInfo.available
-                      ? `Versão ${updateInfo.version} disponível.`
-                      : "Seu aplicativo está atualizado."}
-                </p>
-              </div>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
+              </p>
+              <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
+                {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
+              </Button>
             </CardContent>
           </Card>
-        </div>
-
-        <Card className="border-destructive/20">
-          <CardHeader>
-            <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
-            </p>
-            <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
-              {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
-            </Button>
-          </CardContent>
-        </Card>
       </div>
 
       <Dialog open={isReleaseHistoryOpen} onOpenChange={setIsReleaseHistoryOpen}>

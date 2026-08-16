@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 // Static connection pool for simple desktop usage
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
+static APP_DATA_DIR: OnceCell<PathBuf> = OnceCell::new();
 static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
 static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
 
@@ -102,6 +103,11 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
     }
     acquire_storage_instance_lock(&resolved_database_path)?;
     initialize_storage_at(&resolved_database_path, should_seed_demo_data())?;
+    APP_DATA_DIR.set(app_data_dir).map_err(|_| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
+            "Application data path was already initialized.",
+        )))
+    })?;
     DB_PATH.set(resolved_database_path).map_err(|_| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
             "Database path was already initialized.",
@@ -883,6 +889,13 @@ pub fn database_path() -> PathBuf {
         .get()
         .cloned()
         .expect("Database path must be initialized before use")
+}
+
+pub(crate) fn app_data_dir() -> PathBuf {
+    APP_DATA_DIR
+        .get()
+        .cloned()
+        .expect("Application data path must be initialized before use")
 }
 
 pub fn attachments_dir() -> PathBuf {

@@ -221,6 +221,68 @@ pub fn validate_backup_passphrase(source: String, passphrase: String) -> Result<
     crate::backup_service::validate_backup_passphrase(Path::new(&source), Some(&passphrase))
 }
 
+#[command]
+pub fn get_automatic_backup_status(
+) -> Result<crate::automatic_backup::AutomaticBackupStatus, AppError> {
+    crate::automatic_backup::get_status()
+}
+
+#[command]
+pub fn update_automatic_backup_settings(
+    settings: crate::automatic_backup::AutomaticBackupSettings,
+) -> Result<crate::automatic_backup::AutomaticBackupStatus, AppError> {
+    crate::automatic_backup::update_settings(settings)
+}
+
+#[command]
+pub async fn run_automatic_backup_now(
+    app: AppHandle,
+) -> Result<crate::automatic_backup::AutomaticBackupRunResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || crate::automatic_backup::run(true, Some(&app)))
+        .await
+        .map_err(|error| {
+            AppError::new(
+                format!("Failed to run automatic backup task: {error}"),
+                format!("Erro ao executar a tarefa de backup automático: {error}"),
+            )
+        })?
+}
+
+#[command]
+pub async fn select_automatic_backup_directory(app: AppHandle) -> Result<Option<String>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let selected = app.dialog().file().blocking_pick_folder();
+        let Some(selected) = selected else {
+            return Ok(None);
+        };
+        selected
+            .into_path()
+            .map_err(|error| {
+                AppError::new(
+                    format!("Failed to access selected backup directory: {error}"),
+                    format!("Erro ao acessar a pasta de backup selecionada: {error}"),
+                )
+            })
+            .and_then(|path| {
+                path.to_str()
+                    .map(|path| Some(path.to_string()))
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "Automatic backup directory must use a valid Unicode path.",
+                            "A pasta de backup automático deve usar um caminho Unicode válido.",
+                        )
+                    })
+            })
+    })
+    .await
+    .map_err(|error| {
+        AppError::new(
+            format!("Failed to select automatic backup directory: {error}"),
+            format!("Erro ao selecionar a pasta de backup automático: {error}"),
+        )
+    })?
+}
+
 fn logo_data_url(path: &Path) -> Result<String, AppError> {
     let metadata = std::fs::symlink_metadata(path).map_err(|error| {
         AppError::new(

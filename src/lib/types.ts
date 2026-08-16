@@ -97,6 +97,39 @@ export interface BackupInspection {
   requiresPassphrase: boolean;
 }
 
+export interface AutomaticBackupSettings {
+  enabled: boolean;
+  destination?: string | null;
+  intervalHours: number;
+}
+
+export interface AutomaticBackupStatus extends AutomaticBackupSettings {
+  nextBackupAt?: string | null;
+  lastAttemptAt?: string | null;
+  lastSuccessAt?: string | null;
+  lastVerifiedAt?: string | null;
+  lastError?: string | null;
+  lastBackupPath?: string | null;
+  lastBackupSizeBytes?: number | null;
+  running: boolean;
+  progressPercent: number;
+  phase?: string | null;
+}
+
+export interface AutomaticBackupRunResult {
+  created: boolean;
+  skippedUnchanged: boolean;
+  prunedCount: number;
+  backup?: BackupSummary | null;
+}
+
+export interface AutomaticBackupProgress {
+  running: boolean;
+  percent: number;
+  phase: string;
+  message: string;
+}
+
 export interface ChecklistItem {
   id: string;
   label: string;

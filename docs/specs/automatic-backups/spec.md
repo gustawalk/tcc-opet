@@ -9,8 +9,8 @@ Criar pontos de recuperação autenticados sem depender de uma ação diária do
 - O recurso fica desativado por padrão.
 - O usuário escolhe uma pasta local, sincronizada, de rede ou unidade removível.
 - O intervalo aceita valores de 1 a 168 horas e usa 24 horas por padrão.
-- O backend verifica o agendamento ao abrir o aplicativo e depois a cada hora.
-- Ativar o recurso ou alterar pasta/intervalo agenda o backup para a próxima verificação, sem executá-lo dentro do salvamento da configuração.
+- O backend verifica o agendamento ao abrir o aplicativo e aguarda até a próxima data elegível, recalculando a espera quando a configuração muda.
+- Ativar o recurso ou alterar pasta/intervalo agenda o backup para `agora + intervalo`, sem executá-lo dentro do salvamento da configuração.
 - A execução manual ignora apenas a data agendada; dados inalterados continuam sem gerar arquivo duplicado.
 - A execução ocorre somente enquanto o OpetS está aberto.
 - Um backup só é registrado como sucesso depois da autenticação do envelope, validação do ZIP, migrações em staging, `integrity_check`, schema e chaves estrangeiras.
@@ -30,8 +30,9 @@ Criar pontos de recuperação autenticados sem depender de uma ação diária do
 - O formato permanece `.osbkp` versão 3.
 - Backups automáticos usam a chave `OPETS_DATA_KEY_V1`; nenhuma senha é persistida.
 - A pasta contém `.opets-backup-destination.json`, usado para detectar unidade ausente ou substituída.
-- Cada instalação possui um `sourceId` próprio, usado no nome e na retenção dos arquivos.
-- A configuração operacional fica em `database.automatic-backup.json`, fora do banco restaurável.
+- Cada instalação possui um `sourceId` próprio e um registro local dos arquivos que criou, usado exclusivamente para isolamento da retenção.
+- Novos arquivos usam `opets-auto-YYYYMMDD-HHMMSS.osbkp` no horário local e recebem sufixo numérico somente em colisões.
+- A configuração operacional e o staging ficam no diretório de dados do aplicativo, fora do banco restaurável e da raiz do projeto.
 - A configuração é gravada com `sync_all`, arquivo temporário, versão anterior recuperável e rename.
 - O destino não pode ser o diretório de anexos nem um descendente dele.
 - O banco e os anexos anteriores nunca são modificados durante exportação ou validação.
@@ -57,7 +58,7 @@ Criar pontos de recuperação autenticados sem depender de uma ação diária do
 
 ## RPO
 
-O objetivo padrão é RPO de 24 horas. Essa garantia depende de o aplicativo permanecer aberto no momento de uma verificação e de a pasta escolhida estar disponível e com espaço livre. Intervalos acima de 24 horas exibem aviso explícito.
+O objetivo padrão é RPO de 24 horas. Essa garantia depende de o aplicativo permanecer aberto até a data elegível e de a pasta escolhida estar disponível e com espaço livre. Intervalos acima de 48 horas exibem aviso explícito.
 
 ## Critérios de aceite
 

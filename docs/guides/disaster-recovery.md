@@ -17,7 +17,7 @@
 6. Confirme a substituição dos dados atuais.
 7. Aguarde a conclusão sem fechar o aplicativo.
 8. Valide empresa, clientes, estoque, ordens de serviço, anexos e relatório financeiro.
-9. Configure novamente a pasta de backup automático neste dispositivo.
+9. Em uma instalação nova, configure a pasta de backup automático. No mesmo dispositivo, confirme que a configuração local preservada continua correta.
 
 ## Falhas comuns
 

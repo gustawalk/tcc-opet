@@ -12,16 +12,16 @@
 
 ## Fluxo de execução
 
-1. O scheduler carrega o sidecar e encerra sem I/O pesado quando o recurso está desativado ou ainda não venceu.
+1. O scheduler carrega o sidecar e aguarda em uma condition variable até a data elegível, uma alteração de configuração ou o encerramento.
 2. O marcador confirma que o mesmo destino continua montado.
 3. O coordenador adquire o lock exclusivo do armazenamento.
 4. O fingerprint BLAKE3 compara banco e anexos referenciados com o último estado.
 5. Se não houve mudança, o lock é liberado, tamanho e hash do último backup são conferidos e a validação integral é repetida quando a última tiver sete dias.
 6. Se houve mudança, o banco é copiado pela API de backup do SQLite e os anexos referenciados são preparados em staging.
 7. O lock é liberado antes de escrever ZIP, criptografar e validar.
-8. O arquivo final é ativado por rename apenas após `sync_all`.
+8. O arquivo final é ativado sem sobrescrever nomes existentes e somente após `sync_all`.
 9. A validação extrai somente o banco; anexos permanecem no arquivo autenticado.
-10. A retenção elimina apenas gerações pertencentes ao `sourceId` atual.
+10. A retenção elimina apenas arquivos registrados como pertencentes à instalação atual e nunca infere propriedade somente pelo nome.
 11. O sidecar registra sucesso, tamanho, fingerprint, próxima execução e eventual aviso de retenção.
 
 ## Eventos
@@ -43,13 +43,15 @@ Fases estimadas: `preparing`, `checking`, `snapshot`, `exporting`, `validating`,
 
 ## Estado persistido
 
-O sidecar contém versão, opções e estado. Campos operacionais incluem `sourceId`, `destinationId`, `nextBackupAt`, `lastAttemptAt`, `lastSuccessAt`, `lastVerifiedAt`, `lastError`, `lastBackupPath`, `lastBackupSizeBytes` e `sourceFingerprint`.
+O sidecar contém versão, opções e estado. Campos operacionais incluem `sourceId`, `destinationId`, `nextBackupAt`, `lastAttemptAt`, `lastSuccessAt`, `lastVerifiedAt`, `lastFullValidationAt`, `lastError`, `lastBackupPath`, `lastBackupSizeBytes`, `sourceFingerprint` e o registro dos arquivos pertencentes à instalação.
 
-O sidecar não viaja dentro do backup. Restaurar dados de outro computador não troca automaticamente o destino local.
+O sidecar fica em `appData/automatic-backup`, não viaja dentro do backup e é migrado automaticamente da localização legada ao lado do banco. Restaurar dados de outro computador não troca automaticamente o destino local.
+
+Nomes de arquivo (`opets-auto-*`) usam horário local, apenas para leitura humana do diretório; os timestamps de estado (`createdAt`, `nextBackupAt` etc.) ficam em RFC3339 UTC e a propriedade nunca é inferida pelo nome.
 
 ## Falhas
 
-- Destino ausente: registrar erro e tentar novamente na verificação horária seguinte.
+- Destino ausente: registrar erro e tentar novamente após uma hora.
 - Espaço insuficiente: falhar antes de criar arquivos grandes.
 - Backup anterior corrompido: manter o arquivo até a nova cópia ser validada e então removê-lo.
 - Falha na retenção: manter o novo backup válido e exibir o aviso no status.

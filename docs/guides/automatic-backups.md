@@ -4,13 +4,14 @@
 
 1. Abra `Configurações`.
 2. Localize `Banco de Dados & Backup`.
-3. Clique em `Selecionar pasta`.
-4. Escolha uma pasta sincronizada, de rede ou unidade externa.
-5. Defina o intervalo entre 1 e 168 horas. Recomenda-se 24 horas.
-6. Marque `Backup automático`.
-7. Clique em `Salvar automático`.
+3. Expanda o acordeão `Backup automático` abaixo das opções de exportação e importação.
+4. Clique em `Selecionar pasta`.
+5. Escolha uma pasta sincronizada, de rede ou unidade externa.
+6. Defina o intervalo entre 1 e 168 horas. Recomenda-se 24 horas.
+7. Marque `Ativar backup automático`; a ativação é salva imediatamente.
+8. Use `Salvar configurações` para aplicar mudanças posteriores de pasta ou intervalo.
 
-O primeiro arquivo será criado na próxima verificação do scheduler. `Executar agora` antecipa essa verificação, mas não duplica um backup quando os dados permanecem iguais.
+O primeiro arquivo será criado após o intervalo configurado. `Executar agora` antecipa essa verificação, mas não duplica um backup quando os dados permanecem iguais.
 
 ## Escolher o destino
 
@@ -36,7 +37,7 @@ Quando nenhum dado mudou, o arquivo anterior é validado e nenhum espaço adicio
 
 ## Retenção e espaço
 
-O OpetS mantém sete pontos diários e quatro semanais. Backups manuais não entram nessa limpeza. Cada instalação usa um namespace próprio, mesmo quando duas máquinas apontam para a mesma pasta.
+O OpetS mantém sete pontos diários e quatro semanais. Backups manuais não entram nessa limpeza. A propriedade dos arquivos fica no estado local de cada instalação, mesmo quando duas máquinas apontam para a mesma pasta.
 
 Para minimizar espaço e tempo:
 

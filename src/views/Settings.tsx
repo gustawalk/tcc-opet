@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -40,6 +40,7 @@ import {
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
+import { RelativeDate } from "@/components/shared/RelativeDate";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { releaseNotes } from "@/lib/release-notes";
 import {
@@ -63,9 +64,6 @@ const fetchSystemInfo = async (): Promise<SystemInfo> => {
 const fetchAutomaticBackupStatus = async (): Promise<AutomaticBackupStatus> => {
   return await invoke<AutomaticBackupStatus>("get_automatic_backup_status");
 };
-
-const formatBackupDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleString("pt-BR") : "Ainda não executado";
 
 const formatBackupSize = (value?: number | null) => {
   if (value == null) return "";
@@ -117,7 +115,7 @@ export function Settings() {
     queryFn: fetchSystemInfo,
   });
 
-  const { data: automaticBackupStatus, isError: isAutomaticBackupError, refetch: refetchAutomaticBackup } = useQuery({
+  const { data: automaticBackupStatus, isLoading: isAutomaticBackupLoading, isError: isAutomaticBackupError, refetch: refetchAutomaticBackup } = useQuery({
     queryKey: ["automatic-backup-status"],
     queryFn: fetchAutomaticBackupStatus,
     refetchInterval: (query) => query.state.data?.running ? 1000 : false,
@@ -134,6 +132,10 @@ export function Settings() {
     destination: null,
     intervalHours: 24,
   });
+  const [isAutomaticBackupDirty, setIsAutomaticBackupDirty] = useState(false);
+  const automaticBackupInitialized = useRef(false);
+  const [settingsSaveIsToggle, setSettingsSaveIsToggle] = useState(false);
+  const settingsMutationIsToggle = useRef(false);
 
   useEffect(() => {
     if (settingsData) {
@@ -142,14 +144,15 @@ export function Settings() {
   }, [settingsData]);
 
   useEffect(() => {
-    if (automaticBackupStatus) {
+    if (automaticBackupStatus && (!automaticBackupInitialized.current || !isAutomaticBackupDirty)) {
       setAutomaticBackupSettings({
         enabled: automaticBackupStatus.enabled,
         destination: automaticBackupStatus.destination,
         intervalHours: automaticBackupStatus.intervalHours,
       });
+      automaticBackupInitialized.current = true;
     }
-  }, [automaticBackupStatus]);
+  }, [automaticBackupStatus, isAutomaticBackupDirty]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Settings) => {
@@ -172,11 +175,26 @@ export function Settings() {
   const automaticBackupSettingsMutation = useMutation({
     mutationFn: async (settings: AutomaticBackupSettings) =>
       invoke<AutomaticBackupStatus>("update_automatic_backup_settings", { settings }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["automatic-backup-status"] });
+    },
     onSuccess: (status) => {
       queryClient.setQueryData(["automatic-backup-status"], status);
-      toastSuccess("Configuração do backup automático salva.");
+      setAutomaticBackupSettings({
+        enabled: status.enabled,
+        destination: status.destination,
+        intervalHours: status.intervalHours,
+      });
+      setIsAutomaticBackupDirty(false);
+      if (!settingsMutationIsToggle.current) {
+        toastSuccess("Configuração do backup automático salva.");
+      }
     },
     onError: (err) => toastError(err, "Erro ao salvar o backup automático."),
+    onSettled: () => {
+      settingsMutationIsToggle.current = false;
+      setSettingsSaveIsToggle(false);
+    },
   });
 
   const automaticBackupNowMutation = useMutation({
@@ -318,17 +336,37 @@ export function Settings() {
       const destination = await invoke<string | null>("select_automatic_backup_directory");
       if (destination) {
         setAutomaticBackupSettings((current) => ({ ...current, destination }));
+        setIsAutomaticBackupDirty(true);
       }
     } catch (err) {
       toastError(err, "Erro ao selecionar a pasta do backup automático.");
     }
   };
 
+  const validatedAutomaticBackupSettings = (enabled = automaticBackupSettings.enabled) => {
+    if (!Number.isInteger(automaticBackupSettings.intervalHours) || automaticBackupSettings.intervalHours < 1 || automaticBackupSettings.intervalHours > 168) {
+      toastError("O intervalo deve ser um número inteiro entre 1 e 168 horas.");
+      return null;
+    }
+    if (enabled && !automaticBackupSettings.destination) {
+      toastError("Selecione uma pasta antes de ativar o backup automático.");
+      return null;
+    }
+    return { ...automaticBackupSettings, enabled };
+  };
+
   const handleSaveAutomaticBackup = () => {
-    automaticBackupSettingsMutation.mutate({
-      ...automaticBackupSettings,
-      intervalHours: Math.max(1, Math.min(168, automaticBackupSettings.intervalHours)),
-    });
+    const settings = validatedAutomaticBackupSettings();
+    if (settings) automaticBackupSettingsMutation.mutate(settings);
+  };
+
+  const handleAutomaticBackupToggle = (enabled: boolean) => {
+    const settings = validatedAutomaticBackupSettings(enabled);
+    if (settings) {
+      settingsMutationIsToggle.current = true;
+      setSettingsSaveIsToggle(true);
+      automaticBackupSettingsMutation.mutate(settings);
+    }
   };
 
   const handleExport = async (passphrase: string) => {
@@ -416,6 +454,14 @@ export function Settings() {
   const updateProgressPercentage = updateProgress?.totalBytes
     ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
     : null;
+  const automaticBackupControlsDisabled =
+    isAutomaticBackupLoading ||
+    isAutomaticBackupError ||
+    automaticBackupStatus?.running ||
+    automaticBackupSettingsMutation.isPending ||
+    automaticBackupNowMutation.isPending;
+  const automaticBackupActionsDisabled =
+    automaticBackupControlsDisabled || !automaticBackupSettings.enabled;
 
   return (
     <form className="flex flex-col gap-6 animate-in fade-in duration-200 max-w-4xl mx-auto" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
@@ -493,6 +539,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
+        <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Aparência</CardTitle>
@@ -524,8 +571,62 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
+            </CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => setIsReleaseHistoryOpen(true)}
+            >
+              <History className="h-4 w-4" /> Histórico de versões
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Versão do App:</span>
+                <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tauri Core:</span>
+                <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Ambiente:</span>
+                <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
+              </div>
+            </div>
+            <div className="pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => updateCheckMutation.mutate()}
+                disabled={updateCheckMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
+                {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
+              </Button>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {updateInfo === null
+                  ? "Clique em Verificar Atualizações para buscar novas versões."
+                  : updateInfo.available
+                    ? `Versão ${updateInfo.version} disponível.`
+                    : "Seu aplicativo está atualizado."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        </div>
+
+        <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup
@@ -544,117 +645,6 @@ export function Settings() {
                   <Button variant="outline" size="sm" onClick={() => refetchSystemInfo()}>Tentar novamente</Button>
                 </div>
               )}
-              <Separator />
-              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="automatic-backup-enabled"
-                    checked={automaticBackupSettings.enabled}
-                    onChange={(event) => setAutomaticBackupSettings((current) => ({
-                      ...current,
-                      enabled: event.target.checked,
-                    }))}
-                  />
-                  <div className="space-y-1">
-                    <Label htmlFor="automatic-backup-enabled">Backup automático</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Verificado ao abrir o OpetS e a cada hora. Arquivos iguais não são duplicados.
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="automatic-backup-destination">Pasta de destino</Label>
-                  <code
-                    id="automatic-backup-destination"
-                    className="block truncate rounded bg-muted p-2 text-[10px]"
-                    title={automaticBackupSettings.destination ?? undefined}
-                  >
-                    {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
-                  </code>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2"
-                    onClick={() => void handleSelectAutomaticBackupDirectory()}
-                  >
-                    <FolderOpen className="h-4 w-4" /> Selecionar pasta
-                  </Button>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
-                  <Input
-                    id="automatic-backup-interval"
-                    type="number"
-                    min={1}
-                    max={168}
-                    value={automaticBackupSettings.intervalHours}
-                    onChange={(event) => setAutomaticBackupSettings((current) => ({
-                      ...current,
-                      intervalHours: Number(event.target.value) || 1,
-                    }))}
-                  />
-                  {automaticBackupSettings.intervalHours > 24 && (
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                      Intervalos acima de 24 horas aumentam o risco de perda de dados recentes.
-                    </p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleSaveAutomaticBackup}
-                    disabled={automaticBackupSettingsMutation.isPending}
-                  >
-                    {automaticBackupSettingsMutation.isPending ? "Salvando..." : "Salvar automático"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => automaticBackupNowMutation.mutate()}
-                    disabled={
-                      automaticBackupNowMutation.isPending ||
-                      !automaticBackupSettings.destination ||
-                      automaticBackupSettings.destination !== automaticBackupStatus?.destination
-                    }
-                  >
-                    <HardDriveDownload className="h-4 w-4" />
-                    {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
-                  </Button>
-                </div>
-                {automaticBackupStatus && (
-                  <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
-                    <p>
-                      Último backup: {formatBackupDate(automaticBackupStatus.lastSuccessAt)}
-                      {automaticBackupStatus.lastBackupSizeBytes != null
-                        ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
-                        : ""}
-                    </p>
-                    <p>Última verificação: {formatBackupDate(automaticBackupStatus.lastVerifiedAt)}</p>
-                    {automaticBackupStatus.enabled && (
-                      <p>Próxima verificação elegível: {formatBackupDate(automaticBackupStatus.nextBackupAt)}</p>
-                    )}
-                    {automaticBackupStatus.lastError && (
-                      <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
-                    )}
-                  </div>
-                )}
-                {isAutomaticBackupError && (
-                  <div className="flex items-center justify-between gap-2 text-xs text-destructive">
-                    <span>Não foi possível carregar o status.</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
-                      Tentar novamente
-                    </Button>
-                  </div>
-                )}
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  Retenção leve: 7 pontos diários e 4 semanais. Use uma pasta sincronizada, rede ou unidade externa; não mova o banco ativo.
-                </p>
-              </div>
-              <Separator />
               <div className="flex flex-col gap-2">
                 <Button
                   variant="outline"
@@ -673,77 +663,160 @@ export function Settings() {
                   <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
                 </Button>
               </div>
+              <Separator />
+              <details className="group rounded-lg border bg-muted/20">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
+                  <div className="flex items-center gap-2">
+                    <HardDriveDownload className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Backup automático</span>
+                    <Badge variant={automaticBackupStatus?.enabled ? "default" : "secondary"}>
+                      {isAutomaticBackupLoading
+                        ? "Carregando"
+                        : automaticBackupStatus?.enabled
+                          ? "Ativado"
+                          : "Desativado"}
+                    </Badge>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t p-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="automatic-backup-enabled"
+                      checked={automaticBackupSettings.enabled}
+                      disabled={automaticBackupControlsDisabled}
+                      onChange={(event) => handleAutomaticBackupToggle(event.target.checked)}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="automatic-backup-enabled">Ativar backup automático</Label>
+                      <p className="text-xs text-muted-foreground">
+                        O primeiro backup será executado após o intervalo configurado. Arquivos iguais não são duplicados.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Pasta de destino</Label>
+                    <code
+                      className="block truncate rounded bg-muted p-2 text-[10px]"
+                      title={automaticBackupSettings.destination ?? undefined}
+                    >
+                      {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2"
+                      disabled={automaticBackupControlsDisabled}
+                      onClick={() => void handleSelectAutomaticBackupDirectory()}
+                    >
+                      <FolderOpen className="h-4 w-4" /> Selecionar pasta
+                    </Button>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
+                    <Input
+                      id="automatic-backup-interval"
+                      type="number"
+                      min={1}
+                      max={168}
+                      step={1}
+                      disabled={automaticBackupActionsDisabled}
+                      value={automaticBackupSettings.intervalHours}
+                      onChange={(event) => {
+                        setAutomaticBackupSettings((current) => ({
+                          ...current,
+                          intervalHours: Number(event.target.value),
+                        }));
+                        setIsAutomaticBackupDirty(true);
+                      }}
+                    />
+                    {automaticBackupSettings.intervalHours > 48 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Intervalos acima de 48 horas aumentam o risco de perda de dados recentes.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveAutomaticBackup}
+                      disabled={automaticBackupActionsDisabled || !isAutomaticBackupDirty}
+                    >
+                      {automaticBackupSettingsMutation.isPending && !settingsSaveIsToggle ? "Salvando..." : "Salvar configurações"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => automaticBackupNowMutation.mutate()}
+                      disabled={
+                        automaticBackupActionsDisabled ||
+                        automaticBackupNowMutation.isPending ||
+                        automaticBackupStatus?.running ||
+                        !automaticBackupSettings.destination ||
+                        automaticBackupSettings.destination !== automaticBackupStatus?.destination
+                      }
+                    >
+                      <HardDriveDownload className="h-4 w-4" />
+                      {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
+                    </Button>
+                  </div>
+                  {automaticBackupStatus && (
+                    <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                      <p>
+                        Último backup:{" "}
+                        <RelativeDate value={automaticBackupStatus.lastSuccessAt} fallback="Ainda não executado" />
+                        {automaticBackupStatus.lastBackupSizeBytes != null
+                          ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
+                          : ""}
+                      </p>
+                      <p>
+                        Última verificação:{" "}
+                        <RelativeDate value={automaticBackupStatus.lastVerifiedAt} fallback="Ainda não executado" />
+                      </p>
+                      {automaticBackupStatus.enabled && (
+                        <p>
+                          Próxima verificação elegível:{" "}
+                          <RelativeDate value={automaticBackupStatus.nextBackupAt} fallback="Ainda não executado" />
+                        </p>
+                      )}
+                      {automaticBackupStatus.lastError && (
+                        <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
+                      )}
+                    </div>
+                  )}
+                  {isAutomaticBackupError && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+                      <span>Não foi possível carregar o status.</span>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Retenção leve: 7 pontos diários e 4 semanais.
+                  </p>
+                </div>
+              </details>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
-              </CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-2"
-                onClick={() => setIsReleaseHistoryOpen(true)}
-              >
-                <History className="h-4 w-4" /> Histórico de versões
-              </Button>
+          <Card className="border-destructive/20">
+            <CardHeader>
+              <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Versão do App:</span>
-                  <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tauri Core:</span>
-                  <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Ambiente:</span>
-                  <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
-                </div>
-              </div>
-              <div className="pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full gap-2"
-                  onClick={() => updateCheckMutation.mutate()}
-                  disabled={updateCheckMutation.isPending}
-                >
-                  <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
-                  {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
-                </Button>
-                <p className="mt-2 text-center text-xs text-muted-foreground">
-                  {updateInfo === null
-                    ? "Clique em Verificar Atualizações para buscar novas versões."
-                    : updateInfo.available
-                      ? `Versão ${updateInfo.version} disponível.`
-                      : "Seu aplicativo está atualizado."}
-                </p>
-              </div>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
+              </p>
+              <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
+                {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
+              </Button>
             </CardContent>
           </Card>
-        </div>
-
-        <Card className="border-destructive/20">
-          <CardHeader>
-            <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
-            </p>
-            <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
-              {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
-            </Button>
-          </CardContent>
-        </Card>
       </div>
 
       <Dialog open={isReleaseHistoryOpen} onOpenChange={setIsReleaseHistoryOpen}>

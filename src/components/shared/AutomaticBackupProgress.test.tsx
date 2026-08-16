@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AutomaticBackupProgress } from "@/components/shared/AutomaticBackupProgress";
 import type { AutomaticBackupProgress as ProgressEvent } from "@/lib/types";
 
@@ -11,6 +12,17 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 const mockedInvoke = vi.mocked(invoke);
 const mockedListen = vi.mocked(listen);
 let eventHandler: ((event: { payload: ProgressEvent }) => void) | undefined;
+
+const renderProgress = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AutomaticBackupProgress />
+    </QueryClientProvider>,
+  );
+};
 
 afterEach(() => {
   cleanup();
@@ -27,9 +39,9 @@ describe("AutomaticBackupProgress", () => {
     });
     mockedListen.mockResolvedValue(vi.fn());
 
-    render(<AutomaticBackupProgress />);
+    renderProgress();
 
-    expect(await screen.findByRole("status", { name: "Backup automático em andamento" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Backup automático em andamento" })).toBeInTheDocument();
     expect(screen.getByText(/30% concluído/)).toBeInTheDocument();
   });
 
@@ -39,7 +51,7 @@ describe("AutomaticBackupProgress", () => {
       eventHandler = handler as unknown as (event: { payload: ProgressEvent }) => void;
       return Promise.resolve(vi.fn());
     });
-    render(<AutomaticBackupProgress />);
+    renderProgress();
     await waitFor(() => expect(eventHandler).toBeDefined());
 
     act(() => {
@@ -52,8 +64,8 @@ describe("AutomaticBackupProgress", () => {
         },
       });
     });
-    expect(screen.getByRole("status")).toHaveTextContent("80% concluído");
-    expect(screen.getByRole("status")).toHaveTextContent("Validando a integridade");
+    expect(screen.getByRole("dialog")).toHaveTextContent("80% concluído");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Validando a integridade");
 
     act(() => {
       eventHandler?.({
@@ -65,7 +77,7 @@ describe("AutomaticBackupProgress", () => {
         },
       });
     });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("falls back to backend status when event registration fails", async () => {
@@ -76,9 +88,9 @@ describe("AutomaticBackupProgress", () => {
       phase: "checking",
     });
 
-    const view = render(<AutomaticBackupProgress />);
+    const view = renderProgress();
 
-    expect(await screen.findByRole("status")).toHaveTextContent("15% concluído");
+    expect(await screen.findByRole("dialog")).toHaveTextContent("15% concluído");
     view.unmount();
   });
 });

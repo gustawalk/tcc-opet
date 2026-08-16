@@ -88,6 +88,24 @@ fn backup_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
+fn io_permission_message(error: &std::io::Error) -> Option<(&'static str, &'static str)> {
+    let denied = matches!(
+        error.kind(),
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
+    ) || error.raw_os_error() == Some(5);
+    denied.then_some((
+        "The selected folder does not allow creating files (permission denied).",
+        "A pasta selecionada não permite a criação de arquivos (permissão negada).",
+    ))
+}
+
+fn backup_io_error(error: std::io::Error) -> AppError {
+    match io_permission_message(&error) {
+        Some((en, pt)) => AppError::new(en.to_string(), pt.to_string()),
+        None => backup_error(error),
+    }
+}
+
 #[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<(), AppError> {
     File::open(path)
@@ -107,13 +125,13 @@ fn activate_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppE
     let previous = parent.join(format!(".opets-backup-previous-{}", Uuid::new_v4()));
     let had_destination = destination.exists();
     if had_destination {
-        fs::rename(destination, &previous).map_err(backup_error)?;
+        fs::rename(destination, &previous).map_err(backup_io_error)?;
     }
     if let Err(error) = fs::rename(temporary, destination) {
         if had_destination {
             let _ = fs::rename(&previous, destination);
         }
-        return Err(backup_error(error));
+        return Err(backup_io_error(error));
     }
     if had_destination {
         let _ = fs::remove_file(previous);
@@ -129,7 +147,7 @@ fn activate_new_backup_file(temporary: &Path, destination: &Path) -> Result<(), 
         .ok_or_else(|| backup_error("Backup destination has no parent directory."))?;
     tempfile::TempPath::from_path(temporary.to_path_buf())
         .persist_noclobber(destination)
-        .map_err(backup_error)?;
+        .map_err(|error| backup_io_error(error.error))?;
     sync_directory(parent)
 }
 
@@ -414,7 +432,7 @@ fn export_snapshot_with_paths(
     let temporary_destination = parent.join(format!(".opet-backup-{}.tmp", Uuid::new_v4()));
 
     let result = (|| -> Result<BackupSummary, AppError> {
-        let file = File::create(&temporary_destination).map_err(backup_error)?;
+        let file = File::create(&temporary_destination).map_err(backup_io_error)?;
         crate::database::secure_private_file(&temporary_destination).map_err(backup_error)?;
         let mut archive = ZipWriter::new(file);
         archive
@@ -534,7 +552,7 @@ fn encrypt_exported_archive(
         if encrypted_size > MAX_BACKUP_FILE_SIZE_BYTES {
             return Err(backup_error("Backup exceeds the allowed size limit."));
         }
-        let mut encrypted_file = File::create(&temporary_destination).map_err(backup_error)?;
+        let mut encrypted_file = File::create(&temporary_destination).map_err(backup_io_error)?;
         encrypted_file.write_all(&prefix).map_err(backup_error)?;
         encrypted_file.write_all(&encrypted).map_err(backup_error)?;
         encrypted_file.sync_all().map_err(backup_error)?;
@@ -1089,6 +1107,20 @@ mod tests {
 
     fn temp_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!("tcc-opet-{label}-{}", Uuid::new_v4()))
+    }
+
+    #[test]
+    fn backup_permission_errors_are_translated_to_a_clear_message() {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            backup_io_error(denied).pt,
+            "A pasta selecionada não permite a criação de arquivos (permissão negada)."
+        );
+        let raw = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert_eq!(
+            backup_io_error(raw).pt,
+            "A operação de backup falhou: entity not found"
+        );
     }
 
     #[test]

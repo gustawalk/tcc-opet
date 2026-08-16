@@ -187,6 +187,24 @@ fn automatic_backup_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
+fn io_permission_message(error: &std::io::Error) -> Option<(&'static str, &'static str)> {
+    let denied = matches!(
+        error.kind(),
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
+    ) || error.raw_os_error() == Some(5);
+    denied.then_some((
+        "The selected folder does not allow creating files (permission denied).",
+        "A pasta selecionada não permite a criação de arquivos (permissão negada).",
+    ))
+}
+
+fn automatic_backup_io_error(error: std::io::Error) -> AppError {
+    match io_permission_message(&error) {
+        Some((en, pt)) => AppError::new(en.to_string(), pt.to_string()),
+        None => automatic_backup_error(error),
+    }
+}
+
 fn config_path(database_path: &Path) -> Result<PathBuf, AppError> {
     if let Some(directory) = AUTOMATIC_BACKUP_DATA_DIR.get() {
         return Ok(directory.join("database.automatic-backup.json"));
@@ -413,8 +431,8 @@ fn ensure_destination_marker(
     destination: &Path,
     expected_id: Option<&str>,
 ) -> Result<String, AppError> {
-    fs::create_dir_all(destination).map_err(automatic_backup_error)?;
-    let metadata = fs::symlink_metadata(destination).map_err(automatic_backup_error)?;
+    fs::create_dir_all(destination).map_err(automatic_backup_io_error)?;
+    let metadata = fs::symlink_metadata(destination).map_err(automatic_backup_io_error)?;
     if !metadata.file_type().is_dir() {
         return Err(automatic_backup_error(
             "Automatic backup destination must be a directory.",
@@ -464,7 +482,7 @@ fn ensure_destination_marker(
             }
         })
         .transpose()
-        .map_err(automatic_backup_error)?
+        .map_err(automatic_backup_io_error)?
         .ok_or_else(|| automatic_backup_error("Automatic backup destination is busy."))?;
     crate::database::secure_private_file(&lock_path).map_err(automatic_backup_error)?;
     if path.exists() {
@@ -479,12 +497,12 @@ fn ensure_destination_marker(
     };
     let temporary = destination.join(format!(".opets-destination-{}.tmp", Uuid::new_v4()));
     let result = (|| -> Result<(), AppError> {
-        let mut file = File::create(&temporary).map_err(automatic_backup_error)?;
+        let mut file = File::create(&temporary).map_err(automatic_backup_io_error)?;
         file.write_all(&serde_json::to_vec_pretty(&marker).map_err(automatic_backup_error)?)
-            .map_err(automatic_backup_error)?;
-        file.sync_all().map_err(automatic_backup_error)?;
+            .map_err(automatic_backup_io_error)?;
+        file.sync_all().map_err(automatic_backup_io_error)?;
         crate::database::secure_private_file(&temporary).map_err(automatic_backup_error)?;
-        fs::rename(&temporary, &path).map_err(automatic_backup_error)?;
+        fs::rename(&temporary, &path).map_err(automatic_backup_io_error)?;
         sync_directory(destination)?;
         Ok(())
     })();
@@ -604,7 +622,7 @@ fn validate_destination_path(
     database_path: &Path,
     attachments_path: &Path,
 ) -> Result<(), AppError> {
-    fs::create_dir_all(destination).map_err(automatic_backup_error)?;
+    fs::create_dir_all(destination).map_err(automatic_backup_io_error)?;
     let destination = fs::canonicalize(destination).map_err(automatic_backup_error)?;
     let database = fs::canonicalize(database_path).map_err(automatic_backup_error)?;
     let database_parent = database.parent();
@@ -1522,6 +1540,20 @@ mod tests {
         document.settings.enabled = true;
         document.state.next_backup_at = Some((now + ChronoDuration::days(30)).to_rfc3339());
         assert!(is_due(&document, now));
+    }
+
+    #[test]
+    fn io_permission_errors_are_translated_to_a_clear_message() {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            automatic_backup_io_error(denied).pt,
+            "A pasta selecionada não permite a criação de arquivos (permissão negada)."
+        );
+        let raw = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert_eq!(
+            automatic_backup_error(raw).pt,
+            "O backup automático falhou: entity not found"
+        );
     }
 
     #[test]

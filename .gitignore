@@ -33,9 +33,13 @@ database.db
 
 # Runtime data
 src-tauri/database.attachments/
+src-tauri/database.automatic-backup.json
+src-tauri/database.automatic-backup.previous.json
 src-tauri/database.encryption.json
 src-tauri/database.pdf-previews/
 src-tauri/database.lock
+src-tauri/.automatic-backup-*.tmp
+src-tauri/.opets-backup-*/
 
 # Rust / Tauri build artifacts
 src-tauri/target/

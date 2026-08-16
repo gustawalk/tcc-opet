@@ -112,7 +112,7 @@ use dotenv::dotenv;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    register_commands!(
+    let app = register_commands!(
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_dialog::init())
@@ -132,6 +132,14 @@ pub fn run() {
         automatic_backup::start_scheduler(app.handle().clone())?;
         Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application");
+    app.run(|_, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+        ) {
+            automatic_backup::stop_scheduler();
+        }
+    });
 }

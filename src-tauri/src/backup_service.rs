@@ -88,6 +88,18 @@ fn backup_error(error: impl std::fmt::Display) -> AppError {
     )
 }
 
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> Result<(), AppError> {
+    File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(backup_error)
+}
+
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> Result<(), AppError> {
+    Ok(())
+}
+
 fn activate_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppError> {
     let parent = destination
         .parent()
@@ -106,7 +118,19 @@ fn activate_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppE
     if had_destination {
         let _ = fs::remove_file(previous);
     }
+    sync_directory(parent)?;
     Ok(())
+}
+
+#[allow(deprecated)]
+fn activate_new_backup_file(temporary: &Path, destination: &Path) -> Result<(), AppError> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| backup_error("Backup destination has no parent directory."))?;
+    tempfile::TempPath::from_path(temporary.to_path_buf())
+        .persist_noclobber(destination)
+        .map_err(backup_error)?;
+    sync_directory(parent)
 }
 
 fn backup_envelope_key(
@@ -491,6 +515,7 @@ fn encrypt_exported_archive(
     destination: &Path,
     passphrase: Option<&str>,
     attachment_count: usize,
+    replace_existing: bool,
 ) -> Result<BackupSummary, AppError> {
     let parent = destination
         .parent()
@@ -515,7 +540,11 @@ fn encrypt_exported_archive(
         encrypted_file.sync_all().map_err(backup_error)?;
         drop(encrypted_file);
         crate::database::secure_private_file(&temporary_destination).map_err(backup_error)?;
-        activate_backup_file(&temporary_destination, destination)?;
+        if replace_existing {
+            activate_backup_file(&temporary_destination, destination)?;
+        } else {
+            activate_new_backup_file(&temporary_destination, destination)?;
+        }
         crate::database::secure_private_file(destination).map_err(backup_error)?;
         Ok(BackupSummary {
             path: destination.to_string_lossy().to_string(),
@@ -531,6 +560,7 @@ fn export_snapshot_with_passphrase(
     attachments_path: &Path,
     destination: &Path,
     passphrase: Option<&str>,
+    replace_existing: bool,
 ) -> Result<BackupSummary, AppError> {
     let parent = destination
         .parent()
@@ -543,6 +573,7 @@ fn export_snapshot_with_passphrase(
             destination,
             passphrase,
             summary.attachment_count,
+            replace_existing,
         )
     })();
     let _ = fs::remove_file(archive_path);
@@ -563,7 +594,13 @@ pub fn export_backup_with_passphrase(
     let result = (|| -> Result<BackupSummary, AppError> {
         create_snapshot(database_path, &snapshot_path)?;
         crate::database::secure_private_file(&snapshot_path).map_err(backup_error)?;
-        export_snapshot_with_passphrase(&snapshot_path, attachments_path, destination, passphrase)
+        export_snapshot_with_passphrase(
+            &snapshot_path,
+            attachments_path,
+            destination,
+            passphrase,
+            true,
+        )
     })();
     let _ = fs::remove_file(snapshot_path);
     result
@@ -584,11 +621,10 @@ impl Drop for PreparedBackupSources {
 pub fn prepare_backup_sources(
     database_path: &Path,
     attachments_path: &Path,
+    staging_parent: &Path,
 ) -> Result<PreparedBackupSources, AppError> {
-    let parent = database_path
-        .parent()
-        .ok_or_else(|| backup_error("Database path has no parent directory."))?;
-    let directory = parent.join(format!(".opets-backup-staging-{}", Uuid::new_v4()));
+    crate::database::ensure_private_dir(staging_parent).map_err(backup_error)?;
+    let directory = staging_parent.join(format!(".opets-backup-staging-{}", Uuid::new_v4()));
     let staged_database = directory.join(DATABASE_ENTRY);
     let staged_attachments = directory.join("attachments");
     let result = (|| -> Result<PreparedBackupSources, AppError> {
@@ -651,6 +687,7 @@ pub fn export_prepared_backup_with_passphrase(
         &prepared.attachments_path,
         destination,
         passphrase,
+        false,
     )
 }
 
@@ -733,16 +770,13 @@ pub fn validate_backup_contents_with_passphrase(
     result
 }
 
-fn is_safe_attachment_entry(name: &str) -> bool {
-    name.strip_prefix(ATTACHMENTS_PREFIX)
-        .and_then(|value| Path::new(value).file_name().and_then(|file| file.to_str()))
-        .map(|file_name| {
-            !file_name.is_empty()
-                && Path::new(file_name)
-                    .components()
-                    .all(|component| matches!(component, Component::Normal(_)))
-        })
-        .unwrap_or(false)
+fn attachment_storage_name(name: &str) -> Option<&str> {
+    let value = name.strip_prefix(ATTACHMENTS_PREFIX)?;
+    let mut components = Path::new(value).components();
+    matches!(components.next(), Some(Component::Normal(_)))
+        .then_some(())
+        .filter(|_| components.next().is_none())
+        .map(|_| value)
 }
 
 fn validate_archive_entries<R: Read + Seek>(
@@ -756,6 +790,7 @@ fn validate_archive_entries<R: Read + Seek>(
     }
 
     let mut names = HashSet::new();
+    let mut attachment_names = HashSet::new();
     let mut attachment_indexes = Vec::new();
     let mut database_count = 0;
     let mut total_size = 0_u64;
@@ -784,10 +819,15 @@ fn validate_archive_entries<R: Read + Seek>(
         match name.as_str() {
             MANIFEST_ENTRY if entry.size() <= 64 * 1024 => {}
             DATABASE_ENTRY if entry.size() <= MAX_DATABASE_SIZE_BYTES => database_count += 1,
-            _ if is_safe_attachment_entry(&name) && entry.size() <= MAX_ATTACHMENT_SIZE_BYTES => {
-                attachment_indexes.push(index);
-            }
             _ => {
+                let valid_attachment = attachment_storage_name(&name)
+                    .filter(|_| entry.size() <= MAX_ATTACHMENT_SIZE_BYTES)
+                    .filter(|storage_name| attachment_names.insert(storage_name.to_lowercase()))
+                    .is_some();
+                if valid_attachment {
+                    attachment_indexes.push(index);
+                    continue;
+                }
                 return Err(AppError::new(
                     "Backup contains an invalid or oversized entry.",
                     "O backup contém um arquivo inválido ou maior que o permitido.",
@@ -899,9 +939,8 @@ pub fn restore_backup_with_paths(
         for index in attachment_indexes {
             let mut entry = archive.by_index(index).map_err(backup_error)?;
             let name = entry.name().to_string();
-            let file_name = Path::new(&name)
-                .file_name()
-                .ok_or_else(|| backup_error("missing attachment filename"))?;
+            let file_name = attachment_storage_name(&name)
+                .ok_or_else(|| backup_error("invalid attachment filename"))?;
             let output_path = staging_attachments.join(file_name);
             let mut output = File::create(&output_path).map_err(backup_error)?;
             std::io::copy(&mut entry, &mut output).map_err(backup_error)?;
@@ -1150,6 +1189,15 @@ mod tests {
         assert!(!is_safe_storage_name("../database.db"));
         assert!(!is_safe_storage_name("nested/attachment-id"));
         assert!(!is_safe_storage_name(""));
+        assert_eq!(
+            attachment_storage_name("attachments/attachment-id"),
+            Some("attachment-id")
+        );
+        assert_eq!(
+            attachment_storage_name("attachments/nested/attachment-id"),
+            None
+        );
+        assert_eq!(attachment_storage_name("attachments/../database.db"), None);
     }
 
     #[test]

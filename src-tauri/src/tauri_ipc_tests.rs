@@ -177,6 +177,51 @@ fn core_commands_preserve_the_frontend_ipc_contract() {
     assert_eq!(updated_automatic_backup["enabled"], false);
     assert_eq!(updated_automatic_backup["intervalHours"], 48);
 
+    let automatic_destination = tempfile::tempdir().unwrap();
+    let destination = automatic_destination.path().to_string_lossy().to_string();
+    let enabled_at = chrono::Utc::now();
+    let enabled_automatic_backup = get_ipc_response(
+        &webview,
+        request(
+            "update_automatic_backup_settings",
+            json!({
+                "settings": {
+                    "enabled": true,
+                    "destination": destination,
+                    "intervalHours": 48
+                }
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    let next_backup = chrono::DateTime::parse_from_rfc3339(
+        enabled_automatic_backup["nextBackupAt"].as_str().unwrap(),
+    )
+    .unwrap()
+    .with_timezone(&chrono::Utc);
+    assert!(next_backup >= enabled_at + chrono::Duration::hours(48));
+
+    drop(automatic_destination);
+    let disabled_with_unavailable_destination = get_ipc_response(
+        &webview,
+        request(
+            "update_automatic_backup_settings",
+            json!({
+                "settings": {
+                    "enabled": false,
+                    "destination": destination,
+                    "intervalHours": 48
+                }
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(disabled_with_unavailable_destination["enabled"], false);
+
     let error = get_ipc_response(
         &webview,
         request(

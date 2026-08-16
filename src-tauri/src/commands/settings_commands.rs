@@ -257,12 +257,21 @@ pub async fn select_automatic_backup_directory(app: AppHandle) -> Result<Option<
         };
         selected
             .into_path()
-            .map(|path| Some(path.to_string_lossy().to_string()))
             .map_err(|error| {
                 AppError::new(
                     format!("Failed to access selected backup directory: {error}"),
                     format!("Erro ao acessar a pasta de backup selecionada: {error}"),
                 )
+            })
+            .and_then(|path| {
+                path.to_str()
+                    .map(|path| Some(path.to_string()))
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "Automatic backup directory must use a valid Unicode path.",
+                            "A pasta de backup automático deve usar um caminho Unicode válido.",
+                        )
+                    })
             })
     })
     .await

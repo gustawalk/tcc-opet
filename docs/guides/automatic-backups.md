@@ -26,6 +26,7 @@ Não use:
 - A pasta onde está o banco ativo.
 - A pasta interna de anexos do OpetS.
 - Uma unidade quase cheia ou removida com frequência.
+- Raízes de unidade (ex.: `C:\`) e pastas protegidas pelo sistema, que costumam negar a criação de arquivos e acusam permissão negada.
 
 O aplicativo produz arquivos completos e imutáveis. A confirmação de que um serviço de nuvem terminou o upload continua sendo responsabilidade do cliente de sincronização.
 

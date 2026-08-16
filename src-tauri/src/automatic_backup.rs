@@ -948,7 +948,7 @@ fn verify_next_retained_backup(
 fn retention_paths_to_delete(
     mut candidates: Vec<BackupCandidate>,
 ) -> (Vec<PathBuf>, HashSet<PathBuf>) {
-    candidates.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.created_at));
     let mut keep = HashSet::new();
     for candidate in candidates.iter().take(MINIMUM_RETENTION) {
         keep.insert(candidate.path.clone());

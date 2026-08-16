@@ -558,42 +558,67 @@ export function Settings() {
         </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Aparência</CardTitle>
-            <CardDescription>
-              As preferências são salvas somente neste dispositivo.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium whitespace-nowrap">Tema</p>
-                <p className="text-sm text-muted-foreground whitespace-nowrap">
-                  {theme === "system"
-                    ? "Segue o sistema"
-                    : theme === "dark"
-                      ? "Tema escuro"
-                      : "Tema claro"}
-                </p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Aparência</CardTitle>
+              <CardDescription>
+                As preferências são salvas somente neste dispositivo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium whitespace-nowrap">Tema</p>
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">
+                    {theme === "system"
+                      ? "Segue o sistema"
+                      : theme === "dark"
+                        ? "Tema escuro"
+                        : "Tema claro"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {theme === "system" ? (
+                    <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : theme === "dark" ? (
+                    <Moon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <Sun className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <Select
+                    value={theme}
+                    onValueChange={(value) => handleThemeChange(value as Theme)}
+                  >
+                    <SelectTrigger aria-label="Tema" className="w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {THEME_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {theme === "system" ? (
-                  <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : theme === "dark" ? (
-                  <Moon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <Sun className="h-4 w-4 shrink-0 text-muted-foreground" />
-                )}
+              <Separator />
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium whitespace-nowrap">Tamanho da fonte</p>
+                  <p className="text-sm text-muted-foreground whitespace-nowrap">
+                    Escala textos e interface.
+                  </p>
+                </div>
                 <Select
-                  value={theme}
-                  onValueChange={(value) => handleThemeChange(value as Theme)}
+                  value={fontScale}
+                  onValueChange={(value) => handleFontScaleChange(value as FontScale)}
                 >
-                  <SelectTrigger aria-label="Tema" className="w-[160px]">
+                  <SelectTrigger aria-label="Tamanho da fonte" className="w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {THEME_OPTIONS.map((option) => (
+                    {FONT_SCALE_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -601,280 +626,258 @@ export function Settings() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium whitespace-nowrap">Tamanho da fonte</p>
-                <p className="text-sm text-muted-foreground whitespace-nowrap">
-                  Escala textos e interface.
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
+              </CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-2"
+                onClick={() => setIsReleaseHistoryOpen(true)}
+              >
+                <History className="h-4 w-4" /> Histórico de versões
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Versão do App:</span>
+                  <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tauri Core:</span>
+                  <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Ambiente:</span>
+                  <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
+                </div>
+              </div>
+              <div className="pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={() => updateCheckMutation.mutate()}
+                  disabled={updateCheckMutation.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
+                  {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
+                </Button>
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  {updateInfo === null
+                    ? "Clique em Verificar Atualizações para buscar novas versões."
+                    : updateInfo.available
+                      ? `Versão ${updateInfo.version} disponível.`
+                      : "Seu aplicativo está atualizado."}
                 </p>
               </div>
-              <Select
-                value={fontScale}
-                onValueChange={(value) => handleFontScaleChange(value as FontScale)}
-              >
-                <SelectTrigger aria-label="Tamanho da fonte" className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FONT_SCALE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Info className="h-5 w-5 text-primary" /> Sobre o Sistema
-            </CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-2"
-              onClick={() => setIsReleaseHistoryOpen(true)}
-            >
-              <History className="h-4 w-4" /> Histórico de versões
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Versão do App:</span>
-                <span className="font-mono font-bold">{isSystemInfoLoading ? "..." : systemInfo?.appVersion}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tauri Core:</span>
-                <span className="font-mono">{isSystemInfoLoading ? "..." : systemInfo?.tauriVersion}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Ambiente:</span>
-                <Badge variant="outline">{isSystemInfoLoading ? "Carregando..." : systemInfo?.environment}</Badge>
-              </div>
-            </div>
-            <div className="pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full gap-2"
-                onClick={() => updateCheckMutation.mutate()}
-                disabled={updateCheckMutation.isPending}
-              >
-                <RefreshCw className={`h-4 w-4 ${updateCheckMutation.isPending ? "animate-spin" : ""}`} />
-                {updateCheckMutation.isPending ? "Verificando..." : "Verificar Atualizações"}
-              </Button>
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                {updateInfo === null
-                  ? "Clique em Verificar Atualizações para buscar novas versões."
-                  : updateInfo.available
-                    ? `Versão ${updateInfo.version} disponível.`
-                    : "Seu aplicativo está atualizado."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium">Localização do Banco</span>
-                <code className="text-[10px] bg-muted p-2 rounded block truncate">
-                  {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
-                </code>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Localização do Banco</span>
+              <code className="text-[10px] bg-muted p-2 rounded block truncate">
+                {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
+              </code>
+            </div>
+            {isSystemInfoError && (
+              <div className="flex items-center justify-between gap-2 text-sm text-destructive">
+                <span>Não foi possível carregar as informações do sistema.</span>
+                <Button variant="outline" size="sm" onClick={() => refetchSystemInfo()}>Tentar novamente</Button>
               </div>
-              {isSystemInfoError && (
-                <div className="flex items-center justify-between gap-2 text-sm text-destructive">
-                  <span>Não foi possível carregar as informações do sistema.</span>
-                  <Button variant="outline" size="sm" onClick={() => refetchSystemInfo()}>Tentar novamente</Button>
+            )}
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => {
+                  setBackupPassphrase("");
+                  setIsBackupPassphraseVisible(false);
+                  setBackupPassphraseDialog("export");
+                }}
+                disabled={exportMutation.isPending}
+              >
+                <Save className="h-4 w-4" /> {exportMutation.isPending ? "Exportando..." : "Exportar Backup"}
+              </Button>
+              <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
+                <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
+              </Button>
+            </div>
+            <Separator />
+            <details className="group rounded-lg border bg-muted/20">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
+                <div className="flex items-center gap-2">
+                  <HardDriveDownload className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Backup automático</span>
+                  <Badge variant={automaticBackupStatus?.enabled ? "default" : "secondary"}>
+                    {isAutomaticBackupLoading
+                      ? "Carregando"
+                      : automaticBackupStatus?.enabled
+                        ? "Ativado"
+                        : "Desativado"}
+                  </Badge>
                 </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start gap-2"
-                  onClick={() => {
-                    setBackupPassphrase("");
-                    setIsBackupPassphraseVisible(false);
-                    setBackupPassphraseDialog("export");
-                  }}
-                  disabled={exportMutation.isPending}
-                >
-                  <Save className="h-4 w-4" /> {exportMutation.isPending ? "Exportando..." : "Exportar Backup"}
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
-                  <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
-                </Button>
-              </div>
-              <Separator />
-              <details className="group rounded-lg border bg-muted/20">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
-                  <div className="flex items-center gap-2">
-                    <HardDriveDownload className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">Backup automático</span>
-                    <Badge variant={automaticBackupStatus?.enabled ? "default" : "secondary"}>
-                      {isAutomaticBackupLoading
-                        ? "Carregando"
-                        : automaticBackupStatus?.enabled
-                          ? "Ativado"
-                          : "Desativado"}
-                    </Badge>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-3 border-t p-3">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="automatic-backup-enabled"
+                    checked={automaticBackupSettings.enabled}
+                    disabled={automaticBackupControlsDisabled}
+                    onChange={(event) => handleAutomaticBackupToggle(event.target.checked)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="automatic-backup-enabled">Ativar backup automático</Label>
+                    <p className="text-xs text-muted-foreground">
+                      O primeiro backup será executado após o intervalo configurado.
+                    </p>
                   </div>
-                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="space-y-3 border-t p-3">
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      id="automatic-backup-enabled"
-                      checked={automaticBackupSettings.enabled}
-                      disabled={automaticBackupControlsDisabled}
-                      onChange={(event) => handleAutomaticBackupToggle(event.target.checked)}
-                    />
-                    <div className="space-y-1">
-                      <Label htmlFor="automatic-backup-enabled">Ativar backup automático</Label>
-                      <p className="text-xs text-muted-foreground">
-                        O primeiro backup será executado após o intervalo configurado. Arquivos iguais não são duplicados.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Pasta de destino</Label>
-                    <code
-                      className="block truncate rounded bg-muted p-2 text-[10px]"
-                      title={automaticBackupSettings.destination ?? undefined}
-                    >
-                      {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
-                    </code>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2"
-                      disabled={automaticBackupControlsDisabled}
-                      onClick={() => void handleSelectAutomaticBackupDirectory()}
-                    >
-                      <FolderOpen className="h-4 w-4" /> Selecionar pasta
-                    </Button>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
-                    <Input
-                      id="automatic-backup-interval"
-                      type="number"
-                      min={1}
-                      max={168}
-                      step={1}
-                      disabled={automaticBackupActionsDisabled}
-                      value={automaticBackupSettings.intervalHours}
-                      onChange={(event) => {
-                        setAutomaticBackupSettings((current) => ({
-                          ...current,
-                          intervalHours: Number(event.target.value),
-                        }));
-                        setIsAutomaticBackupDirty(true);
-                      }}
-                    />
-                    {automaticBackupSettings.intervalHours > 48 && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
-                        Intervalos acima de 48 horas aumentam o risco de perda de dados recentes.
-                      </p>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleSaveAutomaticBackup}
-                      disabled={automaticBackupActionsDisabled || !isAutomaticBackupDirty}
-                    >
-                      {automaticBackupSettingsMutation.isPending && !settingsSaveIsToggle ? "Salvando..." : "Salvar configurações"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => automaticBackupNowMutation.mutate()}
-                      disabled={
-                        automaticBackupActionsDisabled ||
-                        automaticBackupNowMutation.isPending ||
-                        automaticBackupStatus?.running ||
-                        !automaticBackupSettings.destination ||
-                        automaticBackupSettings.destination !== automaticBackupStatus?.destination
-                      }
-                    >
-                      <HardDriveDownload className="h-4 w-4" />
-                      {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
-                    </Button>
-                  </div>
-                  {automaticBackupStatus && (
-                    <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
-                      <p>
-                        Último backup:{" "}
-                        <RelativeDate value={automaticBackupStatus.lastSuccessAt} fallback="Ainda não executado" />
-                        {automaticBackupStatus.lastBackupSizeBytes != null
-                          ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
-                          : ""}
-                      </p>
-                      <p>
-                        Última verificação:{" "}
-                        <RelativeDate value={automaticBackupStatus.lastVerifiedAt} fallback="Ainda não executado" />
-                      </p>
-                      {automaticBackupStatus.enabled && (
-                        <p>
-                          Próxima verificação elegível:{" "}
-                          <RelativeDate value={automaticBackupStatus.nextBackupAt} fallback="Ainda não executado" />
-                        </p>
-                      )}
-                      {automaticBackupStatus.lastError && (
-                        <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
-                      )}
-                    </div>
-                  )}
-                  {isAutomaticBackupError && (
-                    <div className="flex items-center justify-between gap-2 text-xs text-destructive">
-                      <span>Não foi possível carregar o status.</span>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
-                        Tentar novamente
-                      </Button>
-                    </div>
-                  )}
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">
-                    Retenção leve: 7 pontos diários e 4 semanais.
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Pasta de destino</Label>
+                  <code
+                    className="block truncate rounded bg-muted p-2 text-[10px]"
+                    title={automaticBackupSettings.destination ?? undefined}
+                  >
+                    {automaticBackupSettings.destination ?? "Nenhuma pasta selecionada"}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    disabled={automaticBackupControlsDisabled}
+                    onClick={() => void handleSelectAutomaticBackupDirectory()}
+                  >
+                    <FolderOpen className="h-4 w-4" /> Selecionar pasta
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Escolha uma pasta para salvar os backups. Diretorios em nuvem como OneDrive e DropBox são recomendados.
                   </p>
                 </div>
-              </details>
-            </CardContent>
-          </Card>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="automatic-backup-interval">Intervalo em horas</Label>
+                  <Input
+                    id="automatic-backup-interval"
+                    type="number"
+                    min={1}
+                    max={168}
+                    step={1}
+                    disabled={automaticBackupActionsDisabled}
+                    value={automaticBackupSettings.intervalHours}
+                    onChange={(event) => {
+                      setAutomaticBackupSettings((current) => ({
+                        ...current,
+                        intervalHours: Number(event.target.value),
+                      }));
+                      setIsAutomaticBackupDirty(true);
+                    }}
+                  />
+                  {automaticBackupSettings.intervalHours > 48 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Intervalos acima de 48 horas aumentam o risco de perda de dados recentes.
+                    </p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveAutomaticBackup}
+                    disabled={automaticBackupActionsDisabled || !isAutomaticBackupDirty}
+                  >
+                    {automaticBackupSettingsMutation.isPending && !settingsSaveIsToggle ? "Salvando..." : "Salvar configurações"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => automaticBackupNowMutation.mutate()}
+                    disabled={
+                      automaticBackupActionsDisabled ||
+                      automaticBackupNowMutation.isPending ||
+                      automaticBackupStatus?.running ||
+                      !automaticBackupSettings.destination ||
+                      automaticBackupSettings.destination !== automaticBackupStatus?.destination
+                    }
+                  >
+                    <HardDriveDownload className="h-4 w-4" />
+                    {automaticBackupNowMutation.isPending ? "Executando..." : "Executar agora"}
+                  </Button>
+                </div>
+                {automaticBackupStatus && (
+                  <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                    <p>
+                      Último backup:{" "}
+                      <RelativeDate value={automaticBackupStatus.lastSuccessAt} fallback="Ainda não executado" />
+                      {automaticBackupStatus.lastBackupSizeBytes != null
+                        ? ` (${formatBackupSize(automaticBackupStatus.lastBackupSizeBytes)})`
+                        : ""}
+                    </p>
+                    <p>
+                      Última verificação:{" "}
+                      <RelativeDate value={automaticBackupStatus.lastVerifiedAt} fallback="Ainda não executado" />
+                    </p>
+                    {automaticBackupStatus.enabled && (
+                      <p>
+                        Próxima verificação elegível:{" "}
+                        <RelativeDate value={automaticBackupStatus.nextBackupAt} fallback="Ainda não executado" />
+                      </p>
+                    )}
+                    {automaticBackupStatus.lastError && (
+                      <p className="text-destructive">Último erro: {automaticBackupStatus.lastError}</p>
+                    )}
+                  </div>
+                )}
+                {isAutomaticBackupError && (
+                  <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+                    <span>Não foi possível carregar o status.</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => refetchAutomaticBackup()}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                )}
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Retenção leve: 7 pontos diários e 4 semanais.
+                </p>
+              </div>
+            </details>
+          </CardContent>
+        </Card>
 
-          <Card className="border-destructive/20">
-            <CardHeader>
-              <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
-              </p>
-              <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
-                {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
-              </Button>
-            </CardContent>
-          </Card>
+        <Card className="border-destructive/20">
+          <CardHeader>
+            <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
+            </p>
+            <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
+              {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={isReleaseHistoryOpen} onOpenChange={setIsReleaseHistoryOpen}>
@@ -886,16 +889,21 @@ export function Settings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            {releaseNotes.map((release) => (
-              <article key={release.version} className="rounded-lg border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="font-semibold">{release.title}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{release.date}</p>
+            {releaseNotes.map((release, index) => (
+              <details key={release.version} className="group rounded-lg border" open={index === 0}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4 marker:content-none">
+                  <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold">{release.title}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{release.date}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge>{release.version}</Badge>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </div>
                   </div>
-                  <Badge>{release.version}</Badge>
-                </div>
-                <div className="mt-4 space-y-4">
+                </summary>
+                <div className="space-y-4 border-t p-4">
                   {release.sections.map((section) => (
                     <section key={section.title}>
                       <h4 className="text-sm font-medium">{section.title}</h4>
@@ -905,7 +913,7 @@ export function Settings() {
                     </section>
                   ))}
                 </div>
-              </article>
+              </details>
             ))}
           </div>
         </DialogContent>

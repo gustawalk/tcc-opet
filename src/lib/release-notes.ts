@@ -11,6 +11,27 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.3.2",
+    date: "16/08/2026",
+    title: "Backup com mensagens claras e histórico expansível",
+    sections: [
+      {
+        title: "Backup",
+        items: [
+          "Exportar backups e configurar o backup automático agora mostram uma mensagem clara quando a pasta escolhida não permite criar arquivos (ex.: permissão negada em raízes de unidade ou pastas protegidas pelo sistema).",
+          "O guia de backup automático e a tela de Configurações passaram a recomendar evitar esses locais e sugerir pastas em nuvem como OneDrive e DropBox.",
+          "Removida a nota em texto de que \"arquivos iguais não são duplicados\": o comportamento já era o esperado e não gerava duplicatas.",
+        ],
+      },
+      {
+        title: "Interface",
+        items: [
+          "O histórico de versões em Configurações virou um acordeão: cada versão exibe título, data e versão e expande para revelar as novidades daquela atualização.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.3.1",
     date: "16/08/2026",
     title: "Backup automático reforçado e novo visual",

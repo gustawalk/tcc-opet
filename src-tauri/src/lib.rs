@@ -100,6 +100,8 @@ mod performance_benchmarks;
 mod repositories;
 mod seeds;
 #[cfg(test)]
+mod storage_concurrency_stress;
+#[cfg(test)]
 mod storage_e2e_tests;
 #[cfg(test)]
 mod tauri_ipc_tests;
@@ -121,6 +123,9 @@ pub fn run() {
         commands::settings_commands::select_company_logo,
         commands::settings_commands::select_automatic_backup_directory,
         commands::settings_commands::run_automatic_backup_now,
+        commands::settings_commands::get_storage_config,
+        commands::settings_commands::update_storage_config,
+        commands::settings_commands::select_database_directory,
         commands::attachment_commands::select_service_order_attachments,
         commands::attachment_commands::select_pending_service_order_attachments,
         commands::pdf_commands::save_pdf_preview,

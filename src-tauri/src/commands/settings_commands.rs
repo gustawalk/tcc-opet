@@ -3,7 +3,7 @@ use crate::models::settings::Settings;
 use crate::repositories::settings_repo::SettingsRepository;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::{command, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 
@@ -76,6 +76,12 @@ pub fn update_settings(settings: Settings) -> Result<(), AppError> {
 
 #[command]
 pub async fn reset_database() -> Result<(), AppError> {
+    if crate::database::lan_shared_mode() && !crate::database::lan_is_host() {
+        return Err(crate::error::business_error(
+            "Reset is disabled while LAN shared storage is active.",
+            "Zerar os dados está disponível apenas no computador host do banco compartilhado.",
+        ));
+    }
     tauri::async_runtime::spawn_blocking(reset_database_data)
         .await
         .map_err(|error| {
@@ -100,6 +106,7 @@ pub(crate) fn reset_database_data() -> Result<(), AppError> {
             )
         })?;
     }
+    crate::database::advance_lan_generation()?;
     Ok(())
 }
 
@@ -201,14 +208,22 @@ pub fn restore_backup(
     source: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
+    if crate::database::lan_shared_mode() && !crate::database::lan_is_host() {
+        return Err(crate::error::business_error(
+            "Restore is disabled while LAN shared storage is active.",
+            "Restaurar backup está disponível apenas no computador host do banco compartilhado.",
+        ));
+    }
     let guard = crate::database::exclusive_storage_guard()?;
-    crate::backup_service::restore_backup_with_passphrase(
+    let result = crate::backup_service::restore_backup_with_passphrase(
         Path::new(&source),
         &crate::database::database_path(),
         &crate::database::attachments_dir(),
         passphrase.as_deref(),
         &guard,
-    )
+    )?;
+    crate::database::advance_lan_generation()?;
+    Ok(result)
 }
 
 #[command]
@@ -279,6 +294,110 @@ pub async fn select_automatic_backup_directory(app: AppHandle) -> Result<Option<
         AppError::new(
             format!("Failed to select automatic backup directory: {error}"),
             format!("Erro ao selecionar a pasta de backup automático: {error}"),
+        )
+    })?
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageConfigDto {
+    pub database_path: Option<String>,
+    pub lan_shared: bool,
+    pub is_host: bool,
+    pub generation: Option<u64>,
+}
+
+fn storage_config_dto(
+    config: &crate::database::StorageConfig,
+) -> Result<StorageConfigDto, AppError> {
+    Ok(StorageConfigDto {
+        database_path: config
+            .database_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        lan_shared: config.lan_shared,
+        is_host: crate::database::lan_is_host(),
+        generation: crate::database::lan_generation()?,
+    })
+}
+
+#[command]
+pub fn get_storage_config() -> Result<StorageConfigDto, AppError> {
+    let app_data_dir = crate::database::app_data_dir();
+    storage_config_dto(&crate::database::load_storage_config(&app_data_dir))
+}
+
+#[command]
+pub fn update_storage_config(
+    database_path: Option<String>,
+    lan_shared: bool,
+) -> Result<StorageConfigDto, AppError> {
+    let database_path = match database_path {
+        Some(raw) if !raw.trim().is_empty() => {
+            let candidate = PathBuf::from(&raw);
+            let database_file = if candidate
+                .extension()
+                .map(|extension| extension.eq_ignore_ascii_case("db"))
+                .unwrap_or(false)
+            {
+                candidate
+            } else {
+                candidate.join("database.db")
+            };
+            if !database_file.is_absolute() {
+                return Err(crate::error::business_error(
+                    "The selected database folder must be an absolute path.",
+                    "A pasta do banco de dados deve ser um caminho absoluto.",
+                ));
+            }
+            Some(database_file)
+        }
+        _ => None,
+    };
+    let current = crate::database::load_storage_config(&crate::database::app_data_dir());
+    let config = crate::database::StorageConfig {
+        database_path,
+        lan_shared,
+        device_id: current
+            .device_id
+            .or_else(|| Some(uuid::Uuid::new_v4().to_string())),
+    };
+    let app_data_dir = crate::database::app_data_dir();
+    crate::database::save_storage_config(&app_data_dir, &config)?;
+    storage_config_dto(&config)
+}
+
+#[command]
+pub async fn select_database_directory(app: AppHandle) -> Result<Option<String>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let selected = app.dialog().file().blocking_pick_folder();
+        let Some(selected) = selected else {
+            return Ok(None);
+        };
+        selected
+            .into_path()
+            .map_err(|error| {
+                AppError::new(
+                    format!("Failed to access the selected database folder: {error}"),
+                    format!("Erro ao acessar a pasta do banco de dados selecionada: {error}"),
+                )
+            })
+            .and_then(|path| {
+                path.to_str()
+                    .map(|path| Some(path.to_string()))
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "The database folder must use a valid Unicode path.",
+                            "A pasta do banco de dados deve usar um caminho Unicode válido.",
+                        )
+                    })
+            })
+    })
+    .await
+    .map_err(|error| {
+        AppError::new(
+            format!("Failed to select the database folder: {error}"),
+            format!("Erro ao selecionar a pasta do banco de dados: {error}"),
         )
     })?
 }
@@ -406,6 +525,31 @@ mod tests {
             .unwrap();
         assert_eq!(customer_count, 0);
         assert_eq!(movement_table_exists, 1);
+    }
+
+    #[test]
+    fn storage_config_commands_round_trip_and_reject_relative_paths() {
+        // Ensures `app_data_dir()` is initialized to an isolated temp directory.
+        let _backend = crate::test_helpers::setup_global_backend();
+        let folder = tempfile::tempdir().unwrap();
+        let folder_path = folder.path().to_string_lossy().to_string();
+
+        let updated = update_storage_config(Some(folder_path.clone()), true).unwrap();
+        assert!(updated.lan_shared);
+        let stored = updated.database_path.unwrap();
+        assert!(stored.ends_with("database.db"));
+        assert!(Path::new(&stored).is_absolute());
+
+        let read_back = get_storage_config().unwrap();
+        assert_eq!(read_back.database_path.as_deref(), Some(stored.as_str()));
+        assert!(read_back.lan_shared);
+
+        assert!(update_storage_config(Some("relative/folder".into()), false).is_err());
+
+        // Restore defaults so the shared test storage stays clean.
+        let restored = update_storage_config(None, false).unwrap();
+        assert!(restored.database_path.is_none());
+        assert!(!restored.lan_shared);
     }
 
     #[test]

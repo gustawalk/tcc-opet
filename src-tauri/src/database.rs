@@ -1,3 +1,5 @@
+use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use once_cell::sync::OnceCell;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
@@ -17,6 +19,10 @@ static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 static APP_DATA_DIR: OnceCell<PathBuf> = OnceCell::new();
 static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
 static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
+// Whether the user opted into sharing the storage on a LAN/network folder. Set
+// from the persisted storage config during app initialization; defaults to false.
+static LAN_SHARED_MODE: OnceCell<bool> = OnceCell::new();
+static LAN_IS_HOST: OnceCell<bool> = OnceCell::new();
 
 // Single shared SQLCipher connection, reused across requests. Reopening the
 // connection on every call was the dominant fixed cost (~2.5ms/request: key
@@ -27,6 +33,7 @@ pub(crate) type ExclusiveStorageGuard = RwLockWriteGuard<'static, ()>;
 
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
+const LAN_MANIFEST_MAGIC: &[u8] = b"OPETLAN1";
 
 pub struct DatabaseConnection {
     connection: MutexGuard<'static, Option<Connection>>,
@@ -92,17 +99,201 @@ struct StorageMetadata {
     authentication: String,
 }
 
+/// Persisted storage preferences: the database folder chosen by the user and the
+/// LAN shared-mode toggle. Stored outside the database (in the application data
+/// directory) so the database file itself can live on a network share. Applied on
+/// the next application start.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageConfig {
+    #[serde(default)]
+    pub database_path: Option<PathBuf>,
+    #[serde(default)]
+    pub lan_shared: bool,
+    #[serde(default)]
+    pub device_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LanManifest {
+    format_version: u8,
+    host_device_id: String,
+    app_version: String,
+    generation: u64,
+    authentication: String,
+}
+
+fn lan_manifest_path(database_path: &Path) -> PathBuf {
+    database_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".opets-lan.json")
+}
+fn lan_manifest_auth(host_device_id: &str, app_version: &str, generation: u64) -> String {
+    crate::encryption::metadata_authentication(&format!(
+        "lan:1:{host_device_id}:{app_version}:{generation}"
+    ))
+}
+fn read_lan_manifest(database_path: &Path) -> Result<Option<LanManifest>> {
+    let path = lan_manifest_path(database_path);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = fs::read(path).map_err(io_error)?;
+    if !bytes.starts_with(LAN_MANIFEST_MAGIC) || bytes.len() <= LAN_MANIFEST_MAGIC.len() + 24 {
+        return Err(database_error("Manifesto LAN inválido ou corrompido."));
+    }
+    let cipher = XChaCha20Poly1305::new(
+        (&crate::encryption::derive_key("com.walk.tcc-opet/lan-manifest/v1")).into(),
+    );
+    let payload = cipher
+        .decrypt(
+            XNonce::from_slice(&bytes[LAN_MANIFEST_MAGIC.len()..LAN_MANIFEST_MAGIC.len() + 24]),
+            &bytes[LAN_MANIFEST_MAGIC.len() + 24..],
+        )
+        .map_err(|_| database_error("Manifesto LAN não pôde ser autenticado."))?;
+    let manifest: LanManifest = serde_json::from_slice(&payload).map_err(database_error)?;
+    if manifest.format_version != 1
+        || manifest.app_version != env!("CARGO_PKG_VERSION")
+        || manifest.authentication
+            != lan_manifest_auth(
+                &manifest.host_device_id,
+                &manifest.app_version,
+                manifest.generation,
+            )
+    {
+        return Err(database_error("Manifesto LAN inválido ou incompatível. Atualize todos os computadores para a mesma versão."));
+    }
+    Ok(Some(manifest))
+}
+fn write_lan_manifest(database_path: &Path, host_device_id: String, generation: u64) -> Result<()> {
+    let manifest = LanManifest {
+        format_version: 1,
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        authentication: lan_manifest_auth(&host_device_id, env!("CARGO_PKG_VERSION"), generation),
+        host_device_id,
+        generation,
+    };
+    let path = lan_manifest_path(database_path);
+    let temp = path.with_extension("json.tmp");
+    let cipher = XChaCha20Poly1305::new(
+        (&crate::encryption::derive_key("com.walk.tcc-opet/lan-manifest/v1")).into(),
+    );
+    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let ciphertext = cipher
+        .encrypt(
+            &nonce,
+            serde_json::to_vec(&manifest)
+                .map_err(database_error)?
+                .as_ref(),
+        )
+        .map_err(|_| database_error("Não foi possível cifrar o manifesto LAN."))?;
+    let mut bytes = LAN_MANIFEST_MAGIC.to_vec();
+    bytes.extend_from_slice(&nonce);
+    bytes.extend_from_slice(&ciphertext);
+    fs::write(&temp, bytes).map_err(io_error)?;
+    fs::rename(temp, path).map_err(io_error)
+}
+
+pub fn storage_config_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("app_config.json")
+}
+
+pub fn load_storage_config(app_data_dir: &Path) -> StorageConfig {
+    let path = storage_config_path(app_data_dir);
+    fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_storage_config(app_data_dir: &Path, config: &StorageConfig) -> Result<()> {
+    fs::create_dir_all(app_data_dir).map_err(io_error)?;
+    let path = storage_config_path(app_data_dir);
+    let temporary = path.with_extension("app_config.json.tmp");
+    if let Err(error) = fs::write(
+        &temporary,
+        serde_json::to_vec_pretty(config).map_err(database_error)?,
+    ) {
+        let _ = fs::remove_file(&temporary);
+        return Err(io_error(error));
+    }
+    fs::rename(&temporary, &path).map_err(io_error)?;
+    Ok(())
+}
+
+pub(crate) fn lan_shared_mode() -> bool {
+    LAN_SHARED_MODE.get().copied().unwrap_or(false)
+}
+pub(crate) fn lan_is_host() -> bool {
+    LAN_IS_HOST.get().copied().unwrap_or(false)
+}
+pub(crate) fn advance_lan_generation() -> Result<()> {
+    if !lan_shared_mode() || !lan_is_host() {
+        return Ok(());
+    }
+    let config = load_storage_config(&app_data_dir());
+    write_lan_manifest(
+        &database_path(),
+        config.device_id.unwrap_or_default(),
+        read_lan_manifest(&database_path())?
+            .map(|m| m.generation + 1)
+            .unwrap_or(1),
+    )
+}
+pub(crate) fn lan_generation() -> Result<Option<u64>> {
+    read_lan_manifest(&database_path()).map(|manifest| manifest.map(|value| value.generation))
+}
+
+fn set_lan_shared_mode(lan_shared: bool) -> Result<()> {
+    LAN_SHARED_MODE
+        .set(lan_shared)
+        .map_err(|_| database_error("Shared storage mode was already initialized."))
+}
+
+#[cfg(test)]
+pub(crate) fn set_lan_shared_mode_for_tests(lan_shared: bool) {
+    // Mirror the real startup order (config is loaded before init), so stress
+    // tests can make every connection in the process behave like a LAN client.
+    // Idempotent: several ignored tests in the same process can call it.
+    if lan_shared_mode() == lan_shared {
+        return;
+    }
+    if let Err(error) = set_lan_shared_mode(lan_shared) {
+        panic!("lan_shared_mode already initialized in this test process: {error}");
+    }
+}
+
 // Initialize the database connection
 pub fn init_db(app: &tauri::App) -> Result<()> {
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
     })?;
-    let resolved_database_path = get_database_path(&app_data_dir)?;
+    let storage_config = load_storage_config(&app_data_dir);
+    let resolved_database_path = get_database_path(&app_data_dir, &storage_config)?;
+    let manifest = read_lan_manifest(&resolved_database_path)?;
+    let lan_shared = storage_config.lan_shared || manifest.is_some();
+    set_lan_shared_mode(lan_shared)?;
+    let device_id = storage_config.device_id.as_deref().unwrap_or_default();
+    LAN_IS_HOST
+        .set(
+            manifest
+                .as_ref()
+                .is_some_and(|m| m.host_device_id == device_id)
+                || (storage_config.lan_shared && manifest.is_none()),
+        )
+        .map_err(|_| database_error("LAN role already initialized."))?;
     if let Some(parent) = resolved_database_path.parent() {
         ensure_private_dir(parent).map_err(io_error)?;
     }
-    acquire_storage_instance_lock(&resolved_database_path)?;
+    if !lan_shared {
+        acquire_storage_instance_lock(&resolved_database_path)?;
+    }
     initialize_storage_at(&resolved_database_path, should_seed_demo_data())?;
+    if storage_config.lan_shared && manifest.is_none() {
+        write_lan_manifest(&resolved_database_path, device_id.to_string(), 0)?;
+    }
     APP_DATA_DIR.set(app_data_dir).map_err(|_| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
             "Application data path was already initialized.",
@@ -166,6 +357,10 @@ pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) 
     } else {
         None
     };
+
+    // Diagnose lock-broken transports (e.g. Linux CIFS + SMB2/3) BEFORE any
+    // connection activates WAL, so the readable error wins over a 30s SQLITE_BUSY.
+    probe_network_share_locking(database_path)?;
 
     // Open the connection once to run migrations with foreign keys enabled.
     let conn = open_encrypted_database(database_path)?;
@@ -288,11 +483,116 @@ fn database_key_hex() -> String {
 }
 
 pub(crate) fn open_encrypted_database(path: &Path) -> Result<Connection> {
+    open_encrypted_database_with_mode(path, lan_shared_mode())
+}
+
+/// SQLite WAL is the product default and works on every transport that provides
+/// byte-range locking (local disks, NFS with lockd, SMB1+unix, Windows/macOS SMB
+/// clients). A lock-broken transport (Linux CIFS + SMB2/3) is detected at startup
+/// by `probe_network_share_locking`, which fails fast with a readable
+/// message instead of a cryptic `database is locked`.
+#[cfg(target_os = "linux")]
+fn filesystem_is_network_share(path: &Path) -> bool {
+    let mut probe = path.to_path_buf();
+    loop {
+        if probe.exists() {
+            break;
+        }
+        if !probe.pop() {
+            break;
+        }
+    }
+    let canonical = fs::canonicalize(&probe).unwrap_or(probe);
+    let target = canonical.to_string_lossy().to_string();
+    let Ok(mounts) = fs::read_to_string("/proc/self/mounts") else {
+        return false;
+    };
+    let mut best = "";
+    for line in mounts.lines() {
+        let mut fields = line.split_whitespace();
+        let _device = fields.next();
+        let Some(mount_point) = fields.next() else {
+            continue;
+        };
+        let Some(fs_type) = fields.next() else {
+            continue;
+        };
+        if !(fs_type.starts_with("nfs")
+            || fs_type.starts_with("cifs")
+            || fs_type.starts_with("smb"))
+        {
+            continue;
+        }
+        if target.starts_with(mount_point) && mount_point.len() > best.len() {
+            best = mount_point;
+        }
+    }
+    !best.is_empty()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn filesystem_is_network_share(_path: &Path) -> bool {
+    false
+}
+
+fn probe_tables_work(conn: &Connection) -> std::result::Result<(), rusqlite::Error> {
+    // A zero-concurrency write must succeed on any share SQLite can host. On
+    // lock-broken transports (e.g. Linux CIFS + SMB2/3) even a plain CREATE
+    // fails instantly with SQLITE_BUSY; fail fast here with a clear message.
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS __opets_share_lock_probe__ (id INTEGER);")?;
+    conn.execute_batch("DROP TABLE IF EXISTS __opets_share_lock_probe__;")
+}
+
+/// Runs once at startup on LAN network shares, before any connection enables
+/// WAL. This is where a lock-broken transport is diagnosed: with zero
+/// concurrency and no busy timeout a CREATE + DROP must succeed; on Linux CIFS +
+/// SMB2/3 it fails instantly with SQLITE_BUSY. The probe uses its own short-lived
+/// connection so it never interferes with (or is masked by) concurrent WAL opens.
+fn probe_network_share_locking(database_path: &Path) -> Result<()> {
+    if !lan_shared_mode() || !filesystem_is_network_share(database_path) {
+        return Ok(());
+    }
+    let conn = Connection::open(database_path)?;
+    let key = database_key_hex();
+    let pragmas = format!(
+        "PRAGMA key = \"x'{key}'\"; PRAGMA cipher_memory_security = ON; PRAGMA busy_timeout = 0;"
+    );
+    let probe_result = conn
+        .execute_batch(pragmas.as_str())
+        .and_then(|()| probe_tables_work(&conn));
+    drop(conn);
+    if probe_result.is_ok() {
+        return Ok(());
+    }
+    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+        io::Error::other(
+            "Esta pasta compartilhada não suporta o bloqueio de arquivos que o SQLite exige \
+             (Linux + CIFS/SMB2/3 não oferece locks de byte-range). Use um compartilhamento com \
+             locking POSIX (ex.: NFS, ou SMB1+unix extensions), clientes Windows/macOS, ou a \
+             abordagem de servidor embutido.",
+        ),
+    )))
+}
+
+pub(crate) fn open_encrypted_database_with_mode(
+    path: &Path,
+    lan_shared: bool,
+) -> Result<Connection> {
     let conn = Connection::open(path)?;
     let key = database_key_hex();
-    conn.execute_batch(&format!(
+    let mut pragmas = format!(
         "PRAGMA key = \"x'{key}'\"; PRAGMA cipher_memory_security = ON; PRAGMA foreign_keys = ON;"
-    ))?;
+    );
+    if lan_shared {
+        pragmas.push_str("PRAGMA busy_timeout = 30000; PRAGMA synchronous = NORMAL;");
+        conn.execute_batch(&pragmas)?;
+        // journal_mode returns a row, so it must go through query_row.
+        conn.query_row("PRAGMA journal_mode = WAL", [], |row| {
+            row.get::<_, String>(0)
+        })?;
+    } else {
+        conn.execute_batch(&pragmas)?;
+    }
     conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| {
         row.get::<_, i64>(0)
     })?;
@@ -334,13 +634,26 @@ pub(crate) fn migrate_plaintext_database(path: &Path) -> Result<PathBuf> {
 }
 
 pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
+    ensure_private_dir_with_mode(path, lan_shared_mode())
+}
+
+pub(crate) fn ensure_private_dir_with_mode(path: &Path, lan_shared: bool) -> io::Result<()> {
     fs::create_dir_all(path)?;
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    if !lan_shared {
+        #[cfg(unix)]
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
     Ok(())
 }
 
 pub(crate) fn secure_private_file(path: &Path) -> io::Result<()> {
+    secure_private_file_with_mode(path, lan_shared_mode())
+}
+
+pub(crate) fn secure_private_file_with_mode(path: &Path, lan_shared: bool) -> io::Result<()> {
+    if lan_shared {
+        return Ok(());
+    }
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     #[cfg(not(unix))]
@@ -366,12 +679,16 @@ fn is_skip_db_seed_enabled(value: Option<&str>) -> bool {
     )
 }
 
-// Get database path from environment or fallback
-fn get_database_path(app_data_dir: &Path) -> Result<PathBuf> {
-    let configured_path = env::var("DATABASE_PATH")
-        .ok()
-        .or_else(|| env::var("DB_PATH").ok())
-        .map(PathBuf::from);
+// Get database path from the persisted storage config (the user choice takes
+// precedence over the environment), environment, or fallback to the application
+// data directory.
+fn get_database_path(app_data_dir: &Path, storage_config: &StorageConfig) -> Result<PathBuf> {
+    let configured_path = storage_config.database_path.clone().or_else(|| {
+        env::var("DATABASE_PATH")
+            .ok()
+            .or_else(|| env::var("DB_PATH").ok())
+            .map(PathBuf::from)
+    });
     Ok(resolve_database_path(configured_path, app_data_dir))
 }
 
@@ -385,11 +702,17 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
     }
 }
 
-// Run full migrations: schema + core defaults
+// Run full migrations: schema + core defaults. The whole migration run happens
+// inside a single queued ("IMMEDIATE") write transaction so that two processes
+// bootstrapping the same storage for the first time on a shared folder cannot
+// race on schema-changing statements (see `add_column_if_missing`). With WAL and
+// the LAN busy timeout the second process simply waits for the first to commit.
 pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
-    run_schema_migrations(conn)?;
-    ensure_core_defaults(conn)?;
-    Ok(())
+    let transaction =
+        rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    run_schema_migrations(&transaction)?;
+    ensure_core_defaults(&transaction)?;
+    transaction.commit()
 }
 
 pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
@@ -579,6 +902,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(inventory_item_id);
         CREATE INDEX IF NOT EXISTS idx_service_order_events_order ON service_order_events(service_order_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_service_order_attachments_order ON service_order_attachments(service_order_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_template_items_template ON template_items(template_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_service_orders_display_id ON service_orders(display_id) WHERE display_id <> '';
         ",
     )?;
@@ -701,6 +1025,8 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
              ON service_orders(status, deleted_at, finalized_date);
          CREATE INDEX IF NOT EXISTS idx_service_orders_created
              ON service_orders(deleted_at, created_date);
+         CREATE INDEX IF NOT EXISTS idx_service_orders_customer_history
+             ON service_orders(customer_id, deleted_at, created_date);
          CREATE INDEX IF NOT EXISTS idx_service_order_parts_order
              ON service_order_parts(service_order_id);",
     )?;
@@ -752,7 +1078,6 @@ fn add_column_if_missing(
 }
 
 fn migrate_integer_money(conn: &Connection) -> Result<()> {
-    let transaction = conn.unchecked_transaction()?;
     for (table, column, definition) in [
         ("inventory_items", "cost_price_cents", "INTEGER CHECK (cost_price_cents IS NULL OR cost_price_cents >= 0)"),
         ("inventory_items", "average_cost_cents", "INTEGER CHECK (average_cost_cents IS NULL OR average_cost_cents >= 0)"),
@@ -771,9 +1096,9 @@ fn migrate_integer_money(conn: &Connection) -> Result<()> {
         ),
         ("financial_snapshots", "parts_in_use_cost_cents", "INTEGER CHECK (parts_in_use_cost_cents IS NULL OR parts_in_use_cost_cents >= 0)"),
     ] {
-        add_column_if_missing(&transaction, table, column, definition)?;
+        add_column_if_missing(conn, table, column, definition)?;
     }
-    transaction.execute_batch(
+    conn.execute_batch(
         "UPDATE inventory_items SET cost_price_cents = ROUND(cost_price * 100)
          WHERE cost_price_cents IS NULL;
          UPDATE inventory_items SET average_cost_cents = ROUND(
@@ -801,9 +1126,9 @@ fn migrate_integer_money(conn: &Connection) -> Result<()> {
          UPDATE financial_snapshots SET parts_in_use_cost_cents = ROUND(parts_in_use_cost * 100)
          WHERE parts_in_use_cost_cents IS NULL;",
     )?;
-    make_legacy_part_prices_optional(&transaction)?;
-    validate_integer_money(&transaction)?;
-    transaction.commit()
+    make_legacy_part_prices_optional(conn)?;
+    validate_integer_money(conn)?;
+    Ok(())
 }
 
 fn validate_integer_money(conn: &Connection) -> Result<()> {
@@ -911,6 +1236,17 @@ pub(crate) fn attachments_dir_for(database_path: &Path) -> PathBuf {
 #[cfg(test)]
 pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
     initialize_storage_at(path, false)?;
+    if let Some(app_data_dir) = path.parent() {
+        // The single global test storage also acts as the application data
+        // directory, so storage-config commands can be exercised in tests.
+        if APP_DATA_DIR.get().is_none() {
+            APP_DATA_DIR.set(app_data_dir.to_path_buf()).map_err(|_| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
+                    "Application data path was already initialized.",
+                )))
+            })?;
+        }
+    }
     match DB_PATH.get() {
         Some(initialized) if initialized == path => Ok(()),
         Some(_) => Err(database_error(
@@ -946,6 +1282,201 @@ mod tests {
             resolve_database_path(Some(configured_path.clone()), &app_data_dir),
             configured_path
         );
+    }
+
+    #[test]
+    fn user_storage_config_precedes_every_other_resolution_source() {
+        let app_data_dir = PathBuf::from("/tmp/opets-data");
+        let shared_path = PathBuf::from("/mnt/lan-share/database.db");
+        let config = StorageConfig {
+            database_path: Some(shared_path.clone()),
+            lan_shared: true,
+            device_id: None,
+        };
+
+        // The environment (DATABASE_PATH/DB_PATH) may or may not be set in the
+        // test process; the user choice must win in either case.
+        let resolved = get_database_path(&app_data_dir, &config).unwrap();
+        assert_eq!(resolved, shared_path);
+    }
+
+    #[test]
+    fn default_storage_config_resolves_to_the_application_data_directory() {
+        let app_data_dir = PathBuf::from("/tmp/opets-data");
+        let config = StorageConfig::default();
+
+        let resolved = get_database_path(&app_data_dir, &config).unwrap();
+        // Only valid when no DATABASE_PATH/DB_PATH env var is present.
+        let env_override = env::var("DATABASE_PATH")
+            .ok()
+            .or_else(|| env::var("DB_PATH").ok())
+            .is_some();
+        if !env_override {
+            assert_eq!(resolved, app_data_dir.join("database.db"));
+        }
+    }
+
+    #[test]
+    fn storage_config_round_trips_through_the_application_data_directory() {
+        let app_data_dir = std::env::temp_dir().join(format!("opets-config-{}", Uuid::new_v4()));
+        let config = StorageConfig {
+            database_path: Some(PathBuf::from("/mnt/lan-share/database.db")),
+            lan_shared: true,
+            device_id: None,
+        };
+
+        save_storage_config(&app_data_dir, &config).unwrap();
+        let loaded = load_storage_config(&app_data_dir);
+
+        assert_eq!(loaded.database_path, config.database_path);
+        assert!(loaded.lan_shared);
+        let _ = fs::remove_dir_all(app_data_dir);
+    }
+
+    #[test]
+    fn missing_storage_config_defaults_to_single_user_storage() {
+        let app_data_dir =
+            std::env::temp_dir().join(format!("opets-config-missing-{}", Uuid::new_v4()));
+
+        let loaded = load_storage_config(&app_data_dir);
+
+        assert_eq!(loaded.database_path, None);
+        assert!(!loaded.lan_shared);
+        let _ = fs::remove_dir_all(app_data_dir);
+    }
+
+    #[test]
+    fn shared_mode_is_off_by_default() {
+        // The flag is only flipped by init_db; tests never initialize it.
+        assert!(!lan_shared_mode());
+    }
+
+    #[test]
+    fn lan_mode_enables_wal_busy_timeout_and_normal_synchronous() {
+        let directory = std::env::temp_dir().join(format!("opets-lan-wal-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+
+        let shared_database = directory.join("shared.db");
+        let shared = open_encrypted_database_with_mode(&shared_database, true).unwrap();
+        let journal_mode: String = shared
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        let busy_timeout: i64 = shared
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        let synchronous: i64 = shared
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))
+            .unwrap();
+        drop(shared);
+        assert_eq!(journal_mode, "wal");
+        assert_eq!(busy_timeout, 30000);
+        assert_eq!(synchronous, 1); // NORMAL
+
+        let single_user_database = directory.join("single.db");
+        let single_user = open_encrypted_database_with_mode(&single_user_database, false).unwrap();
+        let single_journal_mode: String = single_user
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        drop(single_user);
+        assert_eq!(single_journal_mode, "delete");
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn lan_mode_keeps_wal_journal_and_normal_sync() {
+        let directory = std::env::temp_dir().join(format!("opets-lan-wal-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let database = directory.join("database.db");
+
+        let lan = open_encrypted_database_with_mode(&database, true).unwrap();
+        let journal: String = lan
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        let synchronous: i64 = lan
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))
+            .unwrap();
+        drop(lan);
+        assert_eq!(journal, "wal");
+        assert_eq!(synchronous, 1, "WAL pairs with synchronous=NORMAL");
+
+        let local = open_encrypted_database_with_mode(&database, false).unwrap();
+        let local_journal: String = local
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        drop(local);
+        assert_eq!(local_journal, "wal");
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn local_disks_are_not_network_shares() {
+        let directory = std::env::temp_dir();
+        assert!(
+            !filesystem_is_network_share(&directory.join("database.db")),
+            "a temp-dir database must not be treated as a network share"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lan_mode_keeps_shared_storage_permissions_open() {
+        let directory = std::env::temp_dir().join(format!("opets-lan-perms-{}", Uuid::new_v4()));
+        let file = directory.join("database.db");
+
+        ensure_private_dir_with_mode(&directory, true).unwrap();
+        fs::write(&file, b"database").unwrap();
+
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+        secure_private_file_with_mode(&file, true).unwrap();
+        let shared_permissions = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(shared_permissions, 0o644);
+
+        ensure_private_dir_with_mode(&directory, false).unwrap();
+        secure_private_file_with_mode(&file, false).unwrap();
+        let private_permissions = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(private_permissions, 0o600);
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn concurrent_migrations_on_the_same_database_are_serialized_and_idempotent() {
+        let directory = std::env::temp_dir().join(format!("opets-migrations-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let database = directory.join("database.db");
+
+        let first = Connection::open(&database).unwrap();
+        let second = Connection::open(&database).unwrap();
+        first.execute_batch("PRAGMA busy_timeout = 15000;").unwrap();
+        second
+            .execute_batch("PRAGMA busy_timeout = 15000;")
+            .unwrap();
+
+        let first_thread = std::thread::spawn(move || run_migrations(&first));
+        let second_thread = std::thread::spawn(move || run_migrations(&second));
+
+        first_thread.join().unwrap().unwrap();
+        second_thread.join().unwrap().unwrap();
+
+        let conn = Connection::open(&database).unwrap();
+        let phone_column: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'phone'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(phone_column, 1);
+        let integrity: String = conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(integrity, "ok");
+        drop(conn);
+
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -1093,7 +1624,8 @@ mod tests {
         let index_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (
-                    'idx_financial_snapshots_date', 'idx_inventory_movements_item'
+                    'idx_financial_snapshots_date', 'idx_inventory_movements_item',
+                    'idx_service_orders_customer_history'
                 )",
                 [],
                 |row| row.get(0),
@@ -1101,7 +1633,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(table_count, 14);
-        assert_eq!(index_count, 2);
+        assert_eq!(index_count, 3);
     }
 
     #[test]

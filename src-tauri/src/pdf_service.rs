@@ -387,6 +387,13 @@ fn build_financial_report_html(
 }
 
 fn preview_working_dir() -> Result<PathBuf, AppError> {
+    // On a shared LAN storage the transient HTML/PDF previews are kept in the
+    // local application data directory so they do not pay network I/O.
+    if crate::database::lan_shared_mode() {
+        let path = crate::database::app_data_dir().join("pdf-previews");
+        fs::create_dir_all(&path).map_err(pdf_error)?;
+        return Ok(path);
+    }
     let mut path = crate::database::database_path();
     path.set_extension("pdf-previews");
     crate::database::ensure_private_dir(&path).map_err(pdf_error)?;

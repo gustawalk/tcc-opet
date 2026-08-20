@@ -80,6 +80,13 @@ export interface SystemInfo {
   environment: string;
 }
 
+export interface StorageConfig {
+  databasePath: string | null;
+  lanShared: boolean;
+  isHost: boolean;
+  generation: number | null;
+}
+
 export interface UpdateCheck {
   configured: boolean;
   currentVersion: string;

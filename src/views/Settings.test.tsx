@@ -13,7 +13,10 @@ vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+import { relaunch } from "@tauri-apps/plugin-process";
+
 const mockedInvoke = vi.mocked(invoke);
+const mockedRelaunch = vi.mocked(relaunch);
 const automaticStatus = {
   enabled: false,
   destination: "/backups",
@@ -200,5 +203,168 @@ describe("Settings appearance", () => {
 
     expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1.1");
     expect(window.localStorage.getItem("opets-font-scale")).toBe("lg");
+  });
+});
+
+describe("Settings LAN shared storage", () => {
+  afterEach(() => {
+    cleanup();
+    mockedRelaunch.mockReset();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_settings") {
+        return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
+      }
+      if (command === "get_system_info") {
+        return Promise.resolve({ databasePath: "/data/database.db", appVersion: "0.3.0", tauriVersion: "2", environment: "Teste" });
+      }
+      if (command === "get_automatic_backup_status") return Promise.resolve(automaticStatus);
+      if (command === "get_storage_config") {
+        return Promise.resolve({ databasePath: null, lanShared: false });
+      }
+      return Promise.resolve(null);
+    });
+  });
+
+  const openLanSection = async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await screen.findByText("Compartilhar na rede (LAN)");
+    return user;
+  };
+
+  const openLanAccordion = async (user: ReturnType<typeof userEvent.setup>) => {
+    const summary = (await screen.findByText("Compartilhar na rede (LAN)")).closest("summary");
+    expect(summary).not.toBeNull();
+    await user.click(summary as HTMLElement);
+  };
+
+  it("shows the experimental warning, saves the LAN toggle and restarts automatically", async () => {
+    const user = await openLanSection();
+
+    expect(screen.queryByText(/Modo experimental/)).not.toBeInTheDocument();
+    const selectFolderButton = screen.getAllByRole("button", { name: "Selecionar pasta" })[0];
+    expect(selectFolderButton).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salvar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+
+    await openLanAccordion(user);
+    await user.click(screen.getByRole("checkbox", { name: "Ativar banco compartilhado na rede" }));
+    expect(screen.getByText(/Modo experimental/)).toBeInTheDocument();
+    expect(screen.getByText("Alterações pendentes")).toBeInTheDocument();
+    const saveButton = screen.getByRole("button", { name: "Salvar" });
+    expect(saveButton).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+
+    await user.click(saveButton);
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("update_storage_config", {
+        databasePath: null,
+        lanShared: true,
+      });
+    });
+    await waitFor(() => {
+      expect(mockedRelaunch).toHaveBeenCalledTimes(1);
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining("Reiniciando o aplicativo"),
+    );
+  });
+
+  it("locks the database path controls when LAN is enabled", async () => {
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_settings") {
+        return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
+      }
+      if (command === "get_system_info") {
+        return Promise.resolve({ databasePath: "/data/database.db", appVersion: "0.3.0", tauriVersion: "2", environment: "Teste" });
+      }
+      if (command === "get_automatic_backup_status") return Promise.resolve(automaticStatus);
+      if (command === "get_storage_config") {
+        return Promise.resolve({ databasePath: "/share/database.db", lanShared: true });
+      }
+      return Promise.resolve(null);
+    });
+
+    await openLanSection();
+
+    expect(await screen.findByText("/share/database.db")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salvar" })).not.toBeInTheDocument();
+    const folderButtons = screen.getAllByRole("button", { name: "Selecionar pasta" });
+    expect(folderButtons).toHaveLength(1);
+    expect(screen.getByText(/o banco atual é o da pasta fixada pela rede/)).toBeInTheDocument();
+    expect(screen.getByText("Fixado pela rede")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await openLanAccordion(user);
+    await user.click(screen.getByRole("checkbox", { name: "Ativar banco compartilhado na rede" }));
+    const saveButton = screen.getByRole("button", { name: "Salvar" });
+    expect(saveButton).toBeEnabled();
+    await user.click(saveButton);
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("update_storage_config", {
+        databasePath: "/share/database.db",
+        lanShared: false,
+      });
+    });
+  });
+
+  it("shows Save and Cancel after picking a folder and Cancelar reverts to the saved path", async () => {
+    mockedInvoke
+      .mockImplementation((command) => {
+        if (command === "get_settings") {
+          return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
+        }
+        if (command === "get_system_info") {
+          return Promise.resolve({ databasePath: "/data/database.db", appVersion: "0.3.0", tauriVersion: "2", environment: "Teste" });
+        }
+        if (command === "get_automatic_backup_status") return Promise.resolve(automaticStatus);
+        if (command === "get_storage_config") {
+          return Promise.resolve({ databasePath: "/current/database.db", lanShared: false });
+        }
+        if (command === "select_database_directory") return Promise.resolve("/picked");
+        return Promise.resolve(null);
+      });
+
+    const user = await openLanSection();
+
+    const pathDisplay = async () => screen.findByText("/current/database.db");
+    expect(await pathDisplay()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salvar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+
+    const selectFolderButton = screen.getAllByRole("button", { name: "Selecionar pasta" })[0];
+    await user.click(selectFolderButton);
+    await waitFor(() => {
+      expect(screen.getByText("/picked/database.db")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Alterações pendentes")).toBeInTheDocument();
+    const saveButton = screen.getByRole("button", { name: "Salvar" });
+    const cancelButton = screen.getByRole("button", { name: "Cancelar" });
+    expect(saveButton).toBeEnabled();
+    expect(cancelButton).toBeEnabled();
+
+    await user.click(cancelButton);
+    await waitFor(async () => {
+      expect(await pathDisplay()).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Salvar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+
+    await openLanAccordion(user);
+    await user.click(screen.getByRole("checkbox", { name: "Ativar banco compartilhado na rede" }));
+    const toggleSaveButton = screen.getByRole("button", { name: "Salvar" });
+    expect(toggleSaveButton).toBeEnabled();
+    await user.click(toggleSaveButton);
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("update_storage_config", {
+        databasePath: "/current/database.db",
+        lanShared: true,
+      });
+    });
   });
 });

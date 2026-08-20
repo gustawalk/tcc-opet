@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Monitor, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, Lock, MapPin, Monitor, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -37,6 +37,7 @@ import {
   type AutomaticBackupRunResult,
   type AutomaticBackupSettings,
   type AutomaticBackupStatus,
+  type StorageConfig,
 } from "@/lib/types";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
@@ -78,6 +79,13 @@ const fetchSystemInfo = async (): Promise<SystemInfo> => {
 const fetchAutomaticBackupStatus = async (): Promise<AutomaticBackupStatus> => {
   return await invoke<AutomaticBackupStatus>("get_automatic_backup_status");
 };
+
+const fetchStorageConfig = async (): Promise<StorageConfig> => {
+  return await invoke<StorageConfig>("get_storage_config");
+};
+
+const folderToDatabasePath = (folder: string): string =>
+  folder.endsWith(".db") ? folder : `${folder}/database.db`;
 
 const formatBackupSize = (value?: number | null) => {
   if (value == null) return "";
@@ -136,6 +144,13 @@ export function Settings() {
     refetchInterval: (query) => query.state.data?.running ? 1000 : false,
   });
 
+  const { data: storageConfig } = useQuery({
+    queryKey: ["storage-config"],
+    queryFn: fetchStorageConfig,
+    refetchInterval: 5000,
+  });
+  const storageGeneration = useRef<number | null>(null);
+
   const [localSettings, setLocalSettings] = useState<Settings>({
     companyName: "",
     cnpj: "",
@@ -149,6 +164,9 @@ export function Settings() {
   });
   const [isAutomaticBackupDirty, setIsAutomaticBackupDirty] = useState(false);
   const automaticBackupInitialized = useRef(false);
+  const [lanShared, setLanShared] = useState(false);
+  const [selectedDatabaseFolder, setSelectedDatabaseFolder] = useState<string | null>(null);
+  const storageConfigInitialized = useRef(false);
   const [settingsSaveIsToggle, setSettingsSaveIsToggle] = useState(false);
   const settingsMutationIsToggle = useRef(false);
 
@@ -168,6 +186,21 @@ export function Settings() {
       automaticBackupInitialized.current = true;
     }
   }, [automaticBackupStatus, isAutomaticBackupDirty]);
+
+  useEffect(() => {
+    if (storageConfig && !storageConfigInitialized.current) {
+      setLanShared(storageConfig.lanShared);
+      storageConfigInitialized.current = true;
+    }
+  }, [storageConfig]);
+  useEffect(() => {
+    if (!storageConfig?.lanShared || storageConfig.isHost || storageConfig.generation == null) return;
+    if (storageGeneration.current != null && storageGeneration.current !== storageConfig.generation) {
+      toastSuccess("O banco foi atualizado pelo host. Reiniciando o aplicativo…");
+      void relaunch();
+    }
+    storageGeneration.current = storageConfig.generation;
+  }, [storageConfig]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Settings) => {
@@ -237,6 +270,47 @@ export function Settings() {
     onError: (err) => toastError(err, "Erro ao restaurar backup."),
   });
 
+  const selectDatabaseFolderMutation = useMutation({
+    mutationFn: async () => invoke<string | null>("select_database_directory"),
+    onSuccess: (folder) => {
+      if (folder) setSelectedDatabaseFolder(folder);
+    },
+    onError: (err) => toastError(err, "Erro ao selecionar a pasta do banco."),
+  });
+
+  const pendingDatabasePath = selectedDatabaseFolder
+    ? folderToDatabasePath(selectedDatabaseFolder)
+    : (storageConfig?.databasePath ?? systemInfo?.databasePath ?? null);
+  const storageConfigDirty =
+    selectedDatabaseFolder !== null || lanShared !== (storageConfig?.lanShared ?? false);
+  const cancelStorageConfig = () => {
+    setSelectedDatabaseFolder(null);
+    setLanShared(storageConfig?.lanShared ?? false);
+  };
+
+  const updateStorageConfigMutation = useMutation({
+    mutationFn: async () =>
+      invoke<StorageConfig>("update_storage_config", {
+        databasePath: selectedDatabaseFolder
+          ? folderToDatabasePath(selectedDatabaseFolder)
+          : (storageConfig?.databasePath ?? null),
+        lanShared,
+      }),
+    onSuccess: () => {
+      setSelectedDatabaseFolder(null);
+      queryClient.invalidateQueries({ queryKey: ["storage-config"] });
+      toastSuccess("Configuração do banco salva. Reiniciando o aplicativo…");
+      void (async () => {
+        try {
+          await relaunch();
+        } catch {
+          toastSuccess("Configuração do banco salva. Reinicie o aplicativo para aplicar.");
+        }
+      })();
+    },
+    onError: (err) => toastError(err, "Erro ao salvar a configuração do banco."),
+  });
+
   const resetMutation = useMutation({
     mutationFn: async () => invoke("reset_database"),
     onSuccess: () => {
@@ -249,6 +323,7 @@ export function Settings() {
     onSettled: () => setIsResetStarting(false),
   });
   const isResetting = isResetStarting || resetMutation.isPending;
+  const lanClient = storageConfig?.lanShared && !storageConfig.isHost;
 
   const updateCheckMutation = useMutation({
     mutationFn: async () => {
@@ -691,12 +766,131 @@ export function Settings() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium">Localização do Banco</span>
-              <code className="text-[10px] bg-muted p-2 rounded block truncate">
-                {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Localização do Banco</span>
+                {lanShared && (
+                  <Badge variant="secondary" className="gap-1.5 py-1">
+                    <Lock className="h-3.5 w-3.5" /> Fixado pela rede
+                  </Badge>
+                )}
+              </div>
+              <code
+                className="block truncate rounded bg-muted p-2 text-[10px]"
+                title={pendingDatabasePath ?? undefined}
+              >
+                {isSystemInfoLoading
+                  ? "Carregando..."
+                  : (pendingDatabasePath ?? "Padrão (pasta de dados do aplicativo)")}
               </code>
+              <div className="flex flex-wrap items-center gap-2">
+                {!lanShared && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => selectDatabaseFolderMutation.mutate()}
+                    disabled={selectDatabaseFolderMutation.isPending}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    {selectDatabaseFolderMutation.isPending
+                      ? "Selecionando..."
+                      : "Selecionar pasta"}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {lanShared
+                  ? "Enquanto o banco compartilhado na rede estiver ativo, o banco atual é o da pasta fixada pela rede. Para mudar o local padrão, desative a rede."
+                  : "O aplicativo reiniciará automaticamente ao salvar para aplicar o novo local."}
+              </p>
             </div>
+            <details className="group rounded-lg border bg-muted/20">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    Compartilhar na rede (LAN){" "}
+                    <Badge variant={lanShared ? "default" : "secondary"}>
+                      {lanShared ? "Ativado" : "Desativado"}
+                    </Badge>
+                  </span>
+                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-3 border-t p-3">
+                {lanShared && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                    Modo experimental. O banco passará a viver numa pasta
+                    compartilhada da rede; todos os computadores apontando para a
+                    mesma pasta leem e escrevem no mesmo arquivo. Redes de arquivos
+                    não são 100% confiáveis para escrita simultânea — mantenha o
+                    backup automático ativo e evite muitas máquinas escrevendo ao
+                    mesmo tempo.
+                  </div>
+                )}
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="lan-shared-enabled"
+                    checked={lanShared}
+                    onChange={(event) => setLanShared(event.target.checked)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="lan-shared-enabled">Ativar banco compartilhado na rede</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Todas as máquinas usarão a mesma pasta. O aplicativo reiniciará
+                      automaticamente ao salvar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </details>
+            {storageConfigDirty && (
+              <div className="flex flex-col gap-3 rounded-lg border border-primary/25 bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Alterações pendentes</p>
+                  {selectedDatabaseFolder !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      Nova pasta do banco: {pendingDatabasePath ?? "Padrão"}
+                    </p>
+                  )}
+                  {lanShared !== (storageConfig?.lanShared ?? false) && (
+                    <p className="text-xs text-muted-foreground">
+                      Compartilhar na rede (LAN): {lanShared ? "Ativado" : "Desativado"}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    O aplicativo reiniciará automaticamente ao salvar.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => updateStorageConfigMutation.mutate()}
+                    disabled={updateStorageConfigMutation.isPending}
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateStorageConfigMutation.isPending
+                      ? "Salvando..."
+                      : "Salvar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={cancelStorageConfig}
+                    disabled={updateStorageConfigMutation.isPending}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
             {isSystemInfoError && (
               <div className="flex items-center justify-between gap-2 text-sm text-destructive">
                 <span>Não foi possível carregar as informações do sistema.</span>
@@ -717,7 +911,7 @@ export function Settings() {
               >
                 <Save className="h-4 w-4" /> {exportMutation.isPending ? "Exportando..." : "Exportar Backup"}
               </Button>
-              <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
+              <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending || lanClient} title={lanClient ? "Disponível apenas no computador host" : undefined}>
                 <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
               </Button>
             </div>
@@ -873,7 +1067,7 @@ export function Settings() {
             <p className="text-sm text-muted-foreground mb-4">
               As ações abaixo são irreversíveis. Tenha certeza antes de prosseguir.
             </p>
-            <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting}>
+            <Button variant="destructive" size="sm" onClick={() => setIsResetConfirmOpen(true)} disabled={isResetting || lanClient} title={lanClient ? "Disponível apenas no computador host" : undefined}>
               {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
             </Button>
           </CardContent>

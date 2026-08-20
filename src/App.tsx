@@ -6,12 +6,15 @@ import { Toaster } from "sonner";
 import { toast } from "sonner";
 import { check } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { MainLayout } from "./layouts/MainLayout";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
+import type { StorageConfig } from "./lib/types";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
 
@@ -85,6 +88,25 @@ function UpdateAvailabilityNotice() {
   return null;
 }
 
+function LanGenerationWatch() {
+  const generation = useRef<number | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    const checkGeneration = () => void invoke<StorageConfig>("get_storage_config").then((storage) => {
+      if (disposed || !storage.lanShared || storage.isHost || storage.generation == null) return;
+      if (generation.current != null && generation.current !== storage.generation) {
+        toast.info("O banco foi atualizado pelo host. Reiniciando o aplicativo…");
+        void relaunch();
+      }
+      generation.current = storage.generation;
+    }).catch(() => undefined);
+    checkGeneration();
+    const interval = window.setInterval(checkGeneration, 5000);
+    return () => { disposed = true; window.clearInterval(interval); };
+  }, []);
+  return null;
+}
+
 function UpdatePatchNotes() {
   const [patchNotes, setPatchNotes] = useState<PendingPatchNotes | null>(null);
 
@@ -149,6 +171,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <UpdateAvailabilityNotice />
+        <LanGenerationWatch />
         <UpdatePatchNotes />
         <AutomaticBackupProgress />
         <ServiceOrderDrawerProvider>
@@ -157,6 +180,7 @@ function App() {
               <Suspense fallback={<RouteLoading />}>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/os" element={<ServiceOrders />} />
                   <Route path="/os/new" element={<ServiceOrderCreate />} />
                   <Route path="/customers" element={<Customers />} />

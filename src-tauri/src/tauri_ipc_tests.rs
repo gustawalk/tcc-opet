@@ -544,3 +544,79 @@ fn paginated_list_commands_return_items_and_total() {
     assert!(summary["outOfStock"].is_i64());
     assert!(summary["totalStockValue"].is_i64());
 }
+
+#[test]
+fn storage_config_commands_preserve_the_ipc_contract_and_reject_relative_folders() {
+    let _backend = setup_global_backend();
+    let app = register_commands!(
+        mock_builder(),
+        commands::settings_commands::get_storage_config,
+        commands::settings_commands::update_storage_config
+    )
+    .build(mock_context(noop_assets()))
+    .unwrap();
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+
+    let initial = get_ipc_response(&webview, request("get_storage_config", json!({})))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert!(
+        initial["databasePath"].is_null() || initial["databasePath"].is_string(),
+        "contract: databasePath is nullable string"
+    );
+    assert!(initial["lanShared"].is_boolean());
+
+    let folder = tempfile::tempdir().unwrap();
+    let folder_path = folder.path().to_string_lossy().to_string();
+    let updated = get_ipc_response(
+        &webview,
+        request(
+            "update_storage_config",
+            json!({ "databasePath": folder_path, "lanShared": true }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    let stored_path = updated["databasePath"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&stored_path).is_absolute());
+    assert!(stored_path.ends_with("database.db"));
+    assert_eq!(updated["lanShared"], true);
+
+    let read_back = get_ipc_response(&webview, request("get_storage_config", json!({})))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert_eq!(read_back["databasePath"].as_str().unwrap(), stored_path);
+    assert_eq!(read_back["lanShared"], true);
+
+    let relative_error = get_ipc_response(
+        &webview,
+        request(
+            "update_storage_config",
+            json!({ "databasePath": "relative/folder", "lanShared": false }),
+        ),
+    )
+    .unwrap_err();
+    assert!(relative_error["pt"]
+        .as_str()
+        .unwrap()
+        .contains("caminho absoluto"));
+
+    // Restore defaults so the shared IPC test storage stays clean.
+    let restored = get_ipc_response(
+        &webview,
+        request(
+            "update_storage_config",
+            json!({ "databasePath": null, "lanShared": false }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert!(restored["databasePath"].is_null());
+    assert_eq!(restored["lanShared"], false);
+}

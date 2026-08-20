@@ -40,6 +40,7 @@ import {
   ServiceOrderItemsEditor,
 } from "@/components/shared/ServiceOrderItemsEditor";
 import { formatBRPhone, formatCurrency, formatName } from "@/lib/formatters";
+import { useDebounce } from "@/hooks/use-debounce";
 import { toastError, toastSuccess } from "@/lib/errors";
 import {
   clearFieldError,
@@ -53,21 +54,33 @@ import {
   ChecklistTemplate,
   Customer,
   InventoryItem,
+  Page,
   User as UserType,
 } from "@/lib/types";
 
-const EMPTY_CUSTOMERS: Customer[] = [];
 const EMPTY_USERS: UserType[] = [];
 const EMPTY_TEMPLATES: ChecklistTemplate[] = [];
 const EMPTY_INVENTORY: InventoryItem[] = [];
+const LOOKUP_LIMIT = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 type PendingAttachmentSelection = {
   token: string;
   fileNames: string[];
 };
 
-const fetchCustomers = () => invoke<Customer[]>("get_customers");
-const fetchUsers = () => invoke<UserType[]>("get_users");
+const fetchCustomersPage = (search: string) =>
+  invoke<Page<Customer>>("get_customers_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
+const fetchUsersPage = (search: string) =>
+  invoke<Page<UserType>>("get_users_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
 const fetchTemplates = () =>
   invoke<ChecklistTemplate[]>("get_checklist_templates");
 const fetchInventory = () => invoke<InventoryItem[]>("get_inventory_items");
@@ -76,9 +89,11 @@ export function ServiceOrderCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [customerSearch, setCustomerSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(
     null,
   );
@@ -105,11 +120,21 @@ export function ServiceOrderCreate() {
     description: "",
     techId: "",
   });
+  const debouncedCustomerSearch = useDebounce(
+    customerSearch,
+    SEARCH_DEBOUNCE_MS,
+  );
+  const debouncedUserSearch = useDebounce(userSearch, SEARCH_DEBOUNCE_MS);
   const customersQuery = useQuery({
-    queryKey: ["customers-list"],
-    queryFn: fetchCustomers,
+    queryKey: ["customersLookup", debouncedCustomerSearch],
+    queryFn: () => fetchCustomersPage(debouncedCustomerSearch),
+    placeholderData: (previousData) => previousData,
   });
-  const usersQuery = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+  const usersQuery = useQuery({
+    queryKey: ["usersLookup", debouncedUserSearch],
+    queryFn: () => fetchUsersPage(debouncedUserSearch),
+    placeholderData: (previousData) => previousData,
+  });
   const templatesQuery = useQuery({
     queryKey: ["checklist-templates"],
     queryFn: fetchTemplates,
@@ -118,8 +143,8 @@ export function ServiceOrderCreate() {
     queryKey: ["inventory-lookup"],
     queryFn: fetchInventory,
   });
-  const customers = customersQuery.data ?? EMPTY_CUSTOMERS;
-  const users = usersQuery.data ?? EMPTY_USERS;
+  const customers = customersQuery.data?.items ?? [];
+  const users = usersQuery.data?.items ?? EMPTY_USERS;
   const templates = templatesQuery.data ?? EMPTY_TEMPLATES;
   const inventory = inventoryQuery.data ?? EMPTY_INVENTORY;
   const lookupLoading =
@@ -144,15 +169,6 @@ export function ServiceOrderCreate() {
     };
   }, [pendingAttachments?.token]);
 
-  const filteredCustomers = useMemo(
-    () =>
-      customerSearch
-        ? customers.filter((customer) =>
-            customer.name.toLowerCase().includes(customerSearch.toLowerCase()),
-          )
-        : [],
-    [customers, customerSearch],
-  );
   const total = useMemo(
     () =>
       lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -306,7 +322,8 @@ export function ServiceOrderCreate() {
       });
       if (pendingAttachments) setPendingAttachments(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customers-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customersLookup"] }),
+        queryClient.invalidateQueries({ queryKey: ["usersLookup"] }),
         queryClient.invalidateQueries({ queryKey: ["customersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
@@ -423,8 +440,8 @@ export function ServiceOrderCreate() {
               {showCustomers && customerSearch && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg">
                   <CardContent className="p-1">
-                    {filteredCustomers.length ? (
-                      filteredCustomers.map((customer) => (
+                    {customers.length ? (
+                      customers.map((customer) => (
                         <button
                           type="button"
                           className="block w-full text-left p-2 hover:bg-accent rounded"
@@ -521,8 +538,19 @@ export function ServiceOrderCreate() {
             <SearchableSelect
               options={users}
               value={formData.techId}
-              onSelect={(user) =>
-                setFormData((data) => ({ ...data, techId: user.id }))
+              onSelect={(user) => {
+                setSelectedUser(user);
+                setFormData((data) => ({ ...data, techId: user.id }));
+              }}
+              onSearchChange={setUserSearch}
+              selectedLabel={selectedUser?.name}
+              isLoading={
+                usersQuery.isFetching || userSearch !== debouncedUserSearch
+              }
+              errorMessage={
+                usersQuery.isError
+                  ? "Não foi possível buscar funcionários."
+                  : undefined
               }
               placeholder="Selecione um responsável..."
               searchPlaceholder="Buscar por nome..."
@@ -564,7 +592,8 @@ export function ServiceOrderCreate() {
                 <span className="text-muted-foreground">Técnico resp.:</span>
                 <span className="font-medium flex items-center gap-1 text-right">
                   <ShieldCheck className="h-3 w-3 shrink-0 text-primary" />
-                  {users.find((user) => user.id === formData.techId)?.name ||
+                  {selectedUser?.name ||
+                    users.find((user) => user.id === formData.techId)?.name ||
                     "Nenhum"}
                 </span>
               </div>

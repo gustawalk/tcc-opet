@@ -84,11 +84,27 @@ Os resultados numéricos do resumo antigo e do otimizado foram comparados antes 
 | p95 das listagens abaixo de 100 ms | Atingida em todos os cenários medidos |
 | Eliminar crescimento N+1 do resumo financeiro | Atingida: 506x no dataset de 10 mil OS |
 
+## Melhorias aplicadas após a medição
+
+- A recorrência de clientes agora compara `previous.created_date` (em vez de
+  aplicar `date(..., 'localtime')` sobre a coluna) e possui o índice composto
+  `service_orders(customer_id, deleted_at, created_date)`. Isso preserva a
+  regra e permite localizar o histórico do cliente por índice.
+- Os filtros de cliente e funcionário da tela de ordens, assim como os
+  seletores da criação de OS, usam busca remota paginada: 20 opções e debounce
+  de 300 ms. Não carregam mais todos os cadastros para o navegador.
+- A consulta dos itens de templates passou a contar com o índice
+  `template_items(template_id)`.
+
+Os números desta página continuam sendo os da medição de 12 de agosto; uma
+nova execução do benchmark de release é necessária para registrar a variação
+quantitativa dessas três mudanças.
+
 ## Gargalos restantes
 
 ### Relatório financeiro completo
 
-O relatório completo atual levou aproximadamente **66,61 segundos** para 10 mil ordens. A causa principal provável é a métrica de clientes recorrentes em `financial_report_repo.rs`:
+Na última medição, o relatório completo levou aproximadamente **66,61 segundos** para 10 mil ordens. A causa principal provável era a métrica de clientes recorrentes em `financial_report_repo.rs`:
 
 ```sql
 EXISTS (
@@ -100,15 +116,21 @@ EXISTS (
 )
 ```
 
-Ela continua correlacionada por ordem, aplica função à coluna e não possui índice composto adequado por cliente/data. O próximo ajuste recomendado é usar `created_date` também nessa subconsulta, criar índice como `(customer_id, deleted_at, created_date)` e medir novamente o relatório completo.
+Esse ponto foi corrigido com `created_date` e o índice composto
+`(customer_id, deleted_at, created_date)`; falta medir novamente o relatório
+completo para quantificar o ganho.
 
 ### Tela de ordens
 
-O endpoint paginado de ordens reduziu o payload em 99,8%, mas a tela completa reduziu apenas 51,1%. Os filtros ainda carregam todos os 10 mil clientes e funcionários. Recomenda-se transformar `SearchableSelect` em busca remota paginada.
+O endpoint paginado de ordens reduziu o payload em 99,8%, mas a tela completa
+reduziu apenas 51,1% na medição original. Os filtros e os seletores de criação
+agora usam busca remota paginada; falta repetir a medição para atualizar esse
+resultado.
 
 ### Templates
 
-A página retorna apenas 20 templates, mas a consulta dos itens usa `WHERE template_id IN (...)` sem índice versionado para `template_items(template_id)`. Isso explica parte do ganho menor (1,83x). Recomenda-se adicionar o índice e repetir a medição.
+A página retorna apenas 20 templates, e a consulta dos itens agora possui o
+índice versionado `template_items(template_id)`. Falta repetir a medição.
 
 ### Busca e páginas profundas
 

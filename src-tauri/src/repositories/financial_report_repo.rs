@@ -124,7 +124,7 @@ impl FinancialReportRepository {
                 (SELECT COUNT(*) FROM service_orders so WHERE {created_in_period} AND so.status = 'Cancelada'),
                 (SELECT COALESCE(AVG((julianday(COALESCE(so.closed_at, so.created_at)) - julianday(so.created_at)) * 24.0), 0.0) FROM service_orders so WHERE {period_filter}),
                 (SELECT COUNT(DISTINCT so.customer_id) FROM service_orders so WHERE {created_in_period} AND EXISTS (
-                    SELECT 1 FROM service_orders previous WHERE previous.customer_id = so.customer_id AND previous.deleted_at IS NULL AND date(previous.created_at, 'localtime') < date(?1)
+                    SELECT 1 FROM service_orders previous WHERE previous.customer_id = so.customer_id AND previous.deleted_at IS NULL AND previous.created_date < date(?1)
                 ))"
         );
         let (

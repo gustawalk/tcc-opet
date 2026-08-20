@@ -45,12 +45,13 @@ describe("ServiceOrderCreate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedInvoke.mockImplementation((command) => {
-      if (command === "get_customers") return Promise.resolve([existingCustomer]);
-      if (
-        command === "get_users" ||
-        command === "get_checklist_templates" ||
-        command === "get_inventory_items"
-      ) {
+      if (command === "get_customers_page") {
+        return Promise.resolve({ items: [existingCustomer], total: 1 });
+      }
+      if (command === "get_users_page") {
+        return Promise.resolve({ items: [], total: 0 });
+      }
+      if (command === "get_checklist_templates" || command === "get_inventory_items") {
         return Promise.resolve([]);
       }
       if (command === "create_full_service_order") {
@@ -67,7 +68,7 @@ describe("ServiceOrderCreate", () => {
 
     await user.type(customerInput, "Cliente");
     expect(
-      screen.getByRole("button", { name: /Cliente Existente/ }),
+      await screen.findByRole("button", { name: /Cliente Existente/ }),
     ).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Telefone"));

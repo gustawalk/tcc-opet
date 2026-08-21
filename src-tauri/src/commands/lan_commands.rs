@@ -4,6 +4,17 @@ use tauri::command;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LanDeviceInfo {
+    id: String,
+    name: String,
+    app_version: String,
+    created_at: String,
+    last_seen_at: Option<String>,
+    revoked_at: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LanHostUiStatus {
     running: bool,
     address: Option<String>,
@@ -14,7 +25,10 @@ pub struct LanHostUiStatus {
 
 #[command]
 pub fn get_lan_host_status() -> LanHostUiStatus {
-    let status = crate::lan_api::configured_host_status();
+    host_ui_status(crate::lan_api::configured_host_status())
+}
+
+fn host_ui_status(status: crate::lan_api::LanHostRuntimeStatus) -> LanHostUiStatus {
     let (running, address, verification_code, certificate_fingerprint) = match status.server {
         Some(server) => (
             true,
@@ -45,6 +59,61 @@ pub fn get_lan_host_status() -> LanHostUiStatus {
         certificate_fingerprint,
         startup_error: status.startup_error,
     }
+}
+
+#[command]
+pub fn regenerate_lan_pairing_code() -> Result<LanHostUiStatus, AppError> {
+    Ok(host_ui_status(crate::lan_api::regenerate_pairing_code()?))
+}
+
+#[command]
+pub fn list_lan_devices() -> Result<Vec<LanDeviceInfo>, AppError> {
+    ensure_host_mode()?;
+    let conn = crate::database::get_db()?;
+    let mut statement = conn.prepare(
+        "SELECT id, name, app_version, created_at, last_seen_at, revoked_at
+         FROM lan_devices ORDER BY created_at DESC",
+    )?;
+    let devices = statement
+        .query_map([], |row| {
+            Ok(LanDeviceInfo {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                app_version: row.get(2)?,
+                created_at: row.get(3)?,
+                last_seen_at: row.get(4)?,
+                revoked_at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(devices)
+}
+
+#[command]
+pub fn revoke_lan_device(id: String) -> Result<(), AppError> {
+    ensure_host_mode()?;
+    let conn = crate::database::get_db()?;
+    let changed = conn.execute(
+        "UPDATE lan_devices SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE id = ?1",
+        [&id],
+    )?;
+    if changed == 0 {
+        return Err(AppError::new(
+            "LAN device was not found.",
+            "O dispositivo LAN não foi encontrado.",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_host_mode() -> Result<(), AppError> {
+    if crate::database::storage_mode_config().mode != crate::database::StorageMode::Host {
+        return Err(AppError::new(
+            "Device management is available only in Host mode.",
+            "O gerenciamento de dispositivos está disponível somente no modo Host.",
+        ));
+    }
+    Ok(())
 }
 
 #[command]

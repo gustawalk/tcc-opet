@@ -46,10 +46,19 @@ pub(crate) struct LanHostStatus {
     pub pairing_code: PairingCode,
 }
 
-#[derive(Debug)]
 struct RunningLanServer {
     handle: axum_server::Handle<SocketAddr>,
     status: LanHostStatus,
+    auth: Arc<LanAuthService>,
+}
+
+impl std::fmt::Debug for RunningLanServer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RunningLanServer")
+            .field("status", &self.status)
+            .finish_non_exhaustive()
+    }
 }
 
 static HOST_SERVER: LazyLock<Mutex<Option<RunningLanServer>>> = LazyLock::new(|| Mutex::new(None));
@@ -163,6 +172,28 @@ pub(crate) fn configured_host_status() -> LanHostRuntimeStatus {
     }
 }
 
+pub(crate) fn regenerate_pairing_code() -> Result<LanHostRuntimeStatus, AppError> {
+    let mut server = HOST_SERVER.lock().map_err(|_| {
+        lan_error(
+            "LAN server status is unavailable.",
+            "O status do servidor LAN está indisponível.",
+        )
+    })?;
+    let running = server.as_mut().ok_or_else(|| {
+        lan_error(
+            "LAN host is not running.",
+            "O servidor LAN não está em execução.",
+        )
+    })?;
+    running.status.pairing_code = running
+        .auth
+        .create_pairing_code(PAIRING_CODE_TTL_SECONDS, Utc::now())?;
+    Ok(LanHostRuntimeStatus {
+        server: Some(running.status.clone()),
+        startup_error: None,
+    })
+}
+
 fn start_host_server(
     app_data_dir: &Path,
     address: SocketAddr,
@@ -192,7 +223,7 @@ fn start_host_server(
         .route("/auth-check", get(auth_check))
         .route("/api/v1/commands/{operation}", post(product_command))
         .with_state(ApiState {
-            auth,
+            auth: auth.clone(),
             idempotency,
             certificate_pem: Arc::new(
                 String::from_utf8(identity.certificate_pem.clone()).map_err(|error| {
@@ -217,6 +248,7 @@ fn start_host_server(
     });
     Ok(RunningLanServer {
         handle,
+        auth,
         status: LanHostStatus {
             address: bound_address,
             certificate_fingerprint: identity.fingerprint,

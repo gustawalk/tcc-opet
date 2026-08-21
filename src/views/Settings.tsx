@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, Sun, Upload, WifiOff } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, ShieldX, Sun, Upload, WifiOff } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -41,6 +41,7 @@ import {
   type LanMode,
   type LanModeConfig,
   type LanModeStatus,
+  type LanDeviceInfo,
 } from "@/lib/types";
 import { dataCommand } from "@/lib/data-client";
 import {
@@ -136,6 +137,7 @@ export function Settings() {
   const [remoteBackupSettings, setRemoteBackupSettings] = useState(
     loadLanRemoteBackupSettings,
   );
+  const [deviceToRevoke, setDeviceToRevoke] = useState<LanDeviceInfo | null>(null);
 
   const { data: lanMode } = useQuery({
     queryKey: ["lan-mode"],
@@ -153,6 +155,11 @@ export function Settings() {
     enabled: lanMode?.activeMode === "client",
     retry: false,
     refetchInterval: 5000,
+  });
+  const { data: lanDevices = [] } = useQuery({
+    queryKey: ["lan-devices"],
+    queryFn: () => invoke<LanDeviceInfo[]>("list_lan_devices"),
+    enabled: lanMode?.activeMode === "host",
   });
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
@@ -317,6 +324,20 @@ export function Settings() {
       }),
     onSuccess: async () => relaunch(),
     onError: (err) => toastError(err, "Não foi possível parear com o host."),
+  });
+  const regeneratePairingMutation = useMutation({
+    mutationFn: () => invoke<LanHostStatus>("regenerate_lan_pairing_code"),
+    onSuccess: (status) => queryClient.setQueryData(["lan-host-status"], status),
+    onError: (err) => toastError(err, "Não foi possível gerar outro código."),
+  });
+  const revokeDeviceMutation = useMutation({
+    mutationFn: (id: string) => invoke("revoke_lan_device", { id }),
+    onSuccess: () => {
+      setDeviceToRevoke(null);
+      queryClient.invalidateQueries({ queryKey: ["lan-devices"] });
+      toastSuccess("Acesso do dispositivo revogado.");
+    },
+    onError: (err) => toastError(err, "Não foi possível revogar o dispositivo."),
   });
 
   const updateCheckMutation = useMutation({
@@ -840,6 +861,48 @@ export function Settings() {
                     </p>
                   </div>
                 )}
+                {hostStatus?.running && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => regeneratePairingMutation.mutate()}
+                    disabled={regeneratePairingMutation.isPending}
+                  >
+                    <RefreshCw className="h-4 w-4" /> Gerar outro código
+                  </Button>
+                )}
+                <div className="space-y-2 border-t pt-3">
+                  <Label>Computadores pareados</Label>
+                  {lanDevices.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum dispositivo pareado.</p>
+                  ) : (
+                    lanDevices.map((device) => (
+                      <div key={device.id} className="flex items-center justify-between gap-3 rounded border p-2">
+                        <div className="min-w-0 text-xs">
+                          <p className="truncate font-medium">{device.name}</p>
+                          <p className="text-muted-foreground">
+                            Último acesso: <RelativeDate value={device.lastSeenAt} fallback="Nunca" />
+                          </p>
+                          <p className="text-muted-foreground">Versão {device.appVersion}</p>
+                        </div>
+                        {device.revokedAt ? (
+                          <Badge variant="secondary">Revogado</Badge>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Revogar ${device.name}`}
+                            onClick={() => setDeviceToRevoke(device)}
+                          >
+                            <ShieldX className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
                 {hostStatus?.startupError && (
                   <p className="text-xs text-destructive">{hostStatus.startupError}</p>
                 )}
@@ -1216,6 +1279,31 @@ export function Settings() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog
+        open={deviceToRevoke !== null}
+        onOpenChange={(open) => !open && setDeviceToRevoke(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar acesso</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deviceToRevoke?.name} perderá acesso na próxima solicitação e precisará ser pareado novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={revokeDeviceMutation.isPending}
+              onClick={() => deviceToRevoke && revokeDeviceMutation.mutate(deviceToRevoke.id)}
+            >
+              Confirmar revogação
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={backupPassphraseDialog !== null}

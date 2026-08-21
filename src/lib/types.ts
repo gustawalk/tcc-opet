@@ -107,6 +107,15 @@ export interface LanHostStatus {
   startupError?: string | null;
 }
 
+export interface LanDeviceInfo {
+  id: string;
+  name: string;
+  appVersion: string;
+  createdAt: string;
+  lastSeenAt?: string | null;
+  revokedAt?: string | null;
+}
+
 export interface UpdateCheck {
   configured: boolean;
   currentVersion: string;

@@ -492,11 +492,11 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Host user can see paired devices with name, created time, last seen, and revoked state.
-- [ ] Host user can revoke a device after confirmation.
-- [ ] Revoked clients show disconnected or revoked status on next call.
-- [ ] Tests cover rendering, revoke confirmation, API call, and revoked client state.
-- [ ] Gate check passes: `yarn test src/views/Settings.test.tsx`
+- [x] Host user can see paired devices with name, created time, last seen, and revoked state.
+- [x] Host user can revoke a device after confirmation.
+- [x] Revoked clients show disconnected or revoked status on next call.
+- [x] Tests cover rendering, revoke confirmation, API call, and revoked client state.
+- [x] Gate check passes: `yarn test src/views/Settings.test.tsx`
 
 **Tests**: unit
 **Gate**: quick

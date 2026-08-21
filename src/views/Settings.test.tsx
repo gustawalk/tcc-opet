@@ -239,6 +239,18 @@ describe("Settings LAN host and client", () => {
           startupError: null,
         });
       }
+      if (command === "list_lan_devices") {
+        return Promise.resolve([
+          {
+            id: "device-1",
+            name: "Balcão 2",
+            appVersion: "0.3.2",
+            createdAt: "2026-08-20T10:00:00Z",
+            lastSeenAt: "2026-08-21T10:00:00Z",
+            revokedAt: null,
+          },
+        ]);
+      }
       if (command === "check_lan_client_connection") {
         return Promise.reject({ en: "Unreachable", pt: "Host indisponível" });
       }
@@ -261,6 +273,21 @@ describe("Settings LAN host and client", () => {
     expect(screen.getByText("https://192.168.1.10:8743", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("123456|blake3:abc123")).toBeInTheDocument();
     expect(screen.getByLabelText("Porta local")).toHaveValue(8743);
+    expect(screen.getByText("Balcão 2")).toBeInTheDocument();
+  });
+
+  it("confirms and revokes a paired device", async () => {
+    const user = userEvent.setup();
+    installModeMock("host");
+    renderSettings();
+
+    await user.click(await screen.findByRole("button", { name: "Revogar Balcão 2" }));
+    expect(screen.getByText(/perderá acesso na próxima solicitação/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirmar revogação" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("revoke_lan_device", { id: "device-1" });
+    });
   });
 
   it("shows pinned encryption, disconnected blocking, and host-only storage rules", async () => {

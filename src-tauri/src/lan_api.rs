@@ -600,6 +600,29 @@ fn dispatch_catalog_command(
         "download_pdf_preview" => encode(facade::download_pdf_preview(
             decode::<TokenInput>(payload)?.token,
         )?),
+        "get_dashboard_data" => encode(facade::get_dashboard_data()?),
+        "get_financial_report" => {
+            let input: FinancialReportInput = decode(payload)?;
+            encode(facade::get_financial_report(
+                input.start_date,
+                input.end_date,
+                input.technician_id,
+                input.ranking_metric,
+                input.ranking_limit,
+            )?)
+        }
+        "create_remote_backup_download" => encode(facade::create_remote_backup_download(
+            decode::<RemoteBackupInput>(payload)?.passphrase,
+        )?),
+        "restore_backup"
+        | "reset_database"
+        | "inspect_backup"
+        | "validate_backup_passphrase"
+        | "update_automatic_backup_settings"
+        | "run_automatic_backup_now" => Err(lan_error(
+            "This storage operation is available only on the host computer.",
+            "Esta operação de armazenamento está disponível apenas no computador host.",
+        )),
         _ => Err(lan_error(
             format!("Unknown LAN product operation: {operation}"),
             "A operação solicitada não está disponível pela rede LAN.",
@@ -763,6 +786,21 @@ struct TokenInput {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FinancialReportInput {
+    start_date: Option<String>,
+    end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
+}
+
+#[derive(Deserialize)]
+struct RemoteBackupInput {
+    passphrase: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct RequestEnvelope<T> {
     request: T,
 }
@@ -914,6 +952,7 @@ fn lan_error(en: impl Into<String>, pt: impl Into<String>) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
     use std::io::{Read, Write};
 
     fn pinned_agent(certificate_pem: &[u8]) -> ureq::Agent {
@@ -1337,6 +1376,67 @@ mod tests {
         assert_eq!(stock_after_order, 1);
         assert_eq!(order_status, "Em Manutenção");
         assert_eq!(attachment_count, 0);
+
+        let mut dashboard = agent
+            .post(format!("{base_url}/api/v1/commands/get_dashboard_data"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(b"{}")
+            .unwrap();
+        let dashboard_data: serde_json::Value =
+            serde_json::from_str(&dashboard.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(dashboard_data["summary"]["activeOrdersCount"], 1);
+        assert!(dashboard_data["recentOrders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|order| order["id"] == order_id));
+
+        let mut report = agent
+            .post(format!("{base_url}/api/v1/commands/get_financial_report"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(br#"{"startDate":null,"endDate":null,"technicianId":null,"rankingMetric":null,"rankingLimit":null}"#)
+            .unwrap();
+        let report_data: serde_json::Value =
+            serde_json::from_str(&report.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(report_data["newOrders"], 1);
+        assert_eq!(report_data["finalizedOrders"], 0);
+
+        let mut backup = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/create_remote_backup_download"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(br#"{"passphrase":"senha-remota-segura"}"#)
+            .unwrap();
+        let backup_data: serde_json::Value =
+            serde_json::from_str(&backup.body_mut().read_to_string().unwrap()).unwrap();
+        assert!(backup_data["fileName"]
+            .as_str()
+            .unwrap()
+            .ends_with(".osbkp"));
+        assert_eq!(backup_data["attachmentCount"], 0);
+        let backup_bytes = base64::engine::general_purpose::STANDARD
+            .decode(backup_data["dataBase64"].as_str().unwrap())
+            .unwrap();
+        assert!(backup_bytes.starts_with(b"OPETBKP2"));
+
+        let mut reset = agent
+            .post(format!("{base_url}/api/v1/commands/reset_database"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(b"{}")
+            .unwrap();
+        assert_eq!(reset.status(), StatusCode::BAD_REQUEST);
+        let reset_error: serde_json::Value =
+            serde_json::from_str(&reset.body_mut().read_to_string().unwrap()).unwrap();
+        assert!(reset_error["pt"].as_str().unwrap().contains("host"));
 
         let missing_token = agent
             .get(format!("{base_url}/auth-check"))

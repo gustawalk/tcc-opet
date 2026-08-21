@@ -359,12 +359,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Dashboard and financial report routes return equivalent data to local commands.
-- [ ] Host-created backup export can be requested by an authenticated client and streamed back without exposing database files directly.
-- [ ] Restore, import, reset, and authoritative backup configuration routes reject client-origin calls where required by spec.
-- [ ] Host-side backup/export/restore still uses existing exclusive storage guard.
-- [ ] Tests cover dashboard/report equivalence, client remote backup export, and host-only destructive operation rejection.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
+- [x] Dashboard and financial report routes return equivalent data to local commands.
+- [x] Host-created backup export can be requested by an authenticated client and streamed back without exposing database files directly.
+- [x] Restore, import, reset, and authoritative backup configuration routes reject client-origin calls where required by spec.
+- [x] Host-side backup/export/restore still uses existing exclusive storage guard.
+- [x] Tests cover dashboard/report equivalence, client remote backup export, and host-only destructive operation rejection.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

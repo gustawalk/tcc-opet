@@ -259,6 +259,51 @@ pub fn export_backup(
     )
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteBackupDownload {
+    file_name: String,
+    attachment_count: usize,
+    data_base64: String,
+}
+
+pub(crate) fn create_remote_backup_download(
+    passphrase: Option<String>,
+) -> Result<RemoteBackupDownload, AppError> {
+    let staging = tempfile::Builder::new()
+        .prefix("opets-lan-backup-")
+        .tempdir_in(crate::database::app_data_dir())
+        .map_err(|error| {
+            AppError::new(
+                format!("Failed to prepare remote backup: {error}"),
+                format!("Erro ao preparar o backup remoto: {error}"),
+            )
+        })?;
+    let file_name = format!(
+        "opets-backup-{}.osbkp",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    );
+    let path = staging.path().join(&file_name);
+    let _guard = crate::database::exclusive_storage_guard()?;
+    let summary = crate::backup_service::export_backup_with_passphrase(
+        &crate::database::database_path(),
+        &crate::database::attachments_dir(),
+        &path,
+        passphrase.as_deref(),
+    )?;
+    let bytes = std::fs::read(&path).map_err(|error| {
+        AppError::new(
+            format!("Failed to read remote backup: {error}"),
+            format!("Erro ao ler o backup remoto: {error}"),
+        )
+    })?;
+    Ok(RemoteBackupDownload {
+        file_name,
+        attachment_count: summary.attachment_count,
+        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
+}
+
 #[command]
 pub fn restore_backup(
     source: String,

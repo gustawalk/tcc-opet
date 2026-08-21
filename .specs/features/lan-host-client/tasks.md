@@ -170,11 +170,11 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] `lan_devices` stores device name, token fingerprint, created time, last seen, and revoked time.
-- [ ] `lan_idempotency_records` stores key, route, body hash, status, response JSON, and timestamps.
-- [ ] Migrations are idempotent and included in reset/backup validation table expectations.
-- [ ] Rust tests cover schema creation, duplicate idempotency key lookup, body mismatch detection, and device revocation state.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_ -- --test-threads=1`
+- [x] `lan_devices` stores device name, token fingerprint, created time, last seen, and revoked time.
+- [x] `lan_idempotency_records` stores key, route, body hash, status, response JSON, and timestamps.
+- [x] Migrations are idempotent and included in reset/backup validation table expectations.
+- [x] Rust tests cover schema creation, duplicate idempotency key lookup, body mismatch detection, and device revocation state.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_ -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

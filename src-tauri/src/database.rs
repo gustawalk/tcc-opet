@@ -51,6 +51,15 @@ pub(crate) struct StorageModeConfig {
     pub client_certificate_fingerprint: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) enum LanIdempotencyLookup {
+    Missing,
+    InProgress,
+    Replay(String),
+    BodyConflict,
+}
+
 impl Default for StorageModeConfig {
     fn default() -> Self {
         Self {
@@ -727,6 +736,31 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
 
+        -- Paired LAN workstations. Raw bearer tokens are never persisted.
+        CREATE TABLE IF NOT EXISTS lan_devices (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            token_fingerprint TEXT NOT NULL UNIQUE,
+            app_version TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT,
+            revoked_at TEXT
+        );
+
+        -- Durable results for safely replaying mutating LAN requests.
+        CREATE TABLE IF NOT EXISTS lan_idempotency_records (
+            device_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            route TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed')),
+            response_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (device_id, idempotency_key),
+            FOREIGN KEY (device_id) REFERENCES lan_devices(id) ON DELETE CASCADE
+        );
+
         -- Index for faster snapshot queries by date
         CREATE INDEX IF NOT EXISTS idx_financial_snapshots_date ON financial_snapshots(snapshot_date);
 
@@ -735,6 +769,8 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_service_order_events_order ON service_order_events(service_order_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_service_order_attachments_order ON service_order_attachments(service_order_id, created_at DESC);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_service_orders_display_id ON service_orders(display_id) WHERE display_id <> '';
+        CREATE INDEX IF NOT EXISTS idx_lan_devices_last_seen ON lan_devices(last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_lan_idempotency_updated ON lan_idempotency_records(updated_at);
         ",
     )?;
 
@@ -862,6 +898,51 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
 
     migrate_integer_money(conn)?;
     Ok(())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn lookup_lan_idempotency(
+    conn: &Connection,
+    device_id: &str,
+    idempotency_key: &str,
+    route: &str,
+    body_hash: &str,
+) -> Result<LanIdempotencyLookup> {
+    let record = conn.query_row(
+        "SELECT route, body_hash, status, response_json
+         FROM lan_idempotency_records
+         WHERE device_id = ?1 AND idempotency_key = ?2",
+        params![device_id, idempotency_key],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        },
+    );
+    let (stored_route, stored_body_hash, status, response) = match record {
+        Ok(record) => record,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(LanIdempotencyLookup::Missing),
+        Err(error) => return Err(error),
+    };
+    if stored_route != route || stored_body_hash != body_hash {
+        return Ok(LanIdempotencyLookup::BodyConflict);
+    }
+    if status == "completed" {
+        return Ok(LanIdempotencyLookup::Replay(response.unwrap_or_default()));
+    }
+    Ok(LanIdempotencyLookup::InProgress)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn lan_device_is_revoked(conn: &Connection, device_id: &str) -> Result<bool> {
+    conn.query_row(
+        "SELECT revoked_at IS NOT NULL FROM lan_devices WHERE id = ?1",
+        [device_id],
+        |row| row.get(0),
+    )
 }
 
 pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
@@ -1364,7 +1445,8 @@ mod tests {
                     'settings', 'customers', 'users', 'inventory_items', 'service_orders',
                     'checklist_templates', 'template_items', 'service_order_checklists',
                     'service_order_parts', 'financial_snapshots', 'inventory_movements',
-                    'service_order_sequences', 'service_order_events', 'service_order_attachments'
+                    'service_order_sequences', 'service_order_events', 'service_order_attachments',
+                    'lan_devices', 'lan_idempotency_records'
                 )",
                 [],
                 |row| row.get(0),
@@ -1380,8 +1462,72 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(table_count, 14);
+        assert_eq!(table_count, 16);
         assert_eq!(index_count, 2);
+    }
+
+    #[test]
+    fn lan_migrations_are_idempotent_and_create_device_tables() {
+        let conn = setup_db();
+
+        run_schema_migrations(&conn).unwrap();
+        run_schema_migrations(&conn).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+                 AND name IN ('lan_devices', 'lan_idempotency_records')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn lan_idempotency_lookup_distinguishes_replay_and_body_conflict() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO lan_devices (id, name, token_fingerprint, app_version)
+             VALUES ('device-1', 'Balcao', 'fingerprint', '0.3.2')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO lan_idempotency_records
+             (device_id, idempotency_key, route, body_hash, status, response_json)
+             VALUES ('device-1', 'request-1', '/orders', 'body-a', 'completed', '{\"id\":\"order-1\"}')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(
+            lookup_lan_idempotency(&conn, "device-1", "request-1", "/orders", "body-a").unwrap(),
+            LanIdempotencyLookup::Replay("{\"id\":\"order-1\"}".to_string())
+        );
+        assert_eq!(
+            lookup_lan_idempotency(&conn, "device-1", "request-1", "/orders", "body-b").unwrap(),
+            LanIdempotencyLookup::BodyConflict
+        );
+    }
+
+    #[test]
+    fn lan_device_revocation_state_changes_after_revocation() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO lan_devices (id, name, token_fingerprint, app_version)
+             VALUES ('device-1', 'Balcao', 'fingerprint', '0.3.2')",
+            [],
+        )
+        .unwrap();
+
+        assert!(!lan_device_is_revoked(&conn, "device-1").unwrap());
+        conn.execute(
+            "UPDATE lan_devices SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'device-1'",
+            [],
+        )
+        .unwrap();
+        assert!(lan_device_is_revoked(&conn, "device-1").unwrap());
     }
 
     #[test]

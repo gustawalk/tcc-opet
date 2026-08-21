@@ -2,7 +2,7 @@
 
 **Spec**: `.specs/features/lan-host-client/spec.md`
 **Context**: `.specs/features/lan-host-client/context.md`
-**Status**: Draft
+**Status**: Implemented
 
 ---
 

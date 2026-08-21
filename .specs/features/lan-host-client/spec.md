@@ -6,11 +6,11 @@ The stable application stores all business data in one local SQLCipher SQLite da
 
 ## Goals
 
-- [ ] Let 2-5 computers on the same LAN create, update, and read the same operational data through one host-owned database.
-- [ ] Preserve the existing single-file SQLite transaction semantics on the host for service orders, inventory updates, attachments, reports, backup, and restore.
-- [ ] Prevent client machines from directly opening or mutating the production database file.
-- [ ] Provide clear setup, connection status, and failure feedback for non-technical shop users.
-- [ ] Keep SQLite sharding out of the MVP while leaving storage boundaries explicit enough to revisit later.
+- [x] Let 2-5 computers on the same LAN create, update, and read the same operational data through one host-owned database.
+- [x] Preserve the existing single-file SQLite transaction semantics on the host for service orders, inventory updates, attachments, reports, backup, and restore.
+- [x] Prevent client machines from directly opening or mutating the production database file.
+- [x] Provide clear setup, connection status, and failure feedback for non-technical shop users.
+- [x] Keep SQLite sharding out of the MVP while leaving storage boundaries explicit enough to revisit later.
 
 ## Out of Scope
 
@@ -176,21 +176,21 @@ Every ambiguity is resolved or recorded here - nothing is left silently unclear.
 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| LANSRV-01 | P1: Configure Host Mode | Execute (T1) | In progress |
-| LANSRV-02 | P1: Pair Client Device | Execute (T1) | In progress |
-| LANSRV-03 | P1: Use Core Business Workflows Over LAN | Design | Pending |
-| LANSRV-04 | P1: Protect Host-Only Storage Operations | Design | Pending |
-| LANSRV-05 | P2: Manage Devices and Observability | Design | Pending |
+| LANSRV-01 | P1: Configure Host Mode | Execute (T1) | Verified |
+| LANSRV-02 | P1: Pair Client Device | Execute (T1) | Verified |
+| LANSRV-03 | P1: Use Core Business Workflows Over LAN | Execute (T8-T14) | Verified |
+| LANSRV-04 | P1: Protect Host-Only Storage Operations | Execute (T11, T15) | Verified |
+| LANSRV-05 | P2: Manage Devices and Observability | Execute (T5, T16) | Verified |
 | LANSRV-06 | P2: Discover Hosts on LAN | Design | Pending |
-| LANSRV-07 | P3: Prepare for Future Sharding | Design | Pending |
+| LANSRV-07 | P3: Prepare for Future Sharding | Execute (T17) | Verified |
 
 **Coverage:** 7 total, 7 mapped to tasks, 0 unmapped.
 
 ## Success Criteria
 
-- [ ] A host and at least two clients can complete the service-order workflow against one host database.
-- [ ] Retried mutating requests do not create duplicate service orders, movements, attachments, or device records.
-- [ ] Client mode does not open, read from, or mutate the production SQLite database file directly.
-- [ ] Client backup export works as a host-created encrypted backup download while restore/import/reset remain protected by host-only storage guards.
-- [ ] Network tests prove LAN credentials and business operations use pinned TLS and reject plaintext, changed certificates, and different application build versions.
-- [ ] Full frontend and backend gates pass, including IPC/API contract coverage for host and client paths.
+- [x] A host and multiple clients can complete the service-order workflow against one host database.
+- [x] Retried mutating requests do not create duplicate service orders, movements, attachments, or device records.
+- [x] Client mode does not open, read from, or mutate the production SQLite database file directly.
+- [x] Client backup export works as a host-created encrypted backup download while restore/import/reset remain protected by host-only storage guards.
+- [x] Network tests prove LAN credentials and business operations use pinned TLS and reject plaintext, changed certificates, and different application build versions.
+- [x] Full frontend and backend gates pass, including IPC/API contract coverage for host and client paths.

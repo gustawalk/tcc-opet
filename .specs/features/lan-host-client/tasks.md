@@ -9,7 +9,7 @@ If the skill cannot be activated, STOP and tell the user - do not proceed withou
 ---
 
 **Design**: `.specs/features/lan-host-client/design.md`
-**Status**: In progress
+**Status**: Complete
 
 ---
 
@@ -543,13 +543,13 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] `yarn lint` passes.
-- [ ] `yarn typecheck` passes.
-- [ ] `yarn test` passes.
-- [ ] `cd src-tauri && cargo fmt --all -- --check` passes.
-- [ ] `cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings` passes.
-- [ ] `cd src-tauri && cargo test --lib` passes.
-- [ ] Release notes include host/client mode, security limitations, and deferred sharding note.
+- [x] `yarn lint` passes.
+- [x] `yarn typecheck` passes.
+- [x] `yarn test` passes.
+- [x] `cd src-tauri && cargo fmt --all -- --check` passes.
+- [x] `cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings` passes.
+- [x] `cd src-tauri && cargo test --lib` passes.
+- [x] Release notes include host/client mode, security limitations, and deferred sharding note.
 
 **Tests**: none
 **Gate**: build

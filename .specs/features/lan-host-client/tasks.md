@@ -250,16 +250,16 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Host mode starts the LAN API only after storage initialization succeeds.
-- [ ] Host mode generates and privately persists a self-signed TLS identity without internet or manual certificate setup.
-- [ ] Plaintext requests and clients presenting a non-matching pinned certificate fingerprint are rejected before credentials or payloads are sent.
-- [ ] Port bind failure leaves local app usable and status reports the bind error.
-- [ ] Health endpoint returns app version, API version, mode, server time, and database readiness.
-- [ ] Pairing endpoint exchanges valid code for token.
-- [ ] Health and pairing reject clients whose exact application build version differs from the host.
-- [ ] Auth middleware rejects missing, invalid, and revoked tokens.
-- [ ] Tests cover startup success, bind failure, TLS identity persistence, plaintext rejection, changed-certificate rejection, exact-build mismatch, health, pairing, and auth rejection.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
+- [x] Host mode starts the LAN API only after storage initialization succeeds.
+- [x] Host mode generates and privately persists a self-signed TLS identity without internet or manual certificate setup.
+- [x] Plaintext requests and clients presenting a non-matching pinned certificate fingerprint are rejected before credentials or payloads are sent.
+- [x] Port bind failure leaves local app usable and status reports the bind error.
+- [x] Health endpoint returns app version, API version, mode, server time, and database readiness.
+- [x] Pairing endpoint exchanges valid code for token.
+- [x] Health and pairing reject clients whose exact application build version differs from the host.
+- [x] Auth middleware rejects missing, invalid, and revoked tokens.
+- [x] Tests cover startup success, bind failure, TLS identity persistence, plaintext rejection, changed-certificate rejection, exact-build mismatch, health, pairing, and auth rejection.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

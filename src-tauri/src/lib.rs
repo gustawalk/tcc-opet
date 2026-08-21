@@ -93,6 +93,7 @@ mod commands;
 mod database;
 mod encryption;
 mod error;
+mod lan_api;
 mod lan_auth;
 mod lan_idempotency;
 mod models;
@@ -134,6 +135,8 @@ pub fn run() {
         // Startup must fail visibly when the local data store cannot initialize.
         database::init_db(app)?;
         automatic_backup::start_scheduler(app.handle().clone())?;
+        lan_api::start_configured_host()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
         Ok(())
     })
     .build(tauri::generate_context!())
@@ -144,6 +147,7 @@ pub fn run() {
             tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
         ) {
             automatic_backup::stop_scheduler();
+            lan_api::stop_configured_host();
         }
     });
 }

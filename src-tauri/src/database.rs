@@ -936,7 +936,6 @@ pub(crate) fn lookup_lan_idempotency(
     Ok(LanIdempotencyLookup::InProgress)
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn lan_device_is_revoked(conn: &Connection, device_id: &str) -> Result<bool> {
     conn.query_row(
         "SELECT revoked_at IS NOT NULL FROM lan_devices WHERE id = ?1",

@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), allow(dead_code))]
-
 use crate::error::AppError;
 use base64::Engine;
 use chrono::{DateTime, Duration, Utc};

@@ -281,10 +281,10 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Existing Tauri commands delegate to shared facade functions without changing IPC payloads.
-- [ ] No business SQL is duplicated for LAN API routes.
-- [ ] Existing IPC contract test remains green.
-- [ ] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
+- [x] Existing Tauri commands delegate to shared facade functions without changing IPC payloads.
+- [x] No business SQL is duplicated for LAN API routes.
+- [x] Existing IPC contract test remains green.
+- [x] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

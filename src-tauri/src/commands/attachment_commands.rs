@@ -2,6 +2,7 @@ use crate::attachment_service;
 use crate::error::AppError;
 use crate::models::service_order_attachment::ServiceOrderAttachment;
 use crate::repositories::service_order_attachment_repo::ServiceOrderAttachmentRepository;
+use base64::Engine;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -202,4 +203,31 @@ pub fn read_service_order_attachment(id: String) -> Result<String, AppError> {
 #[command]
 pub fn export_service_order_attachment(id: String, destination: String) -> Result<(), AppError> {
     attachment_service::export_attachment(&id, std::path::Path::new(&destination))
+}
+
+pub(crate) fn upload_service_order_attachment(
+    service_order_id: String,
+    file_name: String,
+    data_base64: String,
+) -> Result<ServiceOrderAttachment, AppError> {
+    let encoded = data_base64
+        .split_once(',')
+        .map(|(_, encoded)| encoded)
+        .unwrap_or(&data_base64);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| {
+            AppError::new(
+                format!("Attachment data is invalid: {error}"),
+                "Os dados do anexo são inválidos.",
+            )
+        })?;
+    let conn = crate::database::get_db()?;
+    attachment_service::add_attachment_bytes_with_paths(
+        &conn,
+        &service_order_id,
+        &file_name,
+        &bytes,
+        &crate::database::attachments_dir(),
+    )
 }

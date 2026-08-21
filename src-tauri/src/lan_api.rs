@@ -332,6 +332,16 @@ fn is_catalog_mutation(operation: &str) -> bool {
             | "create_checklist_template"
             | "update_checklist_template"
             | "delete_checklist_template"
+            | "create_full_service_order"
+            | "transition_service_order_status"
+            | "save_service_order_edit"
+            | "delete_service_order"
+            | "add_part_to_service_order"
+            | "remove_part_from_service_order"
+            | "update_service_order_part_quantity"
+            | "save_service_order_checklist"
+            | "upload_service_order_attachment"
+            | "delete_service_order_attachment"
     )
 }
 
@@ -491,6 +501,105 @@ fn dispatch_catalog_command(
         "delete_checklist_template" => encode(facade::delete_checklist_template(
             decode::<IdInput>(payload)?.id,
         )?),
+        "create_full_service_order" => {
+            let input: RequestEnvelope<
+                crate::commands::service_order_commands::CreateFullServiceOrderRequest,
+            > = decode(payload)?;
+            encode(facade::create_full_service_order(input.request)?)
+        }
+        "get_service_order" => encode(facade::get_service_order(decode::<IdInput>(payload)?.id)?),
+        "get_service_orders_page" => {
+            let input: ServiceOrderPageInput = decode(payload)?;
+            encode(facade::get_service_orders_page(
+                input.limit,
+                input.offset,
+                input.search,
+                input.status,
+                input.user_id,
+                input.customer_id,
+                input.created_date_from,
+                input.created_date_to,
+                input.finalized_date_from,
+                input.finalized_date_to,
+            )?)
+        }
+        "get_service_orders_by_customer_id" => encode(facade::get_service_orders_by_customer_id(
+            decode::<CustomerIdInput>(payload)?.customer_id,
+        )?),
+        "get_service_order_events" => encode(facade::get_service_order_events(
+            decode::<ServiceOrderIdInput>(payload)?.service_order_id,
+        )?),
+        "get_service_order_parts" => encode(facade::get_service_order_parts(
+            decode::<ServiceOrderIdInput>(payload)?.service_order_id,
+        )?),
+        "transition_service_order_status" => {
+            let input: TransitionStatusInput = decode(payload)?;
+            encode(facade::transition_service_order_status(
+                input.id,
+                input.status,
+                input.restore_stock,
+            )?)
+        }
+        "save_service_order_edit" => {
+            let input: RequestEnvelope<
+                crate::commands::service_order_commands::SaveServiceOrderEditRequest,
+            > = decode(payload)?;
+            encode(facade::save_service_order_edit(input.request)?)
+        }
+        "delete_service_order" => encode(facade::delete_service_order(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "add_part_to_service_order" => {
+            let input: ServiceOrderPartInput = decode(payload)?;
+            encode(facade::add_part_to_service_order(
+                input.service_order_id,
+                required_inventory_id(input.inventory_item_id)?,
+                input.quantity,
+            )?)
+        }
+        "remove_part_from_service_order" => encode(facade::remove_part_from_service_order(
+            decode::<PartInput>(payload)?.part_id,
+        )?),
+        "update_service_order_part_quantity" => {
+            let input: PartInput = decode(payload)?;
+            encode(facade::update_service_order_part_quantity(
+                input.part_id,
+                input.quantity,
+            )?)
+        }
+        "save_service_order_checklist" => {
+            let input: ServiceOrderChecklistInput = decode(payload)?;
+            encode(facade::save_service_order_checklist(
+                input.os_id,
+                input.items,
+            )?)
+        }
+        "get_service_order_checklist" => encode(facade::get_service_order_checklist(
+            decode::<ServiceOrderChecklistInput>(payload)?.os_id,
+        )?),
+        "upload_service_order_attachment" => {
+            let input: AttachmentUploadInput = decode(payload)?;
+            encode(facade::upload_service_order_attachment(
+                input.service_order_id,
+                input.file_name,
+                input.data_base64,
+            )?)
+        }
+        "get_service_order_attachments" => encode(facade::get_service_order_attachments(
+            decode::<ServiceOrderIdInput>(payload)?.service_order_id,
+        )?),
+        "read_service_order_attachment" => encode(facade::read_service_order_attachment(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "delete_service_order_attachment" => encode(facade::delete_service_order_attachment(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "preview_service_order_pdf" => encode(facade::preview_service_order_pdf(
+            decode::<ServiceOrderIdInput>(payload)?.service_order_id,
+        )?),
+        "download_pdf_preview" => encode(facade::download_pdf_preview(
+            decode::<TokenInput>(payload)?.token,
+        )?),
         _ => Err(lan_error(
             format!("Unknown LAN product operation: {operation}"),
             "A operação solicitada não está disponível pela rede LAN.",
@@ -581,11 +690,97 @@ struct ChecklistInput {
     items: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceOrderPageInput {
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+    status: Option<String>,
+    user_id: Option<String>,
+    customer_id: Option<String>,
+    created_date_from: Option<String>,
+    created_date_to: Option<String>,
+    finalized_date_from: Option<String>,
+    finalized_date_to: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomerIdInput {
+    customer_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceOrderIdInput {
+    service_order_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TransitionStatusInput {
+    id: String,
+    status: String,
+    restore_stock: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceOrderPartInput {
+    service_order_id: String,
+    inventory_item_id: Option<String>,
+    quantity: i32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PartInput {
+    part_id: String,
+    #[serde(default)]
+    quantity: i32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceOrderChecklistInput {
+    os_id: String,
+    #[serde(default)]
+    items: Vec<crate::models::checklist::ChecklistItem>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentUploadInput {
+    service_order_id: String,
+    file_name: String,
+    data_base64: String,
+}
+
+#[derive(Deserialize)]
+struct TokenInput {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct RequestEnvelope<T> {
+    request: T,
+}
+
 fn required_id(id: Option<String>) -> Result<String, AppError> {
     id.ok_or_else(|| {
         lan_error(
             "Operation requires an id.",
             "A operação exige um identificador.",
+        )
+    })
+}
+
+fn required_inventory_id(id: Option<String>) -> Result<String, AppError> {
+    id.ok_or_else(|| {
+        lan_error(
+            "Operation requires an inventory item id.",
+            "A operação exige um identificador de item de inventário.",
         )
     })
 }
@@ -1005,6 +1200,143 @@ mod tests {
         assert_eq!(user_count, 1);
         assert_eq!(checklist_count, 1);
         assert_eq!(inventory_quantity, 2);
+
+        let order_payload = serde_json::to_vec(&json!({
+            "request": {
+                "customerAction": { "type": "existing", "id": customer_id, "update": null },
+                "userId": null,
+                "equipment": "Notebook LAN",
+                "imei": null,
+                "description": "Criada pela rede",
+                "parts": [{ "inventoryItemId": inventory_id, "quantity": 1 }],
+                "checklistItems": [{ "label": "Liga", "checked": true }],
+                "attachmentToken": null
+            }
+        }))
+        .unwrap();
+        let mut created_order = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/create_full_service_order"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "order-1")
+            .send(order_payload.as_slice())
+            .unwrap();
+        let order_id: String =
+            serde_json::from_str(&created_order.body_mut().read_to_string().unwrap()).unwrap();
+        let mut replayed_order = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/create_full_service_order"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "order-1")
+            .send(order_payload.as_slice())
+            .unwrap();
+        let replayed_order_id: String =
+            serde_json::from_str(&replayed_order.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(replayed_order_id, order_id);
+
+        let upload_payload = serde_json::to_vec(&json!({
+            "serviceOrderId": order_id,
+            "fileName": "foto.png",
+            "dataBase64": "iVBORw0KGgo="
+        }))
+        .unwrap();
+        let mut uploaded = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/upload_service_order_attachment"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "attachment-1")
+            .send(upload_payload)
+            .unwrap();
+        let attachment: serde_json::Value =
+            serde_json::from_str(&uploaded.body_mut().read_to_string().unwrap()).unwrap();
+        let attachment_id = attachment["id"].as_str().unwrap();
+        assert_eq!(attachment["fileName"], "foto.png");
+        let read_payload = serde_json::to_vec(&json!({ "id": attachment_id })).unwrap();
+        let mut read_attachment = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/read_service_order_attachment"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(read_payload)
+            .unwrap();
+        let attachment_data: String =
+            serde_json::from_str(&read_attachment.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(attachment_data, "data:image/png;base64,iVBORw0KGgo=");
+        let delete_attachment = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/delete_service_order_attachment"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "attachment-delete-1")
+            .send(serde_json::to_vec(&json!({ "id": attachment_id })).unwrap())
+            .unwrap();
+        assert_eq!(delete_attachment.status(), StatusCode::OK);
+
+        let transition_payload = serde_json::to_vec(&json!({
+            "id": order_id,
+            "status": "Em Manutenção",
+            "restoreStock": false
+        }))
+        .unwrap();
+        let transition = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/transition_service_order_status"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "status-1")
+            .send(transition_payload)
+            .unwrap();
+        assert_eq!(transition.status(), StatusCode::OK);
+
+        let conn = crate::database::get_db().unwrap();
+        let order_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM service_orders WHERE id = ?1",
+                [&order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let stock_after_order: i32 = conn
+            .query_row(
+                "SELECT current_quantity FROM inventory_items WHERE id = ?1",
+                [inventory_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let order_status: String = conn
+            .query_row(
+                "SELECT status FROM service_orders WHERE id = ?1",
+                [&order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let attachment_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM service_order_attachments WHERE id = ?1",
+                [attachment_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+        assert_eq!(order_count, 1);
+        assert_eq!(stock_after_order, 1);
+        assert_eq!(order_status, "Em Manutenção");
+        assert_eq!(attachment_count, 0);
 
         let missing_token = agent
             .get(format!("{base_url}/auth-check"))

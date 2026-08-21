@@ -332,12 +332,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Client can create a full service order with parts and checklist through the host API.
-- [ ] Client can upload, read, export, and delete service order attachments through the host API.
-- [ ] Client can transition status and update parts through the host API.
-- [ ] Client can request service order PDF preview/save behavior equivalent to local mode.
-- [ ] Tests cover service order creation with stock decrement, attachment rollback on failure, status transition, idempotent retry, and unauthorized write.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
+- [x] Client can create a full service order with parts and checklist through the host API.
+- [x] Client can upload, read, export, and delete service order attachments through the host API.
+- [x] Client can transition status and update parts through the host API.
+- [x] Client can request service order PDF preview/save behavior equivalent to local mode.
+- [x] Tests cover service order creation with stock decrement, attachment rollback on failure, status transition, idempotent retry, and unauthorized write.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

@@ -950,7 +950,7 @@ fn lan_error(en: impl Into<String>, pt: impl Into<String>) -> AppError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use base64::Engine;
     use std::io::{Read, Write};
@@ -1054,8 +1054,7 @@ mod tests {
         assert_eq!(bearer_token(&headers).unwrap(), "token");
     }
 
-    #[test]
-    fn lan_api_https_health_pairing_and_authentication_contract() {
+    pub(crate) fn run_https_host_api_contract_workflow() {
         let _backend = crate::test_helpers::setup_global_backend();
         let directory = tempfile::tempdir().unwrap();
         let server =
@@ -1342,6 +1341,24 @@ mod tests {
             .unwrap();
         assert_eq!(transition.status(), StatusCode::OK);
 
+        let finalized_payload = serde_json::to_vec(&json!({
+            "id": order_id,
+            "status": "Finalizada",
+            "restoreStock": false
+        }))
+        .unwrap();
+        let finalized = agent
+            .post(format!(
+                "{base_url}/api/v1/commands/transition_service_order_status"
+            ))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "status-finalized-1")
+            .send(finalized_payload)
+            .unwrap();
+        assert_eq!(finalized.status(), StatusCode::OK);
+
         let conn = crate::database::get_db().unwrap();
         let order_count: i64 = conn
             .query_row(
@@ -1374,7 +1391,7 @@ mod tests {
         drop(conn);
         assert_eq!(order_count, 1);
         assert_eq!(stock_after_order, 1);
-        assert_eq!(order_status, "Em Manutenção");
+        assert_eq!(order_status, "Finalizada");
         assert_eq!(attachment_count, 0);
 
         let mut dashboard = agent
@@ -1386,7 +1403,9 @@ mod tests {
             .unwrap();
         let dashboard_data: serde_json::Value =
             serde_json::from_str(&dashboard.body_mut().read_to_string().unwrap()).unwrap();
-        assert_eq!(dashboard_data["summary"]["activeOrdersCount"], 1);
+        assert_eq!(dashboard_data["summary"]["activeOrdersCount"], 0);
+        assert_eq!(dashboard_data["summary"]["totalRevenue"], 2000);
+        assert_eq!(dashboard_data["summary"]["estimatedGrossProfit"], 1000);
         assert!(dashboard_data["recentOrders"]
             .as_array()
             .unwrap()
@@ -1403,7 +1422,9 @@ mod tests {
         let report_data: serde_json::Value =
             serde_json::from_str(&report.body_mut().read_to_string().unwrap()).unwrap();
         assert_eq!(report_data["newOrders"], 1);
-        assert_eq!(report_data["finalizedOrders"], 0);
+        assert_eq!(report_data["finalizedOrders"], 1);
+        assert_eq!(report_data["totalRevenue"], 2000);
+        assert_eq!(report_data["totalCost"], 1000);
 
         let mut backup = agent
             .post(format!(
@@ -1485,5 +1506,26 @@ mod tests {
             .call()
             .is_err());
         server.handle.shutdown();
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(agent
+            .post(format!("{base_url}/api/v1/commands/get_dashboard_data"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .send(b"{}")
+            .is_err());
+        assert!(agent
+            .post(format!("{base_url}/api/v1/commands/create_customer"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "host-down-write")
+            .send(customer_payload)
+            .is_err());
+    }
+
+    #[test]
+    fn lan_api_https_health_pairing_and_authentication_contract() {
+        run_https_host_api_contract_workflow();
     }
 }

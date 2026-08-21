@@ -4,6 +4,11 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 
+#[test]
+fn lan_host_api_preserves_the_frontend_ipc_contract() {
+    crate::lan_api::tests::run_https_host_api_contract_workflow();
+}
+
 fn request(command: &str, body: Value) -> InvokeRequest {
     InvokeRequest {
         cmd: command.into(),

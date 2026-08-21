@@ -386,12 +386,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Test pairs a client, creates/restocks inventory, creates a full service order, finalizes it, reads dashboard, reads financial report, and verifies totals.
-- [ ] Test proves repeated idempotency key does not duplicate the order.
-- [ ] Test proves unauthenticated and revoked-token requests fail.
-- [ ] Test proves host shutdown or unreachable host blocks client shared-data reads and writes.
-- [ ] Test proves plaintext transport, a changed host certificate, and a different app build are rejected before business operations run.
-- [ ] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
+- [x] Test pairs a client, creates/restocks inventory, creates a full service order, finalizes it, reads dashboard, reads financial report, and verifies totals.
+- [x] Test proves repeated idempotency key does not duplicate the order.
+- [x] Test proves unauthenticated and revoked-token requests fail.
+- [x] Test proves host shutdown or unreachable host blocks client shared-data reads and writes.
+- [x] Test proves plaintext transport, a changed host certificate, and a different app build are rejected before business operations run.
+- [x] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

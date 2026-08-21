@@ -196,12 +196,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Pairing codes expire after a configured TTL.
-- [ ] Successful pairing stores only token fingerprints.
-- [ ] Authenticated requests update last-seen time.
-- [ ] Revoked devices are rejected.
-- [ ] Tests cover valid pairing, expired code, invalid code, token auth, revoked token, and no raw-token persistence.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_auth -- --test-threads=1`
+- [x] Pairing codes expire after a configured TTL.
+- [x] Successful pairing stores only token fingerprints.
+- [x] Authenticated requests update last-seen time.
+- [x] Revoked devices are rejected.
+- [x] Tests cover valid pairing, expired code, invalid code, token auth, revoked token, and no raw-token persistence.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_auth -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

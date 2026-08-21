@@ -15,6 +15,7 @@ use uuid::Uuid;
 // Static connection pool for simple desktop usage
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 static APP_DATA_DIR: OnceCell<PathBuf> = OnceCell::new();
+static STORAGE_MODE_CONFIG: OnceCell<StorageModeConfig> = OnceCell::new();
 static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
 static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
 
@@ -231,22 +232,49 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
     })?;
+    let storage_mode_config = load_storage_mode_config(&app_data_dir).map_err(io_error)?;
     let resolved_database_path = get_database_path(&app_data_dir)?;
-    if let Some(parent) = resolved_database_path.parent() {
-        ensure_private_dir(parent).map_err(io_error)?;
-    }
-    acquire_storage_instance_lock(&resolved_database_path)?;
-    initialize_storage_at(&resolved_database_path, should_seed_demo_data())?;
+    let storage_lock = initialize_storage_for_mode(
+        &app_data_dir,
+        &resolved_database_path,
+        &storage_mode_config,
+        should_seed_demo_data(),
+    )?;
     APP_DATA_DIR.set(app_data_dir).map_err(|_| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
             "Application data path was already initialized.",
         )))
     })?;
-    DB_PATH.set(resolved_database_path).map_err(|_| {
-        rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
-            "Database path was already initialized.",
-        )))
-    })
+    STORAGE_MODE_CONFIG
+        .set(storage_mode_config)
+        .map_err(|_| database_error("Application storage mode was already initialized."))?;
+    if let Some(storage_lock) = storage_lock {
+        STORAGE_INSTANCE_LOCK.set(storage_lock).map_err(|_| {
+            database_error("Application storage instance lock was already initialized.")
+        })?;
+        DB_PATH
+            .set(resolved_database_path)
+            .map_err(|_| database_error("Database path was already initialized."))?;
+    }
+    Ok(())
+}
+
+fn initialize_storage_for_mode(
+    app_data_dir: &Path,
+    database_path: &Path,
+    config: &StorageModeConfig,
+    seed_demo_data: bool,
+) -> Result<Option<File>> {
+    ensure_private_dir(app_data_dir).map_err(io_error)?;
+    if config.mode == StorageMode::Client {
+        return Ok(None);
+    }
+    if let Some(parent) = database_path.parent() {
+        ensure_private_dir(parent).map_err(io_error)?;
+    }
+    let storage_lock = open_storage_instance_lock(database_path)?;
+    initialize_storage_at(database_path, seed_demo_data)?;
+    Ok(Some(storage_lock))
 }
 
 fn storage_instance_lock_path(database_path: &Path) -> PathBuf {
@@ -271,13 +299,6 @@ fn open_storage_instance_lock(database_path: &Path) -> Result<File> {
     })?;
     secure_private_file(&path).map_err(io_error)?;
     Ok(file)
-}
-
-fn acquire_storage_instance_lock(database_path: &Path) -> Result<()> {
-    let file = open_storage_instance_lock(database_path)?;
-    STORAGE_INSTANCE_LOCK
-        .set(file)
-        .map_err(|_| database_error("Application storage instance lock was already initialized."))
 }
 
 pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) -> Result<()> {
@@ -1025,6 +1046,10 @@ pub fn database_path() -> PathBuf {
         .expect("Database path must be initialized before use")
 }
 
+pub(crate) fn storage_mode_config() -> StorageModeConfig {
+    STORAGE_MODE_CONFIG.get().cloned().unwrap_or_default()
+}
+
 pub(crate) fn app_data_dir() -> PathBuf {
     APP_DATA_DIR
         .get()
@@ -1127,6 +1152,47 @@ mod tests {
             config.validate().unwrap_err().to_string(),
             "Client token and certificate fingerprint must be stored together."
         );
+    }
+
+    #[test]
+    fn storage_mode_client_startup_does_not_touch_production_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let app_data_dir = directory.path().join("client-app-data");
+        let database_path = directory.path().join("production").join("database.db");
+        let config = client_storage_mode_config();
+
+        let storage_lock =
+            initialize_storage_for_mode(&app_data_dir, &database_path, &config, false).unwrap();
+
+        assert!(storage_lock.is_none());
+        assert!(app_data_dir.is_dir());
+        assert!(!database_path.exists());
+        assert!(!storage_metadata_path_for(&database_path).exists());
+        assert!(!attachments_dir_for(&database_path).exists());
+        assert!(!storage_instance_lock_path(&database_path).exists());
+    }
+
+    #[test]
+    fn storage_mode_local_startup_initializes_and_locks_production_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let app_data_dir = directory.path().join("local-app-data");
+        let database_path = directory.path().join("production").join("database.db");
+
+        let storage_lock = initialize_storage_for_mode(
+            &app_data_dir,
+            &database_path,
+            &StorageModeConfig::default(),
+            false,
+        )
+        .unwrap();
+
+        assert!(storage_lock.is_some());
+        assert!(database_path.exists());
+        assert!(storage_metadata_path_for(&database_path).exists());
+        assert!(storage_instance_lock_path(&database_path).exists());
+        assert!(open_storage_instance_lock(&database_path).is_err());
+        drop(storage_lock);
+        assert!(open_storage_instance_lock(&database_path).is_ok());
     }
 
     #[test]

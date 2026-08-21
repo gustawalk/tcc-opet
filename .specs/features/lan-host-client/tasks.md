@@ -119,11 +119,11 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Local and Host modes still acquire the storage lock and initialize the SQLCipher database.
-- [ ] Client mode does not open, migrate, seed, reset, or lock the production SQLite database.
-- [ ] Client mode exposes enough app-data configuration for Settings and client adapter startup.
-- [ ] Focused Rust tests prove client mode avoids production DB open and local mode remains unchanged.
-- [ ] Gate check passes: `cd src-tauri && cargo test storage_mode -- --test-threads=1`
+- [x] Local and Host modes still acquire the storage lock and initialize the SQLCipher database.
+- [x] Client mode does not open, migrate, seed, reset, or lock the production SQLite database.
+- [x] Client mode exposes enough app-data configuration for Settings and client adapter startup.
+- [x] Focused Rust tests prove client mode avoids production DB open and local mode remains unchanged.
+- [x] Gate check passes: `cd src-tauri && cargo test storage_mode -- --test-threads=1`
 
 **Tests**: unit
 **Gate**: quick

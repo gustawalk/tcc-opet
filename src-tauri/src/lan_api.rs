@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::lan_auth::{LanAuthService, PairingCode};
-use axum::extract::State;
+use axum::body::Bytes;
+use axum::extract::{Path as AxumPath, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -26,6 +27,7 @@ const PAIRING_CODE_TTL_SECONDS: i64 = 10 * 60;
 #[derive(Clone)]
 struct ApiState {
     auth: Arc<LanAuthService>,
+    idempotency: Arc<crate::lan_idempotency::LanIdempotencyService>,
 }
 
 #[derive(Clone, Debug)]
@@ -174,12 +176,14 @@ fn start_host_server(
     ))
     .map_err(io_lan_error)?;
     let auth = Arc::new(LanAuthService::default());
+    let idempotency = Arc::new(crate::lan_idempotency::LanIdempotencyService);
     let pairing_code = auth.create_pairing_code(PAIRING_CODE_TTL_SECONDS, Utc::now())?;
     let router = Router::new()
         .route("/health", get(health))
         .route("/pair", post(pair))
         .route("/auth-check", get(auth_check))
-        .with_state(ApiState { auth });
+        .route("/api/v1/commands/{operation}", post(product_command))
+        .with_state(ApiState { auth, idempotency });
     let handle = axum_server::Handle::new();
     let server_handle = handle.clone();
     tauri::async_runtime::spawn(async move {
@@ -250,6 +254,358 @@ async fn auth_check(
     Ok(Json(
         json!({ "deviceId": device.id, "deviceName": device.name }),
     ))
+}
+
+async fn product_command(
+    State(state): State<ApiState>,
+    AxumPath(operation): AxumPath<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_matching_version(&headers)?;
+    let token = bearer_token(&headers)?;
+    let conn = crate::database::get_db()
+        .map_err(|error| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, error.into()))?;
+    let device = state
+        .auth
+        .authenticate(&conn, token, Utc::now())
+        .map_err(|error| ApiError::new(StatusCode::UNAUTHORIZED, error))?;
+    drop(conn);
+
+    let payload: serde_json::Value = serde_json::from_slice(&body).map_err(|error| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            lan_error(
+                format!("Invalid command payload: {error}"),
+                "Os dados enviados para a operação são inválidos.",
+            ),
+        )
+    })?;
+    let execute = || dispatch_catalog_command(&operation, payload);
+    let result = if is_catalog_mutation(&operation) {
+        let idempotency_key = headers
+            .get("x-idempotency-key")
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    lan_error(
+                        "Idempotency key is required for mutating requests.",
+                        "A chave de idempotência é obrigatória para alterações.",
+                    ),
+                )
+            })?;
+        let mut idempotency_conn =
+            crate::database::open_encrypted_database(&crate::database::database_path())
+                .map_err(|error| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, error.into()))?;
+        state
+            .idempotency
+            .execute(
+                &mut idempotency_conn,
+                &device.id,
+                idempotency_key,
+                &operation,
+                &body,
+                execute,
+            )
+            .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?
+    } else {
+        execute().map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?
+    };
+    Ok(Json(result))
+}
+
+fn is_catalog_mutation(operation: &str) -> bool {
+    matches!(
+        operation,
+        "create_customer"
+            | "update_customer"
+            | "delete_customer"
+            | "create_user"
+            | "update_user"
+            | "delete_user"
+            | "create_inventory_item"
+            | "update_inventory_item"
+            | "delete_inventory_item"
+            | "restock_inventory_item"
+            | "remove_stock_inventory_item"
+            | "create_checklist_template"
+            | "update_checklist_template"
+            | "delete_checklist_template"
+    )
+}
+
+fn dispatch_catalog_command(
+    operation: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, AppError> {
+    use crate::commands::facade;
+
+    match operation {
+        "create_customer" => {
+            let input: CustomerInput = decode(payload)?;
+            encode(facade::create_customer(
+                input.name,
+                input.phone,
+                input.email,
+                input.address,
+            )?)
+        }
+        "get_customer" => encode(facade::get_customer(decode::<IdInput>(payload)?.id)?),
+        "get_customers_page" => {
+            let input: PageInput = decode(payload)?;
+            encode(facade::get_customers_page(
+                input.limit,
+                input.offset,
+                input.search,
+            )?)
+        }
+        "update_customer" => {
+            let input: CustomerInput = decode(payload)?;
+            encode(facade::update_customer(
+                required_id(input.id)?,
+                input.name,
+                input.phone,
+                input.email,
+                input.address,
+            )?)
+        }
+        "delete_customer" => encode(facade::delete_customer(decode::<IdInput>(payload)?.id)?),
+        "create_user" => {
+            let input: UserInput = decode(payload)?;
+            encode(facade::create_user(
+                input.name,
+                input.email,
+                input.phone,
+                input.cpf,
+                input.join_date,
+            )?)
+        }
+        "get_user" => encode(facade::get_user(decode::<IdInput>(payload)?.id)?),
+        "get_users_page" => {
+            let input: PageInput = decode(payload)?;
+            encode(facade::get_users_page(
+                input.limit,
+                input.offset,
+                input.search,
+            )?)
+        }
+        "update_user" => {
+            let input: UserInput = decode(payload)?;
+            encode(facade::update_user(
+                required_id(input.id)?,
+                input.name,
+                input.email,
+                input.phone,
+                input.cpf,
+                input.join_date,
+            )?)
+        }
+        "delete_user" => encode(facade::delete_user(decode::<IdInput>(payload)?.id)?),
+        "create_inventory_item" => {
+            let input: InventoryInput = decode(payload)?;
+            encode(facade::create_inventory_item(
+                input.name,
+                input.description,
+                input.item_type,
+                input.min_quantity,
+                input.current_quantity,
+                input.cost_price,
+                input.sale_price,
+                input.supplier_name,
+            )?)
+        }
+        "get_inventory_item" => encode(facade::get_inventory_item(decode::<IdInput>(payload)?.id)?),
+        "get_inventory_items_page" => {
+            let input: InventoryPageInput = decode(payload)?;
+            encode(facade::get_inventory_items_page(
+                input.limit,
+                input.offset,
+                input.search,
+                input.item_type,
+            )?)
+        }
+        "get_inventory_summary" => encode(facade::get_inventory_summary()?),
+        "get_inventory_insights" => encode(facade::get_inventory_insights(
+            decode::<InventoryInsightsInput>(payload)?.inactive_days,
+        )?),
+        "get_inventory_movements" => encode(facade::get_inventory_movements(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "update_inventory_item" => {
+            let input: InventoryInput = decode(payload)?;
+            encode(facade::update_inventory_item(
+                required_id(input.id)?,
+                input.name,
+                input.description,
+                input.item_type,
+                input.min_quantity,
+                input.current_quantity,
+                input.cost_price,
+                input.sale_price,
+                input.supplier_name,
+            )?)
+        }
+        "delete_inventory_item" => encode(facade::delete_inventory_item(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "restock_inventory_item" => {
+            let input: StockInput = decode(payload)?;
+            encode(facade::restock_inventory_item(
+                input.id,
+                input.quantity,
+                input.unit_cost,
+                input.reason,
+            )?)
+        }
+        "remove_stock_inventory_item" => {
+            let input: StockInput = decode(payload)?;
+            encode(facade::remove_stock_inventory_item(
+                input.id,
+                input.quantity,
+            )?)
+        }
+        "create_checklist_template" => {
+            let input: ChecklistInput = decode(payload)?;
+            encode(facade::create_checklist_template(input.title, input.items)?)
+        }
+        "get_checklist_templates_page" => {
+            let input: PageInput = decode(payload)?;
+            encode(facade::get_checklist_templates_page(
+                input.limit,
+                input.offset,
+                input.search,
+            )?)
+        }
+        "get_checklist_template_items" => encode(facade::get_checklist_template_items(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        "update_checklist_template" => {
+            let input: ChecklistInput = decode(payload)?;
+            encode(facade::update_checklist_template(
+                required_id(input.id)?,
+                input.title,
+                input.items,
+            )?)
+        }
+        "delete_checklist_template" => encode(facade::delete_checklist_template(
+            decode::<IdInput>(payload)?.id,
+        )?),
+        _ => Err(lan_error(
+            format!("Unknown LAN product operation: {operation}"),
+            "A operação solicitada não está disponível pela rede LAN.",
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IdInput {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageInput {
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomerInput {
+    id: Option<String>,
+    name: String,
+    phone: String,
+    email: String,
+    address: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserInput {
+    id: Option<String>,
+    name: String,
+    email: String,
+    phone: Option<String>,
+    cpf: Option<String>,
+    join_date: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InventoryInput {
+    id: Option<String>,
+    name: String,
+    description: String,
+    #[serde(rename = "type")]
+    item_type: String,
+    min_quantity: i32,
+    current_quantity: i32,
+    cost_price: i64,
+    sale_price: i64,
+    supplier_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InventoryPageInput {
+    limit: Option<u32>,
+    offset: Option<u32>,
+    search: Option<String>,
+    #[serde(rename = "itemType")]
+    item_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InventoryInsightsInput {
+    inactive_days: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StockInput {
+    id: String,
+    quantity: i32,
+    unit_cost: Option<i64>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChecklistInput {
+    id: Option<String>,
+    title: String,
+    items: Vec<String>,
+}
+
+fn required_id(id: Option<String>) -> Result<String, AppError> {
+    id.ok_or_else(|| {
+        lan_error(
+            "Operation requires an id.",
+            "A operação exige um identificador.",
+        )
+    })
+}
+
+fn decode<T: for<'de> Deserialize<'de>>(payload: serde_json::Value) -> Result<T, AppError> {
+    serde_json::from_value(payload).map_err(|error| {
+        lan_error(
+            format!("Invalid operation payload: {error}"),
+            "Os dados enviados para a operação são inválidos.",
+        )
+    })
+}
+
+fn encode<T: Serialize>(value: T) -> Result<serde_json::Value, AppError> {
+    serde_json::to_value(value).map_err(|error| {
+        lan_error(
+            format!("Failed to serialize operation result: {error}"),
+            "Não foi possível preparar o resultado da operação.",
+        )
+    })
 }
 
 fn require_matching_version(headers: &HeaderMap) -> Result<(), ApiError> {
@@ -513,6 +869,142 @@ mod tests {
             serde_json::from_str(&pairing.body_mut().read_to_string().unwrap()).unwrap();
         let token = paired["token"].as_str().unwrap();
         let device_id = paired["deviceId"].as_str().unwrap();
+
+        let unauthorized_command = agent
+            .post(format!("{base_url}/api/v1/commands/create_customer"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "unauthorized-customer")
+            .send(br#"{"name":"Ana","phone":"1","email":"a@b.com","address":"Rua"}"#)
+            .unwrap();
+        assert_eq!(unauthorized_command.status(), StatusCode::UNAUTHORIZED);
+
+        let customer_payload = br#"{"name":"Cliente LAN","phone":"41999990000","email":"lan@example.com","address":"Rua LAN"}"#;
+        let mut customer = agent
+            .post(format!("{base_url}/api/v1/commands/create_customer"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "customer-1")
+            .send(customer_payload)
+            .unwrap();
+        let customer_id: String =
+            serde_json::from_str(&customer.body_mut().read_to_string().unwrap()).unwrap();
+        let mut customer_replay = agent
+            .post(format!("{base_url}/api/v1/commands/create_customer"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "customer-1")
+            .send(customer_payload)
+            .unwrap();
+        let replayed_customer_id: String =
+            serde_json::from_str(&customer_replay.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(replayed_customer_id, customer_id);
+
+        let user_payload = br#"{"name":"Tecnico LAN","email":"tecnico-lan@example.com","phone":null,"cpf":null,"joinDate":null}"#;
+        for _ in 0..2 {
+            let response = agent
+                .post(format!("{base_url}/api/v1/commands/create_user"))
+                .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE.as_str(), "application/json")
+                .header("x-idempotency-key", "user-1")
+                .send(user_payload)
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let inventory_payload = br#"{"name":"Peca LAN","description":"Teste","type":"part","minQuantity":1,"currentQuantity":0,"costPrice":1000,"salePrice":2000,"supplierName":null}"#;
+        let mut inventory = agent
+            .post(format!("{base_url}/api/v1/commands/create_inventory_item"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "inventory-1")
+            .send(inventory_payload)
+            .unwrap();
+        let inventory_item: serde_json::Value =
+            serde_json::from_str(&inventory.body_mut().read_to_string().unwrap()).unwrap();
+        let inventory_id = inventory_item["id"].as_str().unwrap();
+        let restock_payload = serde_json::to_vec(&json!({
+            "id": inventory_id,
+            "quantity": 2,
+            "unitCost": 1000,
+            "reason": "LAN"
+        }))
+        .unwrap();
+        for _ in 0..2 {
+            let response = agent
+                .post(format!("{base_url}/api/v1/commands/restock_inventory_item"))
+                .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE.as_str(), "application/json")
+                .header("x-idempotency-key", "restock-1")
+                .send(restock_payload.as_slice())
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let checklist_payload = br#"{"title":"Entrada LAN","items":["Liga"]}"#;
+        for _ in 0..2 {
+            let response = agent
+                .post(format!(
+                    "{base_url}/api/v1/commands/create_checklist_template"
+                ))
+                .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE.as_str(), "application/json")
+                .header("x-idempotency-key", "checklist-1")
+                .send(checklist_payload)
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let invalid_inventory = agent
+            .post(format!("{base_url}/api/v1/commands/create_inventory_item"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "inventory-invalid")
+            .send(br#"{"name":"Invalido","description":"","type":"part","minQuantity":-1,"currentQuantity":0,"costPrice":0,"salePrice":0,"supplierName":null}"#)
+            .unwrap();
+        assert_eq!(invalid_inventory.status(), StatusCode::BAD_REQUEST);
+
+        let conn = crate::database::get_db().unwrap();
+        let customer_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM customers WHERE name = 'Cliente LAN'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let user_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE name = 'Tecnico LAN'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let checklist_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM checklist_templates WHERE title = 'Entrada LAN'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let inventory_quantity: i32 = conn
+            .query_row(
+                "SELECT current_quantity FROM inventory_items WHERE id = ?1",
+                [inventory_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+        assert_eq!(customer_count, 1);
+        assert_eq!(user_count, 1);
+        assert_eq!(checklist_count, 1);
+        assert_eq!(inventory_quantity, 2);
 
         let missing_token = agent
             .get(format!("{base_url}/auth-check"))

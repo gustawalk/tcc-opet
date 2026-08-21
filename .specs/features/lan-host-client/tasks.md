@@ -306,11 +306,11 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Routes cover paginated customers, users, inventory items, inventory summary, inventory stock mutations, and checklist templates.
-- [ ] Routes preserve camelCase request and response contracts.
-- [ ] Mutating routes require idempotency keys.
-- [ ] Tests cover happy path, validation error, unauthorized request, and idempotent replay for at least one mutation per resource group.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
+- [x] Routes cover paginated customers, users, inventory items, inventory summary, inventory stock mutations, and checklist templates.
+- [x] Routes preserve camelCase request and response contracts.
+- [x] Mutating routes require idempotency keys.
+- [x] Tests cover happy path, validation error, unauthorized request, and idempotent replay for at least one mutation per resource group.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_api -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

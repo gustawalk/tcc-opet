@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), allow(dead_code))]
-
 use crate::database::LanIdempotencyLookup;
 use crate::error::AppError;
 use rusqlite::{params, Connection, TransactionBehavior};

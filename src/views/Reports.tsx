@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { dataCommand } from "@/lib/data-client";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
+import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   Area,
@@ -332,10 +333,12 @@ export function Reports() {
       if (!destination) return;
 
       setExporting("csv");
-      await dataCommand("export_financial_report_csv", {
-        ...filters,
-        destination,
-      });
+      if (getDataClientMode() === "client") {
+        const contents = await dataCommand<string>("create_financial_report_csv", filters);
+        await invoke("save_lan_text_file", { destination, contents });
+      } else {
+        await dataCommand("export_financial_report_csv", { ...filters, destination });
+      }
       toastSuccess("Relatório em CSV exportado.");
     } catch (err) {
       toastError(err, "Erro ao exportar o relatório em CSV.");

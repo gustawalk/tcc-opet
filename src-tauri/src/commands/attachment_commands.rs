@@ -15,6 +15,13 @@ use uuid::Uuid;
 pub(crate) static PENDING_ATTACHMENT_SELECTIONS: Lazy<Mutex<HashMap<String, Vec<PathBuf>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanAttachmentFile {
+    file_name: String,
+    data_base64: String,
+}
+
 pub(crate) struct PendingAttachmentReservation {
     token: String,
     paths: Option<Vec<PathBuf>>,
@@ -103,6 +110,46 @@ pub async fn select_service_order_attachments(
             &paths,
             &crate::database::attachments_dir(),
         )
+    })
+    .await
+    .map_err(|error| {
+        AppError::new(
+            format!("Failed to select attachments: {error}"),
+            format!("Erro ao selecionar anexos: {error}"),
+        )
+    })?
+}
+
+#[command]
+pub async fn select_lan_attachment_files(
+    app: AppHandle,
+) -> Result<Vec<LanAttachmentFile>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        pick_attachment_paths(&app)?
+            .into_iter()
+            .map(|path| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "Selected attachment has an invalid filename.",
+                            "O anexo selecionado possui um nome inválido.",
+                        )
+                    })?;
+                let bytes = std::fs::read(&path).map_err(|error| {
+                    AppError::new(
+                        format!("Failed to read selected attachment: {error}"),
+                        format!("Erro ao ler o anexo selecionado: {error}"),
+                    )
+                })?;
+                Ok(LanAttachmentFile {
+                    file_name,
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                })
+            })
+            .collect()
     })
     .await
     .map_err(|error| {

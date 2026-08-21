@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use base64::Engine;
 use serde_json::Value;
 use tauri::command;
 
@@ -114,6 +115,38 @@ fn ensure_host_mode() -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+#[command]
+pub fn save_lan_base64_file(destination: String, data_base64: String) -> Result<(), AppError> {
+    let encoded = data_base64
+        .split_once(',')
+        .map(|(_, encoded)| encoded)
+        .unwrap_or(&data_base64);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| {
+            AppError::new(
+                format!("Invalid downloaded file data: {error}"),
+                "Os dados do arquivo recebido são inválidos.",
+            )
+        })?;
+    std::fs::write(destination, bytes).map_err(|error| {
+        AppError::new(
+            format!("Failed to save downloaded file: {error}"),
+            format!("Não foi possível salvar o arquivo: {error}"),
+        )
+    })
+}
+
+#[command]
+pub fn save_lan_text_file(destination: String, contents: String) -> Result<(), AppError> {
+    std::fs::write(destination, contents).map_err(|error| {
+        AppError::new(
+            format!("Failed to save downloaded text: {error}"),
+            format!("Não foi possível salvar o arquivo: {error}"),
+        )
+    })
 }
 
 #[command]

@@ -681,6 +681,30 @@ fn dispatch_catalog_command(
                 input.ranking_limit,
             )?)
         }
+        "create_financial_report_csv" => {
+            let input: FinancialReportInput = decode(payload)?;
+            encode(facade::create_financial_report_csv(
+                input.start_date,
+                input.end_date,
+                input.technician_id,
+                input.ranking_metric,
+                input.ranking_limit,
+            )?)
+        }
+        "preview_financial_report_pdf" => {
+            let input: FinancialReportInput = decode(payload)?;
+            encode(facade::preview_financial_report_pdf(
+                input.start_date,
+                input.end_date,
+                input.technician_id,
+                input.ranking_metric,
+                input.ranking_limit,
+            )?)
+        }
+        "discard_pdf_preview" => {
+            facade::discard_pdf_preview(decode::<TokenInput>(payload)?.token);
+            encode(())
+        }
         "create_remote_backup_download" => encode(facade::create_remote_backup_download(
             decode::<RemoteBackupInput>(payload)?.passphrase,
         )?),

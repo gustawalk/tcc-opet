@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { dataCommand } from "@/lib/data-client";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { Eye, Paperclip, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -258,10 +258,29 @@ export function ServiceOrderEditorSheet({
     if (!orderId || isUploadingAttachments) return;
     try {
       setIsUploadingAttachments(true);
-      const selected = await invoke<ServiceOrderAttachment[]>(
-        "select_service_order_attachments",
-        { serviceOrderId: orderId },
-      );
+      const selected =
+        getDataClientMode() === "client"
+          ? await invoke<Array<{ fileName: string; dataBase64: string }>>(
+              "select_lan_attachment_files",
+            ).then(async (files) => {
+              const uploaded: ServiceOrderAttachment[] = [];
+              for (const file of files) {
+                uploaded.push(
+                  await dataCommand<ServiceOrderAttachment>(
+                    "upload_service_order_attachment",
+                    {
+                      serviceOrderId: orderId,
+                      fileName: file.fileName,
+                      dataBase64: file.dataBase64,
+                    },
+                  ),
+                );
+              }
+              return uploaded;
+            })
+          : await invoke<ServiceOrderAttachment[]>("select_service_order_attachments", {
+              serviceOrderId: orderId,
+            });
       await invalidateOrder();
       if (selected.length)
         toastSuccess(`${selected.length} anexo(s) adicionado(s) à ordem.`);

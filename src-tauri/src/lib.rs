@@ -56,6 +56,8 @@ macro_rules! register_commands {
             facade::regenerate_lan_pairing_code,
             facade::list_lan_devices,
             facade::revoke_lan_device,
+            facade::save_lan_base64_file,
+            facade::save_lan_text_file,
             facade::pair_lan_client,
             facade::check_lan_client_connection,
             facade::download_lan_remote_backup,
@@ -138,6 +140,7 @@ pub fn run() {
         commands::settings_commands::run_automatic_backup_now,
         commands::attachment_commands::select_service_order_attachments,
         commands::attachment_commands::select_pending_service_order_attachments,
+        commands::attachment_commands::select_lan_attachment_files,
         commands::pdf_commands::save_pdf_preview,
     )
     .setup(|app| {

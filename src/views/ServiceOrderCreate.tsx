@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dataCommand } from "@/lib/data-client";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
@@ -63,8 +63,9 @@ const EMPTY_TEMPLATES: ChecklistTemplate[] = [];
 const EMPTY_INVENTORY: InventoryItem[] = [];
 
 type PendingAttachmentSelection = {
-  token: string;
+  token?: string;
   fileNames: string[];
+  files?: Array<{ fileName: string; dataBase64: string }>;
 };
 
 const fetchCustomers = () => dataCommand<Customer[]>("get_customers");
@@ -235,9 +236,14 @@ export function ServiceOrderCreate() {
   };
   const selectAttachments = async () => {
     try {
-      const selection = await invoke<PendingAttachmentSelection | null>(
-        "select_pending_service_order_attachments",
-      );
+      const selection =
+        getDataClientMode() === "client"
+          ? await invoke<Array<{ fileName: string; dataBase64: string }>>(
+              "select_lan_attachment_files",
+            ).then((files) => ({ files, fileNames: files.map((file) => file.fileName) }))
+          : await invoke<PendingAttachmentSelection | null>(
+              "select_pending_service_order_attachments",
+            );
       if (selection) setPendingAttachments(selection);
     } catch (error) {
       toastError(error, "Erro ao selecionar anexos.");
@@ -271,7 +277,7 @@ export function ServiceOrderCreate() {
         (formData.phone !== originalCustomer.phone ||
           formData.email !== originalCustomer.email ||
           formData.address !== originalCustomer.address);
-      await dataCommand("create_full_service_order", {
+      const orderId = await dataCommand<string>("create_full_service_order", {
         request: {
           customerAction: selectedCustomer
             ? {
@@ -305,6 +311,15 @@ export function ServiceOrderCreate() {
           attachmentToken: pendingAttachments?.token ?? null,
         },
       });
+      if (pendingAttachments?.files) {
+        for (const file of pendingAttachments.files) {
+          await dataCommand("upload_service_order_attachment", {
+            serviceOrderId: orderId,
+            fileName: file.fileName,
+            dataBase64: file.dataBase64,
+          });
+        }
+      }
       if (pendingAttachments) setPendingAttachments(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["customers-list"] }),

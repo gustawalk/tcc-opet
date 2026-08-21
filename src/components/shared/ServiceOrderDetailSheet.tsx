@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { dataCommand } from "@/lib/data-client";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
+import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   Sheet,
@@ -229,10 +230,17 @@ function AttachmentItem({
     if (!destination) return;
 
     try {
-      await dataCommand("export_service_order_attachment", {
-        id: attachment.id,
-        destination,
-      });
+      if (getDataClientMode() === "client") {
+        const dataBase64 = await dataCommand<string>("read_service_order_attachment", {
+          id: attachment.id,
+        });
+        await invoke("save_lan_base64_file", { destination, dataBase64 });
+      } else {
+        await dataCommand("export_service_order_attachment", {
+          id: attachment.id,
+          destination,
+        });
+      }
       toastSuccess("Anexo exportado com sucesso.");
     } catch (error) {
       toastError(error, "Erro ao exportar anexo.");

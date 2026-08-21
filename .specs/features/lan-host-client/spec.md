@@ -176,15 +176,15 @@ Every ambiguity is resolved or recorded here - nothing is left silently unclear.
 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| LANSRV-01 | P1: Configure Host Mode | Design | Pending |
-| LANSRV-02 | P1: Pair Client Device | Design | Pending |
+| LANSRV-01 | P1: Configure Host Mode | Execute (T1) | In progress |
+| LANSRV-02 | P1: Pair Client Device | Execute (T1) | In progress |
 | LANSRV-03 | P1: Use Core Business Workflows Over LAN | Design | Pending |
 | LANSRV-04 | P1: Protect Host-Only Storage Operations | Design | Pending |
 | LANSRV-05 | P2: Manage Devices and Observability | Design | Pending |
 | LANSRV-06 | P2: Discover Hosts on LAN | Design | Pending |
 | LANSRV-07 | P3: Prepare for Future Sharding | Design | Pending |
 
-**Coverage:** 7 total, 0 mapped to tasks, 7 unmapped.
+**Coverage:** 7 total, 7 mapped to tasks, 0 unmapped.
 
 ## Success Criteria
 

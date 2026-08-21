@@ -27,6 +27,140 @@ pub(crate) type ExclusiveStorageGuard = RwLockWriteGuard<'static, ()>;
 
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
+const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
+const DEFAULT_LAN_PORT: u16 = 8743;
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum StorageMode {
+    #[default]
+    Local,
+    Host,
+    Client,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StorageModeConfig {
+    pub mode: StorageMode,
+    pub host_port: u16,
+    pub client_url: Option<String>,
+    pub client_device_name: Option<String>,
+    pub client_token: Option<String>,
+    pub client_certificate_fingerprint: Option<String>,
+}
+
+impl Default for StorageModeConfig {
+    fn default() -> Self {
+        Self {
+            mode: StorageMode::Local,
+            host_port: DEFAULT_LAN_PORT,
+            client_url: None,
+            client_device_name: None,
+            client_token: None,
+            client_certificate_fingerprint: None,
+        }
+    }
+}
+
+impl StorageModeConfig {
+    pub(crate) fn validate(&self) -> io::Result<()> {
+        if self.host_port == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "LAN host port must be between 1 and 65535.",
+            ));
+        }
+
+        if self.mode != StorageMode::Client {
+            return Ok(());
+        }
+
+        let url = self.client_url.as_deref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client mode requires a host URL.",
+            )
+        })?;
+        validate_client_url(url)?;
+
+        if self
+            .client_device_name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client mode requires a device name.",
+            ));
+        }
+
+        if self.client_token.is_some() != self.client_certificate_fingerprint.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client token and certificate fingerprint must be stored together.",
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+fn validate_client_url(url: &str) -> io::Result<()> {
+    let authority = url.strip_prefix("https://").ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "LAN host URL must use HTTPS.")
+    })?;
+    if authority.is_empty()
+        || authority.contains(['/', '?', '#', '@'])
+        || authority.starts_with(':')
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "LAN host URL must contain only a host and optional port.",
+        ));
+    }
+
+    if let Some((host, port)) = authority.rsplit_once(':') {
+        if host.is_empty() || port.parse::<u16>().is_err() || port == "0" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "LAN host URL contains an invalid port.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn storage_mode_config_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(STORAGE_MODE_CONFIG_FILE)
+}
+
+pub(crate) fn load_storage_mode_config(app_data_dir: &Path) -> io::Result<StorageModeConfig> {
+    let path = storage_mode_config_path(app_data_dir);
+    if !path.exists() {
+        return Ok(StorageModeConfig::default());
+    }
+    let config: StorageModeConfig = serde_json::from_slice(&fs::read(path)?)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    config.validate()?;
+    Ok(config)
+}
+
+pub(crate) fn save_storage_mode_config(
+    app_data_dir: &Path,
+    config: &StorageModeConfig,
+) -> io::Result<()> {
+    config.validate()?;
+    ensure_private_dir(app_data_dir)?;
+    let path = storage_mode_config_path(app_data_dir);
+    let temporary_path = app_data_dir.join(format!(".{STORAGE_MODE_CONFIG_FILE}.tmp"));
+    let bytes = serde_json::to_vec_pretty(config)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    fs::write(&temporary_path, bytes)?;
+    secure_private_file(&temporary_path)?;
+    fs::rename(&temporary_path, &path)?;
+    secure_private_file(&path)
+}
 
 pub struct DatabaseConnection {
     connection: MutexGuard<'static, Option<Connection>>,
@@ -926,6 +1060,74 @@ pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use crate::test_helpers::{setup_db, setup_legacy_users_db};
+
+    fn client_storage_mode_config() -> StorageModeConfig {
+        StorageModeConfig {
+            mode: StorageMode::Client,
+            host_port: DEFAULT_LAN_PORT,
+            client_url: Some("https://192.168.1.10:8743".to_string()),
+            client_device_name: Some("Balcao 2".to_string()),
+            client_token: Some("device-token".to_string()),
+            client_certificate_fingerprint: Some("sha256:fingerprint".to_string()),
+        }
+    }
+
+    #[test]
+    fn storage_mode_defaults_to_backward_compatible_local_mode() {
+        let directory = tempfile::tempdir().unwrap();
+
+        let config = load_storage_mode_config(directory.path()).unwrap();
+
+        assert_eq!(config, StorageModeConfig::default());
+        assert_eq!(config.mode, StorageMode::Local);
+        assert_eq!(config.host_port, DEFAULT_LAN_PORT);
+    }
+
+    #[test]
+    fn storage_mode_round_trip_persists_client_pairing_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = client_storage_mode_config();
+
+        save_storage_mode_config(directory.path(), &config).unwrap();
+
+        assert_eq!(load_storage_mode_config(directory.path()).unwrap(), config);
+    }
+
+    #[test]
+    fn storage_mode_rejects_non_https_client_url() {
+        let mut config = client_storage_mode_config();
+        config.client_url = Some("http://192.168.1.10:8743".to_string());
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "LAN host URL must use HTTPS."
+        );
+    }
+
+    #[test]
+    fn storage_mode_rejects_invalid_host_port() {
+        let mut config = StorageModeConfig {
+            mode: StorageMode::Host,
+            ..StorageModeConfig::default()
+        };
+        config.host_port = 0;
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "LAN host port must be between 1 and 65535."
+        );
+    }
+
+    #[test]
+    fn storage_mode_rejects_partial_client_credentials() {
+        let mut config = client_storage_mode_config();
+        config.client_certificate_fingerprint = None;
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "Client token and certificate fingerprint must be stored together."
+        );
+    }
 
     #[test]
     fn default_database_path_uses_the_application_data_directory() {

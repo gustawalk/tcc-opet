@@ -9,7 +9,7 @@ If the skill cannot be activated, STOP and tell the user - do not proceed withou
 ---
 
 **Design**: `.specs/features/lan-host-client/design.md`
-**Status**: Draft
+**Status**: In progress
 
 ---
 
@@ -92,12 +92,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] `StorageModeConfig` supports local, host, and client settings.
-- [ ] Client settings persist the pinned host certificate fingerprint and never persist a host private key.
-- [ ] Invalid client URLs and invalid ports are rejected before save.
-- [ ] Existing local mode behavior remains the default.
-- [ ] Focused Rust tests cover defaults, round-trip persistence, invalid URL, invalid port, and backward-compatible local startup.
-- [ ] Gate check passes: `cd src-tauri && cargo test storage_mode -- --test-threads=1`
+- [x] `StorageModeConfig` supports local, host, and client settings.
+- [x] Client settings persist the pinned host certificate fingerprint and never persist a host private key.
+- [x] Invalid client URLs and invalid ports are rejected before save.
+- [x] Existing local mode behavior remains the default.
+- [x] Focused Rust tests cover defaults, round-trip persistence, invalid URL, invalid port, and backward-compatible local startup.
+- [x] Gate check passes: `cd src-tauri && cargo test storage_mode -- --test-threads=1`
 
 **Tests**: unit
 **Gate**: quick

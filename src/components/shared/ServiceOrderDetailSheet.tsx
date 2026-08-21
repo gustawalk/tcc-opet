@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   Sheet,
@@ -75,11 +75,11 @@ interface ServiceOrderDetailSheetProps {
 }
 
 const fetchOrder = async (id: string): Promise<ServiceOrder | null> => {
-  return await invoke<ServiceOrder | null>("get_service_order", { id });
+  return await dataCommand<ServiceOrder | null>("get_service_order", { id });
 };
 
 const fetchParts = async (orderId: string) => {
-  return await invoke<
+  return await dataCommand<
     {
       id: string;
       serviceOrderId: string;
@@ -93,13 +93,13 @@ const fetchParts = async (orderId: string) => {
 };
 
 const fetchChecklist = async (orderId: string): Promise<ChecklistItem[]> => {
-  return await invoke<ChecklistItem[]>("get_service_order_checklist", {
+  return await dataCommand<ChecklistItem[]>("get_service_order_checklist", {
     osId: orderId,
   });
 };
 
 const fetchEvents = async (orderId: string): Promise<ServiceOrderEvent[]> => {
-  return await invoke<ServiceOrderEvent[]>("get_service_order_events", {
+  return await dataCommand<ServiceOrderEvent[]>("get_service_order_events", {
     serviceOrderId: orderId,
   });
 };
@@ -107,7 +107,7 @@ const fetchEvents = async (orderId: string): Promise<ServiceOrderEvent[]> => {
 const fetchAttachments = async (
   orderId: string,
 ): Promise<ServiceOrderAttachment[]> => {
-  return await invoke<ServiceOrderAttachment[]>(
+  return await dataCommand<ServiceOrderAttachment[]>(
     "get_service_order_attachments",
     { serviceOrderId: orderId },
   );
@@ -220,7 +220,7 @@ function AttachmentItem({
   const previewQuery = useQuery({
     queryKey: ["service-order-attachment-preview", attachment.id],
     queryFn: () =>
-      invoke<string>("read_service_order_attachment", { id: attachment.id }),
+      dataCommand<string>("read_service_order_attachment", { id: attachment.id }),
     enabled: previewOpen && isImage,
   });
 
@@ -229,7 +229,7 @@ function AttachmentItem({
     if (!destination) return;
 
     try {
-      await invoke("export_service_order_attachment", {
+      await dataCommand("export_service_order_attachment", {
         id: attachment.id,
         destination,
       });
@@ -401,7 +401,7 @@ export function ServiceOrderDetailSheet({
   const [pdfPreview, setPdfPreview] = useState<PdfPreview | null>(null);
   const pdfMutation = useMutation({
     mutationFn: () =>
-      invoke<PdfPreview>("preview_service_order_pdf", {
+      dataCommand<PdfPreview>("preview_service_order_pdf", {
         serviceOrderId: orderId!,
       }),
     onSuccess: setPdfPreview,

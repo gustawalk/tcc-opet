@@ -438,10 +438,10 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Core views no longer call `invoke` directly for shared business data.
-- [ ] Existing query keys and invalidation behavior remain stable.
-- [ ] Frontend tests cover representative local-mode and client-mode calls.
-- [ ] Gate check passes: `yarn test`
+- [x] Core views no longer call `invoke` directly for shared business data.
+- [x] Existing query keys and invalidation behavior remain stable.
+- [x] Frontend tests cover representative local-mode and client-mode calls.
+- [x] Gate check passes: `yarn test`
 
 **Tests**: unit
 **Gate**: full

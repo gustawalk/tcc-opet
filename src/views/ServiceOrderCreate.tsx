@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { dataCommand } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
@@ -66,11 +67,11 @@ type PendingAttachmentSelection = {
   fileNames: string[];
 };
 
-const fetchCustomers = () => invoke<Customer[]>("get_customers");
-const fetchUsers = () => invoke<UserType[]>("get_users");
+const fetchCustomers = () => dataCommand<Customer[]>("get_customers");
+const fetchUsers = () => dataCommand<UserType[]>("get_users");
 const fetchTemplates = () =>
-  invoke<ChecklistTemplate[]>("get_checklist_templates");
-const fetchInventory = () => invoke<InventoryItem[]>("get_inventory_items");
+  dataCommand<ChecklistTemplate[]>("get_checklist_templates");
+const fetchInventory = () => dataCommand<InventoryItem[]>("get_inventory_items");
 
 export function ServiceOrderCreate() {
   const navigate = useNavigate();
@@ -270,7 +271,7 @@ export function ServiceOrderCreate() {
         (formData.phone !== originalCustomer.phone ||
           formData.email !== originalCustomer.email ||
           formData.address !== originalCustomer.address);
-      await invoke("create_full_service_order", {
+      await dataCommand("create_full_service_order", {
         request: {
           customerAction: selectedCustomer
             ? {

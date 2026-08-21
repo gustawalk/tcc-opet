@@ -12,6 +12,7 @@ import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvid
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
+import { initializeDataClient } from "./lib/data-client";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
 
@@ -145,6 +146,24 @@ function UpdatePatchNotes() {
 }
 
 function App() {
+  const [dataClientReady, setDataClientReady] = useState(false);
+  const [dataClientError, setDataClientError] = useState(false);
+
+  useEffect(() => {
+    void initializeDataClient()
+      .then(() => setDataClientReady(true))
+      .catch(() => setDataClientError(true));
+  }, []);
+
+  if (dataClientError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-sm text-destructive">
+        Não foi possível carregar o modo de armazenamento.
+      </div>
+    );
+  }
+  if (!dataClientReady) return <RouteLoading />;
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

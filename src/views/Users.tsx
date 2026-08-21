@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { 
   UserPlus, 
   Search, 
@@ -65,7 +65,7 @@ const fetchUsersPage = (args: {
   offset: number;
   search: string;
 }): Promise<Page<UserType>> => {
-  return invoke<Page<UserType>>("get_users_page", args);
+  return dataCommand<Page<UserType>>("get_users_page", args);
 };
 
 export function Users() {
@@ -116,7 +116,7 @@ export function Users() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; email: string; phone?: string; cpf?: string; joinDate?: string }) => {
-      return await invoke("create_user", data);
+      return await dataCommand("create_user", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usersPage"] });
@@ -130,7 +130,7 @@ export function Users() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; email: string; phone?: string; cpf?: string; joinDate?: string }) => {
-      return await invoke("update_user", data);
+      return await dataCommand("update_user", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usersPage"] });
@@ -144,7 +144,7 @@ export function Users() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await invoke("delete_user", { id });
+      return await dataCommand("delete_user", { id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usersPage"] });

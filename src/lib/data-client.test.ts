@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { dataClient } from "./data-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { configureDataClient, dataClient, initializeDataClient } from "./data-client";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -18,19 +18,21 @@ function mode(activeMode: "local" | "host" | "client") {
 describe("dataClient", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
+    configureDataClient("local");
   });
+
+  afterEach(() => configureDataClient("local"));
 
   it.each(["local", "host"] as const)(
     "preserves local invoke arguments in %s mode",
     async (activeMode) => {
-      mockedInvoke
-        .mockResolvedValueOnce(mode(activeMode))
-        .mockResolvedValueOnce({ total: 1 });
+      configureDataClient(activeMode);
+      mockedInvoke.mockResolvedValueOnce({ total: 1 });
 
       await expect(
         dataClient.query("get_customers_page", { limit: 20, offset: 0 }),
       ).resolves.toEqual({ total: 1 });
-      expect(mockedInvoke).toHaveBeenNthCalledWith(2, "get_customers_page", {
+      expect(mockedInvoke).toHaveBeenCalledWith("get_customers_page", {
         limit: 20,
         offset: 0,
       });
@@ -38,13 +40,12 @@ describe("dataClient", () => {
   );
 
   it("routes client reads through the Rust transport", async () => {
-    mockedInvoke
-      .mockResolvedValueOnce(mode("client"))
-      .mockResolvedValueOnce({ items: [], total: 0 });
+    configureDataClient("client");
+    mockedInvoke.mockResolvedValueOnce({ items: [], total: 0 });
 
     await dataClient.query("get_customers_page", { limit: 20 });
 
-    expect(mockedInvoke).toHaveBeenNthCalledWith(2, "lan_remote_command", {
+    expect(mockedInvoke).toHaveBeenCalledWith("lan_remote_command", {
       operation: "get_customers_page",
       payload: { limit: 20 },
       idempotencyKey: null,
@@ -52,13 +53,12 @@ describe("dataClient", () => {
   });
 
   it("adds a stable idempotency key to remote mutations", async () => {
-    mockedInvoke
-      .mockResolvedValueOnce(mode("client"))
-      .mockResolvedValueOnce("customer-id");
+    configureDataClient("client");
+    mockedInvoke.mockResolvedValueOnce("customer-id");
 
     await dataClient.mutate("create_customer", { name: "Ana" }, "request-123");
 
-    expect(mockedInvoke).toHaveBeenNthCalledWith(2, "lan_remote_command", {
+    expect(mockedInvoke).toHaveBeenCalledWith("lan_remote_command", {
       operation: "create_customer",
       payload: { name: "Ana" },
       idempotencyKey: "request-123",
@@ -72,9 +72,24 @@ describe("dataClient", () => {
     { en: "Version mismatch", pt: "As versões devem ser iguais." },
     { en: "Invalid input", pt: "Os dados enviados são inválidos." },
   ])("preserves typed remote errors: $en", async (error) => {
-    mockedInvoke.mockResolvedValueOnce(mode("client")).mockRejectedValueOnce(error);
+    configureDataClient("client");
+    mockedInvoke.mockRejectedValueOnce(error);
 
     await expect(dataClient.query("get_dashboard_data")).rejects.toEqual(error);
-    expect(mockedInvoke).toHaveBeenCalledTimes(2);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("initializes the active mode before application routes render", async () => {
+    mockedInvoke.mockResolvedValueOnce(mode("client"));
+
+    await expect(initializeDataClient()).resolves.toEqual(mode("client"));
+    mockedInvoke.mockResolvedValueOnce({ ok: true });
+    await dataClient.query("get_dashboard_data");
+
+    expect(mockedInvoke).toHaveBeenLastCalledWith("lan_remote_command", {
+      operation: "get_dashboard_data",
+      payload: {},
+      idempotencyKey: null,
+    });
   });
 });

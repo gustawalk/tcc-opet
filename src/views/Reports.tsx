@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   Area,
@@ -94,7 +94,7 @@ function reportFilters(
   };
 }
 
-const fetchUsers = () => invoke<AppUser[]>("get_users");
+const fetchUsers = () => dataCommand<AppUser[]>("get_users");
 
 function BreakdownTable<T extends FinancialBreakdown>({
   items,
@@ -312,7 +312,7 @@ export function Reports() {
     refetch,
   } = useQuery({
     queryKey: ["financial-report", startDate, endDate, technicianId, rankingMetric, rankingLimit],
-    queryFn: () => invoke<FinancialReport>("get_financial_report", filters),
+    queryFn: () => dataCommand<FinancialReport>("get_financial_report", filters),
     placeholderData: keepPreviousData,
   });
 
@@ -332,7 +332,7 @@ export function Reports() {
       if (!destination) return;
 
       setExporting("csv");
-      await invoke("export_financial_report_csv", {
+      await dataCommand("export_financial_report_csv", {
         ...filters,
         destination,
       });
@@ -347,7 +347,7 @@ export function Reports() {
   const previewPdf = async () => {
     try {
       setExporting("pdf");
-      const preview = await invoke<PdfPreview>(
+      const preview = await dataCommand<PdfPreview>(
         "preview_financial_report_pdf",
         filters,
       );

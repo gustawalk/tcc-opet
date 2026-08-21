@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { Box, DollarSign, Save, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -131,7 +131,7 @@ export function InventoryItemSheet({
 
   const createMutation = useMutation({
     mutationFn: async (data: InventoryItemPayload) =>
-      invoke<InventoryItem>("create_inventory_item", {
+      dataCommand<InventoryItem>("create_inventory_item", {
         name: data.name,
         description: data.description,
         type: data.type,
@@ -145,7 +145,7 @@ export function InventoryItemSheet({
   const updateMutation = useMutation({
     mutationFn: async (data: InventoryItemPayload) => {
       if (!item) return;
-      await invoke("update_inventory_item", {
+      await dataCommand("update_inventory_item", {
         id: item.id,
         ...data,
         currentQuantity: item.currentQuantity,

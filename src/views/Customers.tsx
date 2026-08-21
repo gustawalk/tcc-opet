@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import {
   UserPlus,
   Search,
@@ -74,7 +74,7 @@ const fetchCustomersPage = (args: {
   offset: number;
   search: string;
 }): Promise<Page<Customer>> => {
-  return invoke<Page<Customer>>("get_customers_page", args);
+  return dataCommand<Page<Customer>>("get_customers_page", args);
 };
 
 const initialFormData = {
@@ -142,7 +142,7 @@ export function Customers() {
       email: string;
       address: string;
     }) => {
-      return await invoke("create_customer", data);
+      return await dataCommand("create_customer", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customersPage"] });
@@ -161,7 +161,7 @@ export function Customers() {
       email: string;
       address: string;
     }) => {
-      return await invoke("update_customer", data);
+      return await dataCommand("update_customer", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customersPage"] });
@@ -174,7 +174,7 @@ export function Customers() {
 
   const deleteCustomerMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await invoke("delete_customer", { id });
+      return await dataCommand("delete_customer", { id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customersPage"] });

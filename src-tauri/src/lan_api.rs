@@ -362,6 +362,7 @@ fn dispatch_catalog_command(
             )?)
         }
         "get_customer" => encode(facade::get_customer(decode::<IdInput>(payload)?.id)?),
+        "get_customers" => encode(facade::get_customers()?),
         "get_customers_page" => {
             let input: PageInput = decode(payload)?;
             encode(facade::get_customers_page(
@@ -392,6 +393,7 @@ fn dispatch_catalog_command(
             )?)
         }
         "get_user" => encode(facade::get_user(decode::<IdInput>(payload)?.id)?),
+        "get_users" => encode(facade::get_users()?),
         "get_users_page" => {
             let input: PageInput = decode(payload)?;
             encode(facade::get_users_page(
@@ -426,6 +428,7 @@ fn dispatch_catalog_command(
             )?)
         }
         "get_inventory_item" => encode(facade::get_inventory_item(decode::<IdInput>(payload)?.id)?),
+        "get_inventory_items" => encode(facade::get_inventory_items()?),
         "get_inventory_items_page" => {
             let input: InventoryPageInput = decode(payload)?;
             encode(facade::get_inventory_items_page(
@@ -487,6 +490,7 @@ fn dispatch_catalog_command(
                 input.search,
             )?)
         }
+        "get_checklist_templates" => encode(facade::get_checklist_templates()?),
         "get_checklist_template_items" => encode(facade::get_checklist_template_items(
             decode::<IdInput>(payload)?.id,
         )?),

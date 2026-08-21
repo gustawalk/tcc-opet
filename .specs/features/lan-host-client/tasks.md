@@ -518,10 +518,10 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Guide explains Local, Host, and Client modes.
-- [ ] Guide explains pairing, device revocation, client remote backup download, restore/reset ownership, and disconnected read/write blocking.
-- [ ] Maintainer section lists central tables, future shard candidates, and current sharding blockers.
-- [ ] Build gate passes.
+- [x] Guide explains Local, Host, and Client modes.
+- [x] Guide explains pairing, device revocation, client remote backup download, restore/reset ownership, and disconnected read/write blocking.
+- [x] Maintainer section lists central tables, future shard candidates, and current sharding blockers.
+- [x] Build gate passes.
 
 **Tests**: none
 **Gate**: build

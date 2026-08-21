@@ -25,6 +25,8 @@ coverage/
 *.sw?
 *.md
 !docs/**/*.md
+!.specs/*.md
+!.specs/**/*.md
 
 database.db
 

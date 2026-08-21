@@ -13,6 +13,7 @@ import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProg
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { initializeDataClient } from "./lib/data-client";
+import { runDueLanRemoteBackup } from "./lib/lan-backup";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
 
@@ -154,6 +155,14 @@ function App() {
       .then(() => setDataClientReady(true))
       .catch(() => setDataClientError(true));
   }, []);
+
+  useEffect(() => {
+    if (!dataClientReady) return;
+    const run = () => void runDueLanRemoteBackup().catch(() => undefined);
+    run();
+    const timer = window.setInterval(run, 60_000);
+    return () => window.clearInterval(timer);
+  }, [dataClientReady]);
 
   if (dataClientError) {
     return (

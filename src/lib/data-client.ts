@@ -7,6 +7,7 @@ export interface DataClientOptions {
 }
 
 const MUTATIONS = new Set([
+  "update_settings",
   "create_customer",
   "update_customer",
   "delete_customer",
@@ -37,6 +38,10 @@ let activeMode: LanModeStatus["activeMode"] = "local";
 
 export function configureDataClient(mode: LanModeStatus["activeMode"]): void {
   activeMode = mode;
+}
+
+export function getDataClientMode(): LanModeStatus["activeMode"] {
+  return activeMode;
 }
 
 export async function initializeDataClient(): Promise<LanModeStatus> {

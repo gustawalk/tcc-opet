@@ -28,6 +28,7 @@ const PAIRING_CODE_TTL_SECONDS: i64 = 10 * 60;
 struct ApiState {
     auth: Arc<LanAuthService>,
     idempotency: Arc<crate::lan_idempotency::LanIdempotencyService>,
+    certificate_pem: Arc<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -65,6 +66,12 @@ struct HealthResponse {
     mode: &'static str,
     server_time: String,
     database_ready: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CertificateResponse {
+    certificate_pem: String,
 }
 
 #[derive(Deserialize)]
@@ -180,10 +187,22 @@ fn start_host_server(
     let pairing_code = auth.create_pairing_code(PAIRING_CODE_TTL_SECONDS, Utc::now())?;
     let router = Router::new()
         .route("/health", get(health))
+        .route("/certificate", get(certificate))
         .route("/pair", post(pair))
         .route("/auth-check", get(auth_check))
         .route("/api/v1/commands/{operation}", post(product_command))
-        .with_state(ApiState { auth, idempotency });
+        .with_state(ApiState {
+            auth,
+            idempotency,
+            certificate_pem: Arc::new(
+                String::from_utf8(identity.certificate_pem.clone()).map_err(|error| {
+                    lan_error(
+                        format!("Invalid LAN certificate encoding: {error}"),
+                        "O certificado LAN possui uma codificação inválida.",
+                    )
+                })?,
+            ),
+        });
     let handle = axum_server::Handle::new();
     let server_handle = handle.clone();
     tauri::async_runtime::spawn(async move {
@@ -214,6 +233,16 @@ async fn health(headers: HeaderMap) -> Result<Json<HealthResponse>, ApiError> {
         mode: "host",
         server_time: Utc::now().to_rfc3339(),
         database_ready: crate::database::get_db().is_ok(),
+    }))
+}
+
+async fn certificate(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<CertificateResponse>, ApiError> {
+    require_matching_version(&headers)?;
+    Ok(Json(CertificateResponse {
+        certificate_pem: (*state.certificate_pem).clone(),
     }))
 }
 
@@ -318,7 +347,8 @@ async fn product_command(
 fn is_catalog_mutation(operation: &str) -> bool {
     matches!(
         operation,
-        "create_customer"
+        "update_settings"
+            | "create_customer"
             | "update_customer"
             | "delete_customer"
             | "create_user"
@@ -352,6 +382,10 @@ fn dispatch_catalog_command(
     use crate::commands::facade;
 
     match operation {
+        "get_settings" => encode(facade::get_settings()?),
+        "update_settings" => encode(facade::update_settings(
+            decode::<RequestEnvelope<crate::models::settings::Settings>>(payload)?.request,
+        )?),
         "create_customer" => {
             let input: CustomerInput = decode(payload)?;
             encode(facade::create_customer(
@@ -1089,23 +1123,22 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(wrong_version.status(), StatusCode::CONFLICT);
 
-        let pairing_body = serde_json::to_vec(&json!({
-            "code": server.status.pairing_code.code,
-            "deviceName": "Balcao 2",
-            "appVersion": env!("CARGO_PKG_VERSION")
-        }))
-        .unwrap();
-        let mut pairing = agent
-            .post(format!("{base_url}/pair"))
-            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
-            .header(header::CONTENT_TYPE.as_str(), "application/json")
-            .send(pairing_body)
+        let verification_code = format!(
+            "{}|{}",
+            server.status.pairing_code.code, server.status.certificate_fingerprint
+        );
+        let paired =
+            crate::lan_client::pair_client(&base_url, "Balcao 2", &verification_code).unwrap();
+        let token = paired.config.client_token.as_deref().unwrap();
+        let conn = crate::database::get_db().unwrap();
+        let device_id: String = conn
+            .query_row(
+                "SELECT id FROM lan_devices WHERE name = 'Balcao 2'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(pairing.status(), StatusCode::OK);
-        let paired: serde_json::Value =
-            serde_json::from_str(&pairing.body_mut().read_to_string().unwrap()).unwrap();
-        let token = paired["token"].as_str().unwrap();
-        let device_id = paired["deviceId"].as_str().unwrap();
+        drop(conn);
 
         let unauthorized_command = agent
             .post(format!("{base_url}/api/v1/commands/create_customer"))

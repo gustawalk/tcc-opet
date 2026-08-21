@@ -99,6 +99,14 @@ export interface LanModeStatus {
   storageReady: boolean;
 }
 
+export interface LanHostStatus {
+  running: boolean;
+  address?: string | null;
+  verificationCode?: string | null;
+  certificateFingerprint?: string | null;
+  startupError?: string | null;
+}
+
 export interface UpdateCheck {
   configured: boolean;
   currentVersion: string;

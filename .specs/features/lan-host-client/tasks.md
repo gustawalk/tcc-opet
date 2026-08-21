@@ -463,14 +463,14 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] User can choose Local, Host, or Client mode.
-- [ ] Host mode shows URL, port, status, and pairing code.
-- [ ] Client mode validates URL, accepts pairing code, shows connection status, and stores pairing result.
-- [ ] Settings explains that traffic is encrypted and shows the paired host certificate fingerprint without exposing private key material.
-- [ ] Client mode allows manual remote backup download and optional scheduled remote backup download through the host.
-- [ ] Client mode hides or disables reset, restore, import, and authoritative backup configuration controls with host-only explanation.
-- [ ] Tests cover host setup, invalid URL, invalid pairing, successful pairing, encrypted-status display, certificate mismatch, version mismatch, disconnected state, remote backup download, and host-only destructive storage messaging.
-- [ ] Gate check passes: `yarn test src/views/Settings.test.tsx`
+- [x] User can choose Local, Host, or Client mode.
+- [x] Host mode shows URL, port, status, and pairing code.
+- [x] Client mode validates URL, accepts pairing code, shows connection status, and stores pairing result.
+- [x] Settings explains that traffic is encrypted and shows the paired host certificate fingerprint without exposing private key material.
+- [x] Client mode allows manual remote backup download and optional scheduled remote backup download through the host.
+- [x] Client mode hides or disables reset, restore, import, and authoritative backup configuration controls with host-only explanation.
+- [x] Tests cover host setup, invalid URL, invalid pairing, successful pairing, encrypted-status display, certificate mismatch, version mismatch, disconnected state, remote backup download, and host-only destructive storage messaging.
+- [x] Gate check passes: `yarn test src/views/Settings.test.tsx`
 
 **Tests**: unit
 **Gate**: quick

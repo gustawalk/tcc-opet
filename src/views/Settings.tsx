@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, MapPin, Monitor, Moon, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, Sun, Upload, WifiOff } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -37,7 +37,16 @@ import {
   type AutomaticBackupRunResult,
   type AutomaticBackupSettings,
   type AutomaticBackupStatus,
+  type LanHostStatus,
+  type LanMode,
+  type LanModeConfig,
+  type LanModeStatus,
 } from "@/lib/types";
+import { dataCommand } from "@/lib/data-client";
+import {
+  loadLanRemoteBackupSettings,
+  saveLanRemoteBackupSettings,
+} from "@/lib/lan-backup";
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
 import { RelativeDate } from "@/components/shared/RelativeDate";
@@ -68,7 +77,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 }
 
 const fetchSettings = async (): Promise<Settings> => {
-  return await invoke<Settings>("get_settings");
+  return await dataCommand<Settings>("get_settings");
 };
 
 const fetchSystemInfo = async (): Promise<SystemInfo> => {
@@ -119,6 +128,32 @@ export function Settings() {
   const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
+  const [selectedLanMode, setSelectedLanMode] = useState<LanMode>("local");
+  const [hostPort, setHostPort] = useState(8743);
+  const [clientUrl, setClientUrl] = useState("");
+  const [clientDeviceName, setClientDeviceName] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [remoteBackupSettings, setRemoteBackupSettings] = useState(
+    loadLanRemoteBackupSettings,
+  );
+
+  const { data: lanMode } = useQuery({
+    queryKey: ["lan-mode"],
+    queryFn: () => invoke<LanModeStatus>("get_lan_mode_config"),
+  });
+  const { data: hostStatus } = useQuery({
+    queryKey: ["lan-host-status"],
+    queryFn: () => invoke<LanHostStatus>("get_lan_host_status"),
+    enabled: lanMode?.activeMode === "host",
+    refetchInterval: 3000,
+  });
+  const clientConnection = useQuery({
+    queryKey: ["lan-client-connection"],
+    queryFn: () => invoke("check_lan_client_connection"),
+    enabled: lanMode?.activeMode === "client",
+    retry: false,
+    refetchInterval: 5000,
+  });
 
   const { data: settingsData, isError: isSettingsError, refetch: refetchSettings } = useQuery({
     queryKey: ["settings"],
@@ -159,6 +194,14 @@ export function Settings() {
   }, [settingsData]);
 
   useEffect(() => {
+    if (!lanMode) return;
+    setSelectedLanMode(lanMode.config.mode);
+    setHostPort(lanMode.config.hostPort);
+    setClientUrl(lanMode.config.clientUrl ?? "");
+    setClientDeviceName(lanMode.config.clientDeviceName ?? "");
+  }, [lanMode]);
+
+  useEffect(() => {
     if (automaticBackupStatus && (!automaticBackupInitialized.current || !isAutomaticBackupDirty)) {
       setAutomaticBackupSettings({
         enabled: automaticBackupStatus.enabled,
@@ -171,7 +214,7 @@ export function Settings() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: Settings) => {
-      return await invoke("update_settings", { settings: data });
+      return await dataCommand("update_settings", { settings: data });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -182,7 +225,9 @@ export function Settings() {
 
   const exportMutation = useMutation({
     mutationFn: async ({ destination, passphrase }: { destination: string; passphrase: string }) =>
-      invoke<BackupSummary>("export_backup", { destination, passphrase }),
+      lanMode?.activeMode === "client"
+        ? invoke<BackupSummary>("download_lan_remote_backup", { destination, passphrase })
+        : invoke<BackupSummary>("export_backup", { destination, passphrase }),
     onSuccess: (backup) => toastSuccess(`Backup exportado com ${backup.attachmentCount} anexo(s).`),
     onError: (err) => toastError(err, "Erro ao exportar backup."),
   });
@@ -249,6 +294,30 @@ export function Settings() {
     onSettled: () => setIsResetStarting(false),
   });
   const isResetting = isResetStarting || resetMutation.isPending;
+
+  const lanModeMutation = useMutation({
+    mutationFn: async (mode: LanMode) => {
+      const config: LanModeConfig = {
+        ...(lanMode?.config ?? { mode: "local", hostPort: 8743 }),
+        mode,
+        hostPort,
+      };
+      return invoke<LanModeStatus>("update_lan_mode_config", { config });
+    },
+    onSuccess: async () => relaunch(),
+    onError: (err) => toastError(err, "Não foi possível alterar o modo LAN."),
+  });
+
+  const pairMutation = useMutation({
+    mutationFn: () =>
+      invoke<LanModeStatus>("pair_lan_client", {
+        url: clientUrl,
+        deviceName: clientDeviceName,
+        verificationCode,
+      }),
+    onSuccess: async () => relaunch(),
+    onError: (err) => toastError(err, "Não foi possível parear com o host."),
+  });
 
   const updateCheckMutation = useMutation({
     mutationFn: async () => {
@@ -356,6 +425,29 @@ export function Settings() {
     } catch (err) {
       toastError(err, "Erro ao selecionar a pasta do backup automático.");
     }
+  };
+
+  const handleSelectRemoteBackupDirectory = async () => {
+    try {
+      const destination = await invoke<string | null>("select_automatic_backup_directory");
+      if (destination) {
+        setRemoteBackupSettings((current) => ({ ...current, destination }));
+      }
+    } catch (err) {
+      toastError(err, "Erro ao selecionar a pasta do backup remoto.");
+    }
+  };
+
+  const persistRemoteBackupSettings = () => {
+    if (
+      remoteBackupSettings.enabled &&
+      (!remoteBackupSettings.destination || remoteBackupSettings.intervalHours < 1)
+    ) {
+      toastError("Selecione uma pasta e informe um intervalo válido.");
+      return;
+    }
+    saveLanRemoteBackupSettings(remoteBackupSettings);
+    toastSuccess("Backup remoto automático configurado neste computador.");
   };
 
   const validatedAutomaticBackupSettings = (enabled = automaticBackupSettings.enabled) => {
@@ -686,6 +778,150 @@ export function Settings() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Network className="h-5 w-5 text-primary" /> Rede local
+            </CardTitle>
+            <CardDescription>
+              Compartilhe os dados somente nesta rede, sem depender da internet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="lan-mode">Modo deste computador</Label>
+              <Select
+                value={selectedLanMode}
+                onValueChange={(value) => setSelectedLanMode(value as LanMode)}
+              >
+                <SelectTrigger id="lan-mode" aria-label="Modo LAN">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">Local</SelectItem>
+                  <SelectItem value="host">Host</SelectItem>
+                  <SelectItem value="client">Cliente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedLanMode === "host" && (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Server className="h-4 w-4" /> Servidor LAN
+                  </div>
+                  <Badge variant={hostStatus?.running ? "default" : "secondary"}>
+                    {hostStatus?.running ? "Ativo" : "Reinício necessário"}
+                  </Badge>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-port">Porta local</Label>
+                  <Input
+                    id="lan-port"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={hostPort}
+                    onChange={(event) => setHostPort(Number(event.target.value))}
+                  />
+                </div>
+                {hostStatus?.address && (
+                  <p className="text-xs text-muted-foreground">
+                    Endereço: <code>{`https://${hostStatus.address}`}</code>
+                  </p>
+                )}
+                {hostStatus?.verificationCode && (
+                  <div className="space-y-1">
+                    <Label>Código de verificação</Label>
+                    <code className="block break-all rounded bg-muted p-2 text-xs">
+                      {hostStatus.verificationCode}
+                    </code>
+                    <p className="text-xs text-muted-foreground">
+                      Compartilhe este código somente com o funcionário que está pareando agora.
+                    </p>
+                  </div>
+                )}
+                {hostStatus?.startupError && (
+                  <p className="text-xs text-destructive">{hostStatus.startupError}</p>
+                )}
+              </div>
+            )}
+
+            {selectedLanMode === "client" && (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">Conexão com o host</span>
+                  {lanMode?.activeMode === "client" && (
+                    <Badge variant={clientConnection.isSuccess ? "default" : "secondary"}>
+                      {clientConnection.isSuccess ? "Conectado" : "Desconectado"}
+                    </Badge>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-client-url">Endereço HTTPS do host</Label>
+                  <Input
+                    id="lan-client-url"
+                    placeholder="https://192.168.1.10:8743"
+                    value={clientUrl}
+                    onChange={(event) => setClientUrl(event.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-device-name">Nome deste computador</Label>
+                  <Input
+                    id="lan-device-name"
+                    placeholder="Balcão 2"
+                    value={clientDeviceName}
+                    onChange={(event) => setClientDeviceName(event.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-verification-code">Código de verificação</Label>
+                  <Input
+                    id="lan-verification-code"
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.target.value)}
+                  />
+                </div>
+                {lanMode?.config.clientCertificateFingerprint && (
+                  <div className="flex gap-2 text-xs text-muted-foreground">
+                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="break-all">
+                      Tráfego criptografado. Certificado: {lanMode.config.clientCertificateFingerprint}
+                    </span>
+                  </div>
+                )}
+                {clientConnection.isError && (
+                  <div className="flex gap-2 text-xs text-destructive">
+                    <WifiOff className="h-4 w-4 shrink-0" />
+                    O host está indisponível. Leituras e alterações permanecem bloqueadas.
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => pairMutation.mutate()}
+                  disabled={pairMutation.isPending || !clientUrl || !clientDeviceName || !verificationCode}
+                >
+                  {pairMutation.isPending ? "Pareando..." : "Parear e reiniciar"}
+                </Button>
+              </div>
+            )}
+
+            {selectedLanMode !== "client" && (
+              <Button
+                type="button"
+                className="w-full"
+                disabled={lanModeMutation.isPending || selectedLanMode === lanMode?.config.mode}
+                onClick={() => lanModeMutation.mutate(selectedLanMode)}
+              >
+                {lanModeMutation.isPending ? "Salvando..." : "Salvar modo e reiniciar"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup
             </CardTitle>
@@ -717,12 +953,65 @@ export function Settings() {
               >
                 <Save className="h-4 w-4" /> {exportMutation.isPending ? "Exportando..." : "Exportar Backup"}
               </Button>
-              <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
-                <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
-              </Button>
+              {lanMode?.activeMode !== "client" && (
+                <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleImport} disabled={restoreMutation.isPending}>
+                  <Upload className="h-4 w-4" /> {restoreMutation.isPending ? "Restaurando..." : "Importar Backup"}
+                </Button>
+              )}
             </div>
             <Separator />
-            <details className="group rounded-lg border bg-muted/20">
+            {lanMode?.activeMode === "client" ? (
+              <div className="space-y-4 rounded-md border p-3">
+                <p className="text-sm text-muted-foreground">
+                  O backup exportado é criado pelo host e salvo neste computador. Importação,
+                  restauração, reset e configuração do backup principal estão disponíveis somente no
+                  computador host.
+                </p>
+                <div className="flex items-start gap-3 border-t pt-3">
+                  <Checkbox
+                    id="lan-remote-backup-enabled"
+                    checked={remoteBackupSettings.enabled}
+                    onChange={(event) =>
+                      setRemoteBackupSettings((current) => ({
+                        ...current,
+                        enabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  <Label htmlFor="lan-remote-backup-enabled">
+                    Baixar backup remoto automaticamente
+                  </Label>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Pasta neste computador</Label>
+                  <code className="truncate rounded bg-muted p-2 text-[10px]">
+                    {remoteBackupSettings.destination || "Nenhuma pasta selecionada"}
+                  </code>
+                  <Button type="button" variant="outline" size="sm" onClick={handleSelectRemoteBackupDirectory}>
+                    <FolderOpen className="h-4 w-4" /> Selecionar pasta
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-remote-backup-interval">Intervalo em horas</Label>
+                  <Input
+                    id="lan-remote-backup-interval"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={remoteBackupSettings.intervalHours}
+                    onChange={(event) =>
+                      setRemoteBackupSettings((current) => ({
+                        ...current,
+                        intervalHours: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </div>
+                <Button type="button" size="sm" className="w-full" onClick={persistRemoteBackupSettings}>
+                  Salvar backup remoto
+                </Button>
+              </div>
+            ) : <details className="group rounded-lg border bg-muted/20">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 marker:content-none">
                 <div className="flex items-center gap-2">
                   <HardDriveDownload className="h-4 w-4 text-primary" />
@@ -861,11 +1150,11 @@ export function Settings() {
                   Retenção leve: 7 pontos diários e 4 semanais.
                 </p>
               </div>
-            </details>
+            </details>}
           </CardContent>
         </Card>
 
-        <Card className="border-destructive/20">
+        {lanMode?.activeMode !== "client" && <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
           </CardHeader>
@@ -877,7 +1166,7 @@ export function Settings() {
               {isResetting ? "Resetando..." : "Resetar Todos os Dados"}
             </Button>
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       <Dialog open={isReleaseHistoryOpen} onOpenChange={setIsReleaseHistoryOpen}>

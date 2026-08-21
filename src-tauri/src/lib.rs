@@ -94,6 +94,7 @@ mod database;
 mod encryption;
 mod error;
 mod lan_auth;
+mod lan_idempotency;
 mod models;
 mod money;
 mod page;

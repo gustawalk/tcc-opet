@@ -223,12 +223,12 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] First mutating request reserves the idempotency key for a route and body hash.
-- [ ] Completed duplicate request returns the original response.
-- [ ] Same key with different body is rejected.
-- [ ] Failed in-progress requests do not permanently poison the key.
-- [ ] Tests cover same-body replay, body conflict, cleanup on failure, and concurrent duplicate attempts.
-- [ ] Gate check passes: `cd src-tauri && cargo test lan_idempotency -- --test-threads=1`
+- [x] First mutating request reserves the idempotency key for a route and body hash.
+- [x] Completed duplicate request returns the original response.
+- [x] Same key with different body is rejected.
+- [x] Failed in-progress requests do not permanently poison the key.
+- [x] Tests cover same-body replay, body conflict, cleanup on failure, and concurrent duplicate attempts.
+- [x] Gate check passes: `cd src-tauri && cargo test lan_idempotency -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

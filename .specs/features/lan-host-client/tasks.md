@@ -413,10 +413,10 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Local adapter calls Tauri commands with unchanged command names and args.
-- [ ] Remote adapter invokes the Rust pinned-TLS transport with bearer token, pinned fingerprint, exact app build, idempotency keys for mutations, and typed error mapping.
-- [ ] Unit tests cover local invoke args, remote success, unauthorized, host unreachable read/write blocking, certificate mismatch, version mismatch, validation error, and idempotency header.
-- [ ] Gate check passes: `yarn test src/lib/data-client.test.ts`
+- [x] Local adapter calls Tauri commands with unchanged command names and args.
+- [x] Remote adapter invokes the Rust pinned-TLS transport with bearer token, pinned fingerprint, exact app build, idempotency keys for mutations, and typed error mapping.
+- [x] Unit tests cover local invoke args, remote success, unauthorized, host unreachable read/write blocking, certificate mismatch, version mismatch, validation error, and idempotency header.
+- [x] Gate check passes: `yarn test src/lib/data-client.test.ts`
 
 **Tests**: unit
 **Gate**: quick

@@ -51,6 +51,7 @@ macro_rules! register_commands {
             facade::update_settings,
             facade::get_lan_mode_config,
             facade::update_lan_mode_config,
+            facade::lan_remote_command,
             facade::reset_database,
             facade::get_system_info,
             facade::check_for_updates,
@@ -95,6 +96,7 @@ mod encryption;
 mod error;
 mod lan_api;
 mod lan_auth;
+mod lan_client;
 mod lan_idempotency;
 mod models;
 mod money;

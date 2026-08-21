@@ -49,6 +49,8 @@ pub(crate) struct StorageModeConfig {
     pub client_device_name: Option<String>,
     pub client_token: Option<String>,
     pub client_certificate_fingerprint: Option<String>,
+    #[serde(default)]
+    pub client_certificate_pem: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -69,6 +71,7 @@ impl Default for StorageModeConfig {
             client_device_name: None,
             client_token: None,
             client_certificate_fingerprint: None,
+            client_certificate_pem: None,
         }
     }
 }
@@ -1186,6 +1189,7 @@ mod tests {
             client_device_name: Some("Balcao 2".to_string()),
             client_token: Some("device-token".to_string()),
             client_certificate_fingerprint: Some("sha256:fingerprint".to_string()),
+            client_certificate_pem: Some("certificate".to_string()),
         }
     }
 

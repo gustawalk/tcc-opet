@@ -80,6 +80,25 @@ export interface SystemInfo {
   environment: string;
 }
 
+export type LanMode = "local" | "host" | "client";
+
+export interface LanModeConfig {
+  mode: LanMode;
+  hostPort: number;
+  clientUrl?: string | null;
+  clientDeviceName?: string | null;
+  clientToken?: string | null;
+  clientCertificateFingerprint?: string | null;
+  clientCertificatePem?: string | null;
+}
+
+export interface LanModeStatus {
+  config: LanModeConfig;
+  activeMode: LanMode;
+  restartRequired: boolean;
+  storageReady: boolean;
+}
+
 export interface UpdateCheck {
   configured: boolean;
   currentVersion: string;

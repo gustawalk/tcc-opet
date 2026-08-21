@@ -145,10 +145,10 @@ T16 -> T17 -> T18
 
 **Done when**:
 
-- [ ] Commands expose camelCase config for Local, Host, and Client modes.
-- [ ] Client mode rejects local storage maintenance command attempts with host-only errors.
-- [ ] IPC tests cover config round-trip and host-only rejection shape.
-- [ ] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
+- [x] Commands expose camelCase config for Local, Host, and Client modes.
+- [x] Client mode rejects local storage maintenance command attempts with host-only errors.
+- [x] IPC tests cover config round-trip and host-only rejection shape.
+- [x] Gate check passes: `cd src-tauri && cargo test tauri_ipc_tests -- --test-threads=1`
 
 **Tests**: integration
 **Gate**: full

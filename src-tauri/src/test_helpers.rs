@@ -60,6 +60,8 @@ pub fn setup_global_backend() -> GlobalTestBackend {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     LazyLock::force(&GLOBAL_TEST_STORAGE);
+    crate::database::update_storage_mode_config(&crate::database::StorageModeConfig::default())
+        .expect("failed to reset LAN mode configuration");
 
     let conn = crate::database::get_db().expect("failed to open global test database");
     crate::commands::settings_commands::reset_database_with_conn(&conn)

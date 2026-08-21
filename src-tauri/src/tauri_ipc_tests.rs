@@ -17,6 +17,56 @@ fn request(command: &str, body: Value) -> InvokeRequest {
 }
 
 #[test]
+fn lan_mode_settings_preserve_camel_case_ipc_contract() {
+    let _backend = setup_global_backend();
+    let app = register_commands!(mock_builder())
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+
+    let initial = get_ipc_response(&webview, request("get_lan_mode_config", json!({})))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert_eq!(initial["config"]["mode"], "local");
+    assert_eq!(initial["config"]["hostPort"], 8743);
+    assert_eq!(initial["activeMode"], "local");
+    assert_eq!(initial["restartRequired"], false);
+    assert_eq!(initial["storageReady"], true);
+
+    let updated = get_ipc_response(
+        &webview,
+        request(
+            "update_lan_mode_config",
+            json!({
+                "config": {
+                    "mode": "client",
+                    "hostPort": 8743,
+                    "clientUrl": "https://192.168.1.10:8743",
+                    "clientDeviceName": "Balcao 2",
+                    "clientToken": "device-token",
+                    "clientCertificateFingerprint": "sha256:fingerprint"
+                }
+            }),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(updated["config"]["mode"], "client");
+    assert_eq!(updated["config"]["clientDeviceName"], "Balcao 2");
+    assert_eq!(updated["restartRequired"], true);
+
+    let persisted = get_ipc_response(&webview, request("get_lan_mode_config", json!({})))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert_eq!(persisted["config"], updated["config"]);
+}
+
+#[test]
 fn core_commands_preserve_the_frontend_ipc_contract() {
     let _backend = setup_global_backend();
     let app = register_commands!(mock_builder())

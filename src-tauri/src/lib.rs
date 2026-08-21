@@ -49,6 +49,8 @@ macro_rules! register_commands {
             commands::dashboard_commands::get_dashboard_data,
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
+            commands::settings_commands::get_lan_mode_config,
+            commands::settings_commands::update_lan_mode_config,
             commands::settings_commands::reset_database,
             commands::settings_commands::get_system_info,
             commands::settings_commands::check_for_updates,

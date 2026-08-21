@@ -1050,6 +1050,14 @@ pub(crate) fn storage_mode_config() -> StorageModeConfig {
     STORAGE_MODE_CONFIG.get().cloned().unwrap_or_default()
 }
 
+pub(crate) fn persisted_storage_mode_config() -> io::Result<StorageModeConfig> {
+    load_storage_mode_config(&app_data_dir())
+}
+
+pub(crate) fn update_storage_mode_config(config: &StorageModeConfig) -> io::Result<()> {
+    save_storage_mode_config(&app_data_dir(), config)
+}
+
 pub(crate) fn app_data_dir() -> PathBuf {
     APP_DATA_DIR
         .get()
@@ -1070,6 +1078,10 @@ pub(crate) fn attachments_dir_for(database_path: &Path) -> PathBuf {
 #[cfg(test)]
 pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
     initialize_storage_at(path, false)?;
+    if let Some(parent) = path.parent() {
+        let _ = APP_DATA_DIR.set(parent.to_path_buf());
+        let _ = STORAGE_MODE_CONFIG.set(StorageModeConfig::default());
+    }
     match DB_PATH.get() {
         Some(initialized) if initialized == path => Ok(()),
         Some(_) => Err(database_error(

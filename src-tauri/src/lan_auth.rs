@@ -152,9 +152,13 @@ impl LanAuthService {
                 "O acesso deste dispositivo foi revogado.",
             ));
         }
+        // Health checks run frequently, so avoid turning each one into a write.
+        let last_seen_cutoff = (now - Duration::seconds(60)).to_rfc3339();
         conn.execute(
-            "UPDATE lan_devices SET last_seen_at = ?1 WHERE id = ?2",
-            params![now.to_rfc3339(), id],
+            "UPDATE lan_devices
+             SET last_seen_at = ?1
+             WHERE id = ?2 AND (last_seen_at IS NULL OR last_seen_at < ?3)",
+            params![now.to_rfc3339(), id, last_seen_cutoff],
         )?;
         Ok(AuthenticatedDevice { id, name })
     }
@@ -204,7 +208,27 @@ mod tests {
             .unwrap();
         assert_eq!(stored.0, token_fingerprint(&paired.token));
         assert_ne!(stored.0, paired.token);
-        assert_eq!(stored.1, (now + Duration::seconds(5)).to_rfc3339());
+        assert_eq!(stored.1, now.to_rfc3339());
+    }
+
+    #[test]
+    fn lan_auth_throttles_last_seen_writes() {
+        let (service, conn) = service_and_database();
+        let now = Utc::now();
+        let paired = pair(&service, &conn, now);
+
+        service
+            .authenticate(&conn, &paired.token, now + Duration::seconds(61))
+            .unwrap();
+        let last_seen: String = conn
+            .query_row(
+                "SELECT last_seen_at FROM lan_devices WHERE id = ?1",
+                [&paired.device_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(last_seen, (now + Duration::seconds(61)).to_rfc3339());
     }
 
     #[test]

@@ -416,7 +416,7 @@ fn dispatch_catalog_command(
     match operation {
         "get_settings" => encode(facade::get_settings()?),
         "update_settings" => encode(facade::update_settings(
-            decode::<RequestEnvelope<crate::models::settings::Settings>>(payload)?.request,
+            decode::<SettingsInput>(payload)?.settings,
         )?),
         "create_customer" => {
             let input: CustomerInput = decode(payload)?;
@@ -728,6 +728,12 @@ fn dispatch_catalog_command(
 #[serde(rename_all = "camelCase")]
 struct IdInput {
     id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsInput {
+    settings: crate::models::settings::Settings,
 }
 
 #[derive(Deserialize)]
@@ -1204,6 +1210,16 @@ pub(crate) mod tests {
             .send(br#"{"name":"Ana","phone":"1","email":"a@b.com","address":"Rua"}"#)
             .unwrap();
         assert_eq!(unauthorized_command.status(), StatusCode::UNAUTHORIZED);
+
+        let update_settings = agent
+            .post(format!("{base_url}/api/v1/commands/update_settings"))
+            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(header::AUTHORIZATION.as_str(), format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE.as_str(), "application/json")
+            .header("x-idempotency-key", "settings-1")
+            .send(br#"{"settings":{"id":1,"companyName":"OPETS LAN","cnpj":"","logoPath":"data:image/png;base64,iVBORw0KGgo=","address":"Rua LAN"}}"#)
+            .unwrap();
+        assert_eq!(update_settings.status(), StatusCode::OK);
 
         let customer_payload = br#"{"name":"Cliente LAN","phone":"41999990000","email":"lan@example.com","address":"Rua LAN"}"#;
         let mut customer = agent

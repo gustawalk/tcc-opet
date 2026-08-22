@@ -147,7 +147,12 @@ pub fn run() {
         let _ = dotenv();
         // Startup must fail visibly when the local data store cannot initialize.
         database::init_db(app)?;
-        automatic_backup::start_scheduler(app.handle().clone())?;
+        // Client mode deliberately has no local database path. Its backup is
+        // downloaded from the host by the frontend, so starting the local
+        // scheduler here would panic before the webview can render.
+        if automatic_backup::should_start_scheduler(&database::storage_mode_config().mode) {
+            automatic_backup::start_scheduler(app.handle().clone())?;
+        }
         lan_api::start_configured_host()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
         Ok(())

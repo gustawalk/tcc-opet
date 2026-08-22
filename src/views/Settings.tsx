@@ -836,7 +836,7 @@ export function Settings() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="local">PC (Local)</SelectItem>
+                  <SelectItem value="local">Local</SelectItem>
                   <SelectItem value="host">Host</SelectItem>
                   <SelectItem value="client">Cliente</SelectItem>
                 </SelectContent>

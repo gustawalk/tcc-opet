@@ -17,6 +17,7 @@ vi.mock("./layouts/MainLayout", () => ({
 }));
 vi.mock("./components/shared/ServiceOrderDrawerProvider", () => ({
   ServiceOrderDrawerProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useServiceOrderDrawer: () => ({ openServiceOrder: () => undefined }),
 }));
 vi.mock("./components/shared/CustomerDrawerProvider", () => ({
   CustomerDrawerProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -147,5 +148,31 @@ describe("LanStartupError", () => {
     render(<App />);
 
     expect(await screen.findByText(/Verificando conexão com o computador host/)).toBeInTheDocument();
+  });
+
+  it("retries the Host connection up to three times", async () => {
+    let attempts = 0;
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_lan_mode_config") {
+        return Promise.resolve({
+          config: { mode: "client", hostPort: 8743 },
+          activeMode: "client",
+          restartRequired: false,
+          storageReady: false,
+        });
+      }
+      if (command === "check_lan_client_connection") {
+        attempts += 1;
+        return attempts < 3
+          ? Promise.reject({ pt: "O computador host está indisponível." })
+          : Promise.resolve({ ok: true });
+      }
+      return Promise.resolve(null);
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(attempts).toBe(3), { timeout: 4_000 });
+    expect(screen.queryByRole("heading", { name: "Não foi possível conectar ao computador host" })).not.toBeInTheDocument();
   });
 });

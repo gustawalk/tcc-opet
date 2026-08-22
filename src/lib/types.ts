@@ -103,6 +103,7 @@ export interface LanHostStatus {
   running: boolean;
   address?: string | null;
   verificationCode?: string | null;
+  pairingCodeExpiresAt?: string | null;
   certificateFingerprint?: string | null;
   startupError?: string | null;
 }

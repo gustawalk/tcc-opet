@@ -22,6 +22,8 @@ import type { LanModeConfig } from "./lib/types";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
 const LAN_CONNECTION_CHECK_INTERVAL_MS = 5_000;
+const LAN_CONNECTION_RETRY_COUNT = 3;
+const LAN_CONNECTION_RETRY_DELAY_MS = 1_000;
 
 const Dashboard = lazy(() =>
   import("./views/Dashboard").then(({ Dashboard }) => ({ default: Dashboard })),
@@ -220,7 +222,20 @@ function App() {
       .then(async (status) => {
         if (status.activeMode === "client") {
           setStartupMessage("Verificando conexão com o computador host...");
-          await invoke("check_lan_client_connection");
+          let lastError: unknown = null;
+          for (let attempt = 0; attempt < LAN_CONNECTION_RETRY_COUNT; attempt += 1) {
+            try {
+              await invoke("check_lan_client_connection");
+              lastError = null;
+              break;
+            } catch (error) {
+              lastError = error;
+              if (attempt < LAN_CONNECTION_RETRY_COUNT - 1) {
+                await new Promise((resolve) => window.setTimeout(resolve, LAN_CONNECTION_RETRY_DELAY_MS));
+              }
+            }
+          }
+          if (lastError !== null) throw lastError;
         }
         setDataClientReady(true);
       })

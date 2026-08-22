@@ -20,6 +20,7 @@ pub struct LanHostUiStatus {
     running: bool,
     address: Option<String>,
     verification_code: Option<String>,
+    pairing_code_expires_at: Option<String>,
     certificate_fingerprint: Option<String>,
     startup_error: Option<String>,
 }
@@ -30,33 +31,42 @@ pub fn get_lan_host_status() -> LanHostUiStatus {
 }
 
 fn host_ui_status(status: crate::lan_api::LanHostRuntimeStatus) -> LanHostUiStatus {
-    let (running, address, verification_code, certificate_fingerprint) = match status.server {
-        Some(server) => (
-            true,
-            Some(
+    let (running, address, verification_code, pairing_code_expires_at, certificate_fingerprint) =
+        match status.server {
+            Some(server) => (
+                true,
                 if_addrs::get_if_addrs()
                     .ok()
                     .and_then(|interfaces| {
                         interfaces
                             .into_iter()
                             .map(|interface| interface.ip())
-                            .find(|address| address.is_ipv4() && !address.is_loopback())
+                            .find(|address| {
+                                address.is_ipv4()
+                                    && !address.is_loopback()
+                                    && !address.is_unspecified()
+                            })
                     })
                     .map(|address| format!("{address}:{}", server.address.port()))
-                    .unwrap_or_else(|| server.address.to_string()),
+                    .or_else(|| {
+                        (!server.address.ip().is_loopback()
+                            && !server.address.ip().is_unspecified())
+                        .then(|| server.address.to_string())
+                    }),
+                Some(format!(
+                    "{}|{}",
+                    server.pairing_code.code, server.certificate_fingerprint
+                )),
+                Some(server.pairing_code.expires_at.to_rfc3339()),
+                Some(server.certificate_fingerprint),
             ),
-            Some(format!(
-                "{}|{}",
-                server.pairing_code.code, server.certificate_fingerprint
-            )),
-            Some(server.certificate_fingerprint),
-        ),
-        None => (false, None, None, None),
-    };
+            None => (false, None, None, None, None),
+        };
     LanHostUiStatus {
         running,
         address,
         verification_code,
+        pairing_code_expires_at,
         certificate_fingerprint,
         startup_error: status.startup_error,
     }

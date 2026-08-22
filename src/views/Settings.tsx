@@ -893,9 +893,24 @@ export function Settings() {
                   />
                 </div>
                 {hostStatus?.address && (
-                  <p className="text-xs text-muted-foreground">
-                    Endereço: <code>{`https://${hostStatus.address}`}</code>
-                  </p>
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <p className="min-w-0 truncate">
+                      Endereço: <code>{`https://${hostStatus.address}`}</code>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 gap-1 px-2 text-xs"
+                      onClick={async () => {
+                        if (await copyToClipboard(`https://${hostStatus.address}`)) {
+                          toastSuccess("Endereço copiado.");
+                        }
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copiar
+                    </Button>
+                  </div>
                 )}
                 {hostStatus?.verificationCode && (
                   <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
@@ -943,15 +958,15 @@ export function Settings() {
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
+                                  size="sm"
+                                  className="h-7 gap-1 px-2 text-xs"
                                   aria-label="Copiar impressão digital"
                                   title="Copiar impressão digital"
                                   onClick={async () => {
                                     if (await copyToClipboard(fingerprint)) toastSuccess("Impressão digital copiada.");
                                   }}
                                 >
-                                  <Copy className="h-3.5 w-3.5" />
+                                  <Copy className="h-3.5 w-3.5" /> Copiar
                                 </Button>
                               </div>
                               <code className="block break-all rounded-md bg-background p-2 text-[11px] text-muted-foreground">
@@ -962,6 +977,11 @@ export function Settings() {
                           <p className="text-xs text-muted-foreground">
                             O código numérico e a impressão digital são informações separadas. Compartilhe ambos somente durante esta conexão.
                           </p>
+                          {hostStatus?.pairingCodeExpiresAt && (
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                              Código válido até {new Date(hostStatus.pairingCodeExpiresAt).toLocaleString("pt-BR")}.
+                            </p>
+                          )}
                         </>
                       );
                     })()}

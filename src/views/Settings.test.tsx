@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -301,6 +301,26 @@ describe("Settings LAN host and client", () => {
     expect(screen.queryByRole("button", { name: "Importar Backup" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resetar Todos os Dados" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Baixar backup remoto automaticamente" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Alterar pasta do banco" })).not.toBeInTheDocument();
+  });
+
+  it("confirms a local database folder before saving and restarting", async () => {
+    const user = userEvent.setup();
+    installModeMock("local");
+    vi.mocked(open).mockResolvedValue("/dados/opets");
+    renderSettings();
+
+    await user.click(await screen.findByRole("button", { name: "Alterar pasta do banco" }));
+    expect(screen.getByText("Alterar pasta do banco de dados?")).toBeInTheDocument();
+    expect(screen.getByText("/dados/opets/database.db", { exact: false })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirmar e reiniciar" }));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("update_database_directory", {
+        directory: "/dados/opets",
+      });
+      expect(relaunch).toHaveBeenCalled();
+    });
   });
 
   it("downloads a host-created encrypted backup to the client-selected path", async () => {

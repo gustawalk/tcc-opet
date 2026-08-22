@@ -51,6 +51,7 @@ macro_rules! register_commands {
             facade::update_settings,
             facade::get_lan_mode_config,
             facade::update_lan_mode_config,
+            facade::update_database_directory,
             facade::lan_remote_command,
             facade::get_lan_host_status,
             facade::regenerate_lan_pairing_code,

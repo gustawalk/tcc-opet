@@ -68,6 +68,17 @@ pub fn update_lan_mode_config(
     Ok(lan_mode_status(config))
 }
 
+#[command]
+pub fn update_database_directory(directory: String) -> Result<(), AppError> {
+    ensure_storage_maintenance_allowed()?;
+    crate::database::update_database_directory(Path::new(&directory)).map_err(|error| {
+        AppError::new(
+            format!("Failed to save database directory: {error}"),
+            format!("Não foi possível salvar a pasta do banco de dados: {error}"),
+        )
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemInfo {
@@ -192,10 +203,26 @@ pub(crate) fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<()
 
 #[command]
 pub fn get_system_info() -> Result<SystemInfo, AppError> {
-    Ok(SystemInfo {
-        database_path: crate::database::database_path()
-            .to_string_lossy()
-            .to_string(),
+    let mode = crate::database::storage_mode_config().mode;
+    Ok(system_info_for_mode(
+        &mode,
+        (mode != crate::database::StorageMode::Client).then(crate::database::database_path),
+    ))
+}
+
+fn system_info_for_mode(
+    mode: &crate::database::StorageMode,
+    database_path: Option<std::path::PathBuf>,
+) -> SystemInfo {
+    SystemInfo {
+        database_path: if *mode == crate::database::StorageMode::Client {
+            "Dados fornecidos pelo computador host".to_string()
+        } else {
+            database_path
+                .expect("local storage modes must have a database path")
+                .to_string_lossy()
+                .to_string()
+        },
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         tauri_version: tauri::VERSION.to_string(),
         environment: if cfg!(debug_assertions) {
@@ -203,7 +230,7 @@ pub fn get_system_info() -> Result<SystemInfo, AppError> {
         } else {
             "Produção".to_string()
         },
-    })
+    }
 }
 
 #[command]
@@ -563,5 +590,12 @@ mod tests {
             error.pt,
             "Esta operação de armazenamento está disponível apenas no computador host."
         );
+    }
+
+    #[test]
+    fn client_system_info_does_not_require_a_local_database_path() {
+        let info = system_info_for_mode(&crate::database::StorageMode::Client, None);
+
+        assert_eq!(info.database_path, "Dados fornecidos pelo computador host");
     }
 }

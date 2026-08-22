@@ -8,6 +8,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Building2, ChevronDown, Copy, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, ShieldCheck, ShieldX, Sun, Upload, WifiOff } from "lucide-react";
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -148,6 +149,8 @@ export function Settings() {
     loadLanRemoteBackupSettings,
   );
   const [deviceToRevoke, setDeviceToRevoke] = useState<LanDeviceInfo | null>(null);
+  const [pendingDatabaseDirectory, setPendingDatabaseDirectory] = useState<string | null>(null);
+  const [isChangingDatabaseDirectory, setIsChangingDatabaseDirectory] = useState(false);
 
   const { data: lanMode } = useQuery({
     queryKey: ["lan-mode"],
@@ -468,6 +471,27 @@ export function Settings() {
       }
     } catch (err) {
       toastError(err, "Erro ao selecionar a pasta do backup remoto.");
+    }
+  };
+
+  const handleSelectDatabaseDirectory = async () => {
+    try {
+      const directory = await open({ directory: true, multiple: false });
+      if (typeof directory === "string") setPendingDatabaseDirectory(directory);
+    } catch (err) {
+      toastError(err, "Erro ao selecionar a pasta do banco de dados.");
+    }
+  };
+
+  const confirmDatabaseDirectory = async () => {
+    if (!pendingDatabaseDirectory) return;
+    try {
+      setIsChangingDatabaseDirectory(true);
+      await invoke("update_database_directory", { directory: pendingDatabaseDirectory });
+      await relaunch();
+    } catch (err) {
+      setIsChangingDatabaseDirectory(false);
+      toastError(err, "Não foi possível alterar a pasta do banco de dados.");
     }
   };
 
@@ -1075,11 +1099,22 @@ export function Settings() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">Localização do Banco</span>
-              <code className="text-[10px] bg-muted p-2 rounded block truncate">
-                {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
-              </code>
+              {lanMode?.activeMode === "client" ? (
+                <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-2 text-sm text-muted-foreground">
+                  <Network className="h-4 w-4 shrink-0" /> Usando dados pelo modo LAN
+                </div>
+              ) : (
+                <>
+                  <code className="text-[10px] bg-muted p-2 rounded block truncate">
+                    {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
+                  </code>
+                  <Button type="button" variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleSelectDatabaseDirectory}>
+                    <FolderOpen className="h-4 w-4" /> Alterar pasta do banco
+                  </Button>
+                </>
+              )}
             </div>
             {isSystemInfoError && (
               <div className="flex items-center justify-between gap-2 text-sm text-destructive">
@@ -1528,6 +1563,32 @@ export function Settings() {
           </div>
         </div>
       )}
+      <AlertDialog
+        open={pendingDatabaseDirectory !== null}
+        onOpenChange={(open) => !open && setPendingDatabaseDirectory(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar pasta do banco de dados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O aplicativo será reiniciado e usará <code>{pendingDatabaseDirectory}/database.db</code>. Se esse banco não existir, um novo armazenamento será criado nessa pasta.
+              {lanMode?.activeMode === "host" && " Os computadores clientes perderão a conexão enquanto o host reinicia. Se esta for uma base nova ou diferente, eles precisarão parear novamente."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isChangingDatabaseDirectory}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isChangingDatabaseDirectory}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDatabaseDirectory();
+              }}
+            >
+              {isChangingDatabaseDirectory ? "Reiniciando..." : "Confirmar e reiniciar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={pendingUpdate !== null}
         onOpenChange={(open) => {

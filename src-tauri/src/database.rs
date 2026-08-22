@@ -29,6 +29,8 @@ pub(crate) type ExclusiveStorageGuard = RwLockWriteGuard<'static, ()>;
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
 const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
+const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
+const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -51,6 +53,11 @@ pub(crate) struct StorageModeConfig {
     pub client_certificate_fingerprint: Option<String>,
     #[serde(default)]
     pub client_certificate_pem: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct DatabaseLocationConfig {
+    database_directory: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -146,6 +153,34 @@ fn validate_client_url(url: &str) -> io::Result<()> {
 
 fn storage_mode_config_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(STORAGE_MODE_CONFIG_FILE)
+}
+
+fn database_location_config_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(DATABASE_LOCATION_CONFIG_FILE)
+}
+
+fn load_database_location_config(app_data_dir: &Path) -> io::Result<DatabaseLocationConfig> {
+    let path = database_location_config_path(app_data_dir);
+    if !path.exists() {
+        return Ok(DatabaseLocationConfig::default());
+    }
+    serde_json::from_slice(&fs::read(path)?)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn save_database_location_config(
+    app_data_dir: &Path,
+    config: &DatabaseLocationConfig,
+) -> io::Result<()> {
+    ensure_private_dir(app_data_dir)?;
+    let path = database_location_config_path(app_data_dir);
+    let temporary_path = app_data_dir.join(format!(".{DATABASE_LOCATION_CONFIG_FILE}.tmp"));
+    let bytes = serde_json::to_vec_pretty(config)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    fs::write(&temporary_path, bytes)?;
+    secure_private_file(&temporary_path)?;
+    fs::rename(&temporary_path, &path)?;
+    secure_private_file(&path)
 }
 
 pub(crate) fn load_storage_mode_config(app_data_dir: &Path) -> io::Result<StorageModeConfig> {
@@ -535,6 +570,10 @@ fn is_skip_db_seed_enabled(value: Option<&str>) -> bool {
 
 // Get database path from environment or fallback
 fn get_database_path(app_data_dir: &Path) -> Result<PathBuf> {
+    let configured_location = load_database_location_config(app_data_dir).map_err(io_error)?;
+    if let Some(directory) = configured_location.database_directory {
+        return Ok(directory.join(DATABASE_FILE_NAME));
+    }
     let configured_path = env::var("DATABASE_PATH")
         .ok()
         .or_else(|| env::var("DB_PATH").ok())
@@ -548,7 +587,7 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
         Some(path) => env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path),
-        None => app_data_dir.join("database.db"),
+        None => app_data_dir.join(DATABASE_FILE_NAME),
     }
 }
 
@@ -1141,6 +1180,23 @@ pub(crate) fn update_storage_mode_config(config: &StorageModeConfig) -> io::Resu
     save_storage_mode_config(&app_data_dir(), config)
 }
 
+pub(crate) fn update_database_directory(directory: &Path) -> io::Result<()> {
+    if !directory.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Database directory must be absolute.",
+        ));
+    }
+    fs::create_dir_all(directory)?;
+    let directory = fs::canonicalize(directory)?;
+    save_database_location_config(
+        &app_data_dir(),
+        &DatabaseLocationConfig {
+            database_directory: Some(directory),
+        },
+    )
+}
+
 pub(crate) fn app_data_dir() -> PathBuf {
     APP_DATA_DIR
         .get()
@@ -1212,6 +1268,30 @@ mod tests {
         save_storage_mode_config(directory.path(), &config).unwrap();
 
         assert_eq!(load_storage_mode_config(directory.path()).unwrap(), config);
+    }
+
+    #[test]
+    fn database_location_persists_the_selected_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let selected = directory.path().join("selected");
+        std::fs::create_dir_all(&selected).unwrap();
+        save_database_location_config(
+            directory.path(),
+            &DatabaseLocationConfig {
+                database_directory: Some(selected.clone()),
+            },
+        )
+        .unwrap();
+
+        let configured = load_database_location_config(directory.path()).unwrap();
+        assert_eq!(configured.database_directory, Some(selected.clone()));
+        assert_eq!(
+            configured
+                .database_directory
+                .unwrap()
+                .join(DATABASE_FILE_NAME),
+            selected.join("database.db")
+        );
     }
 
     #[test]

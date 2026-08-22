@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -69,16 +69,16 @@ const fetchOrdersPage = (args: {
   finalizedDateFrom?: string;
   finalizedDateTo?: string;
 }): Promise<Page<ServiceOrder>> => {
-  return invoke<Page<ServiceOrder>>("get_service_orders_page", args);
+  return dataCommand<Page<ServiceOrder>>("get_service_orders_page", args);
 };
 const fetchUsersPage = (search: string) =>
-  invoke<Page<UserType>>("get_users_page", {
+  dataCommand<Page<UserType>>("get_users_page", {
     limit: LOOKUP_LIMIT,
     offset: 0,
     search,
   });
 const fetchCustomersPage = (search: string) =>
-  invoke<Page<Customer>>("get_customers_page", {
+  dataCommand<Page<Customer>>("get_customers_page", {
     limit: LOOKUP_LIMIT,
     offset: 0,
     search,
@@ -196,7 +196,7 @@ export function ServiceOrders() {
     if (!deleteId || isDeleting) return;
     setIsDeleting(true);
     try {
-      await invoke("delete_service_order", { id: deleteId });
+      await dataCommand("delete_service_order", { id: deleteId });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }),

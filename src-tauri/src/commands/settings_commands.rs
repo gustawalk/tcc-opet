@@ -11,6 +11,76 @@ const MAX_LOGO_SIZE_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LanModeStatus {
+    pub config: crate::database::StorageModeConfig,
+    pub active_mode: crate::database::StorageMode,
+    pub restart_required: bool,
+    pub storage_ready: bool,
+}
+
+fn lan_mode_status(config: crate::database::StorageModeConfig) -> LanModeStatus {
+    let active_mode = crate::database::storage_mode_config().mode;
+    LanModeStatus {
+        restart_required: config.mode != active_mode,
+        storage_ready: active_mode != crate::database::StorageMode::Client,
+        active_mode,
+        config,
+    }
+}
+
+fn ensure_storage_maintenance_allowed_for(
+    mode: &crate::database::StorageMode,
+) -> Result<(), AppError> {
+    if *mode == crate::database::StorageMode::Client {
+        return Err(AppError::new(
+            "This storage operation is available only on the host computer.",
+            "Esta operação de armazenamento está disponível apenas no computador host.",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_storage_maintenance_allowed() -> Result<(), AppError> {
+    ensure_storage_maintenance_allowed_for(&crate::database::storage_mode_config().mode)
+}
+
+#[command]
+pub fn get_lan_mode_config() -> Result<LanModeStatus, AppError> {
+    let config = crate::database::persisted_storage_mode_config().map_err(|error| {
+        AppError::new(
+            format!("Failed to read LAN mode configuration: {error}"),
+            format!("Erro ao ler a configuração do modo LAN: {error}"),
+        )
+    })?;
+    Ok(lan_mode_status(config))
+}
+
+#[command]
+pub fn update_lan_mode_config(
+    config: crate::database::StorageModeConfig,
+) -> Result<LanModeStatus, AppError> {
+    crate::database::update_storage_mode_config(&config).map_err(|error| {
+        AppError::new(
+            format!("Failed to save LAN mode configuration: {error}"),
+            format!("Erro ao salvar a configuração do modo LAN: {error}"),
+        )
+    })?;
+    Ok(lan_mode_status(config))
+}
+
+#[command]
+pub fn update_database_directory(directory: String) -> Result<(), AppError> {
+    ensure_storage_maintenance_allowed()?;
+    crate::database::update_database_directory(Path::new(&directory)).map_err(|error| {
+        AppError::new(
+            format!("Failed to save database directory: {error}"),
+            format!("Não foi possível salvar a pasta do banco de dados: {error}"),
+        )
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SystemInfo {
     pub database_path: String,
     pub app_version: String,
@@ -76,6 +146,7 @@ pub fn update_settings(settings: Settings) -> Result<(), AppError> {
 
 #[command]
 pub async fn reset_database() -> Result<(), AppError> {
+    ensure_storage_maintenance_allowed()?;
     tauri::async_runtime::spawn_blocking(reset_database_data)
         .await
         .map_err(|error| {
@@ -107,6 +178,8 @@ pub(crate) fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<()
     conn.execute_batch(
         "
         PRAGMA foreign_keys = OFF;
+        DROP TABLE IF EXISTS lan_idempotency_records;
+        DROP TABLE IF EXISTS lan_devices;
         DROP TABLE IF EXISTS service_order_attachments;
         DROP TABLE IF EXISTS service_order_events;
         DROP TABLE IF EXISTS service_order_parts;
@@ -130,10 +203,26 @@ pub(crate) fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<()
 
 #[command]
 pub fn get_system_info() -> Result<SystemInfo, AppError> {
-    Ok(SystemInfo {
-        database_path: crate::database::database_path()
-            .to_string_lossy()
-            .to_string(),
+    let mode = crate::database::storage_mode_config().mode;
+    Ok(system_info_for_mode(
+        &mode,
+        (mode != crate::database::StorageMode::Client).then(crate::database::database_path),
+    ))
+}
+
+fn system_info_for_mode(
+    mode: &crate::database::StorageMode,
+    database_path: Option<std::path::PathBuf>,
+) -> SystemInfo {
+    SystemInfo {
+        database_path: if *mode == crate::database::StorageMode::Client {
+            "Dados fornecidos pelo computador host".to_string()
+        } else {
+            database_path
+                .expect("local storage modes must have a database path")
+                .to_string_lossy()
+                .to_string()
+        },
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         tauri_version: tauri::VERSION.to_string(),
         environment: if cfg!(debug_assertions) {
@@ -141,7 +230,7 @@ pub fn get_system_info() -> Result<SystemInfo, AppError> {
         } else {
             "Produção".to_string()
         },
-    })
+    }
 }
 
 #[command]
@@ -187,6 +276,7 @@ pub fn export_backup(
     destination: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
+    ensure_storage_maintenance_allowed()?;
     let _guard = crate::database::exclusive_storage_guard()?;
     crate::backup_service::export_backup_with_passphrase(
         &crate::database::database_path(),
@@ -196,11 +286,57 @@ pub fn export_backup(
     )
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteBackupDownload {
+    file_name: String,
+    attachment_count: usize,
+    data_base64: String,
+}
+
+pub(crate) fn create_remote_backup_download(
+    passphrase: Option<String>,
+) -> Result<RemoteBackupDownload, AppError> {
+    let staging = tempfile::Builder::new()
+        .prefix("opets-lan-backup-")
+        .tempdir_in(crate::database::app_data_dir())
+        .map_err(|error| {
+            AppError::new(
+                format!("Failed to prepare remote backup: {error}"),
+                format!("Erro ao preparar o backup remoto: {error}"),
+            )
+        })?;
+    let file_name = format!(
+        "opets-backup-{}.osbkp",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    );
+    let path = staging.path().join(&file_name);
+    let _guard = crate::database::exclusive_storage_guard()?;
+    let summary = crate::backup_service::export_backup_with_passphrase(
+        &crate::database::database_path(),
+        &crate::database::attachments_dir(),
+        &path,
+        passphrase.as_deref(),
+    )?;
+    let bytes = std::fs::read(&path).map_err(|error| {
+        AppError::new(
+            format!("Failed to read remote backup: {error}"),
+            format!("Erro ao ler o backup remoto: {error}"),
+        )
+    })?;
+    Ok(RemoteBackupDownload {
+        file_name,
+        attachment_count: summary.attachment_count,
+        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
+}
+
 #[command]
 pub fn restore_backup(
     source: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
+    ensure_storage_maintenance_allowed()?;
     let guard = crate::database::exclusive_storage_guard()?;
     crate::backup_service::restore_backup_with_passphrase(
         Path::new(&source),
@@ -213,17 +349,20 @@ pub fn restore_backup(
 
 #[command]
 pub fn inspect_backup(source: String) -> Result<crate::backup_service::BackupInspection, AppError> {
+    ensure_storage_maintenance_allowed()?;
     crate::backup_service::inspect_backup(Path::new(&source))
 }
 
 #[command]
 pub fn validate_backup_passphrase(source: String, passphrase: String) -> Result<(), AppError> {
+    ensure_storage_maintenance_allowed()?;
     crate::backup_service::validate_backup_passphrase(Path::new(&source), Some(&passphrase))
 }
 
 #[command]
 pub fn get_automatic_backup_status(
 ) -> Result<crate::automatic_backup::AutomaticBackupStatus, AppError> {
+    ensure_storage_maintenance_allowed()?;
     crate::automatic_backup::get_status()
 }
 
@@ -231,6 +370,7 @@ pub fn get_automatic_backup_status(
 pub fn update_automatic_backup_settings(
     settings: crate::automatic_backup::AutomaticBackupSettings,
 ) -> Result<crate::automatic_backup::AutomaticBackupStatus, AppError> {
+    ensure_storage_maintenance_allowed()?;
     crate::automatic_backup::update_settings(settings)
 }
 
@@ -238,6 +378,7 @@ pub fn update_automatic_backup_settings(
 pub async fn run_automatic_backup_now(
     app: AppHandle,
 ) -> Result<crate::automatic_backup::AutomaticBackupRunResult, AppError> {
+    ensure_storage_maintenance_allowed()?;
     tauri::async_runtime::spawn_blocking(move || crate::automatic_backup::run(true, Some(&app)))
         .await
         .map_err(|error| {
@@ -434,5 +575,27 @@ mod tests {
             update.download_url.as_deref(),
             Some("https://updates.example.com/opets-0.2.0.AppImage")
         );
+    }
+
+    #[test]
+    fn client_mode_storage_maintenance_returns_host_only_error() {
+        let error = ensure_storage_maintenance_allowed_for(&crate::database::StorageMode::Client)
+            .unwrap_err();
+
+        assert_eq!(
+            error.en,
+            "This storage operation is available only on the host computer."
+        );
+        assert_eq!(
+            error.pt,
+            "Esta operação de armazenamento está disponível apenas no computador host."
+        );
+    }
+
+    #[test]
+    fn client_system_info_does_not_require_a_local_database_path() {
+        let info = system_info_for_mode(&crate::database::StorageMode::Client, None);
+
+        assert_eq!(info.database_path, "Dados fornecidos pelo computador host");
     }
 }

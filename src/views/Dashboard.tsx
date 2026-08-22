@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -41,7 +42,7 @@ import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerPro
 import { toastError, toastSuccess } from "@/lib/errors";
 
 const fetchDashboardData = async (): Promise<DashboardData> => {
-  return await invoke<DashboardData>("get_dashboard_data");
+  return await dataCommand<DashboardData>("get_dashboard_data");
 };
 
 export function prioritizeInventoryAlerts(alerts: InventoryAlert[]) {
@@ -74,7 +75,12 @@ export function Dashboard() {
       if (!destination) return;
 
       setIsExportingReport(true);
-      await invoke("export_financial_report_csv", { destination });
+      if (getDataClientMode() === "client") {
+        const contents = await dataCommand<string>("create_financial_report_csv");
+        await invoke("save_lan_text_file", { destination, contents });
+      } else {
+        await dataCommand("export_financial_report_csv", { destination });
+      }
       toastSuccess("Relatório financeiro exportado.");
     } catch (err) {
       toastError(err, "Erro ao exportar o relatório financeiro.");

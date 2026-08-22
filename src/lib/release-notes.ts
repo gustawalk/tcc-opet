@@ -11,6 +11,36 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.3.3",
+    date: "22/08/2026",
+    title: "Conexão LAN mais estável e controle de dados aprimorado",
+    sections: [
+      {
+        title: "Conexão LAN",
+        items: [
+          "Host e cliente agora recuperam conexões temporariamente indisponíveis com novas tentativas automáticas.",
+          "O aplicativo não anuncia mais o endereço inválido 0.0.0.0; somente endereços reais da rede local são exibidos.",
+          "A tela do host permite copiar o endereço completo, o código de pareamento e a impressão digital de segurança.",
+          "O código de pareamento exibe sua validade, e clientes bloqueados durante a indisponibilidade do host voltam a tentar a conexão com uma mensagem clara.",
+        ],
+      },
+      {
+        title: "Banco de dados",
+        items: [
+          "O modo local permite alterar a pasta do banco com confirmação e reinício automático.",
+          "O modo cliente mantém o banco controlado pelo host e evita operações locais incompatíveis com a conexão compartilhada.",
+          "Falhas de inicialização e perda de conexão agora são apresentadas ao usuário sem encerramento abrupto do aplicativo.",
+        ],
+      },
+      {
+        title: "Documentos",
+        items: [
+          "A geração de ordens de serviço e relatórios financeiros agora usa 10px de espaçamento interno adicional.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.3.2",
     date: "16/08/2026",
     title: "Backup com mensagens claras e histórico expansível",

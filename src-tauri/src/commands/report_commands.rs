@@ -130,6 +130,23 @@ fn financial_report_csv(report: &FinancialReport) -> String {
     csv
 }
 
+pub(crate) fn create_financial_report_csv(
+    start_date: Option<String>,
+    end_date: Option<String>,
+    technician_id: Option<String>,
+    ranking_metric: Option<String>,
+    ranking_limit: Option<i32>,
+) -> Result<String, AppError> {
+    let report = FinancialReportRepository::get_report_filtered(
+        start_date.as_deref(),
+        end_date.as_deref(),
+        technician_id.as_deref(),
+        ranking_metric.as_deref(),
+        ranking_limit,
+    )?;
+    Ok(financial_report_csv(&report))
+}
+
 #[command]
 pub fn export_financial_report_csv(
     start_date: Option<String>,
@@ -139,14 +156,13 @@ pub fn export_financial_report_csv(
     ranking_limit: Option<i32>,
     destination: String,
 ) -> Result<(), AppError> {
-    let report = FinancialReportRepository::get_report_filtered(
-        start_date.as_deref(),
-        end_date.as_deref(),
-        technician_id.as_deref(),
-        ranking_metric.as_deref(),
+    let csv = create_financial_report_csv(
+        start_date,
+        end_date,
+        technician_id,
+        ranking_metric,
         ranking_limit,
     )?;
-    let csv = financial_report_csv(&report);
     if let Some(parent) = Path::new(&destination).parent() {
         fs::create_dir_all(parent).map_err(|error| {
             AppError::new(

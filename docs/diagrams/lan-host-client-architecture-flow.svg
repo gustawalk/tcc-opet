@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1407.0402916666667 1072.2166666666667" width="1407.0402916666667" height="1072.2166666666667" style="--bg:#FFFFFF;--fg:#27272A;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="hostMachine" data-label="Host computer">
+  <rect x="646.2560416666665" y="211.76666666666665" width="720.78425" height="791.3" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="646.2560416666665" y="211.76666666666665" width="720.78425" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="658.2560416666665" y="225.76666666666665" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Host computer</text>
+</g>
+<polyline class="edge" data-from="clientApp" data-to="dataClient" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="uses views" points="184.949,107.79999999999998 343.46500000000003,107.79999999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="dataClient" data-to="remoteAdapter" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="client mode" points="525.464,98.83333333333331 561.464,98.83333333333326 561.464,66.89999999999998 672.5240208333332,66.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="dataClient" data-to="localAdapter" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="local or host mode" points="525.464,116.76666666666665 601.973,116.76666666666665 601.973,148.70000000000005 755.377,148.69999999999996" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="remoteAdapter" data-to="hostApi" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="authenticated JSON over LAN" points="812.2860208333333,66.9 1032.982,66.89999999999998 1032.982,211.76666666666665 1032.982,372.96666666666664 1021.6456666666666,372.96666666666664 1021.6456666666666,408.96666666666664" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="localAdapter" data-to="commandFacade" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="invoke commands" points="879.578,148.69999999999996 1246.6819999999998,148.70000000000005 1246.6819999999998,211.76666666666665 1246.6819999999998,543.0666666666666 1245.2296666666666,543.0666666666666 1254.8834791666666,579.0666666666666" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="commandFacade" data-to="shardLater" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="keeps APIs as operations" points="1254.8834791666666,632.8666666666667 1245.2296666666666,644.8666666666667 1350.0402916666667,644.8666666666667 1350.0402916666667,1003.0666666666666 1350.0402916666667,1013.0666666666666 456.02404166666656,1013.0666666666666 456.02404166666656,616.3833333333332 444.02404166666656,616.3833333333333" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="shardLater" data-to="database" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="not in MVP" points="444.02404166666656,598.4499999999999 527.3040416666665,598.4499999999999 527.3040416666665,201.76666666666665 663.2252916666666,201.76666666666665 663.2252916666665,211.76666666666665 663.2252916666665,883.2666666666667 710.2432708333332,883.2666666666667 710.2432708333332,919.2666666666667" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostApp" data-to="hostApi" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="starts after DB ready" points="964.7349999999998,292.66666666666663 959.0289999999999,372.96666666666664 970.3653333333332,372.96666666666664 970.3653333333332,408.96666666666664" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostApi" data-to="auth" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="validates token" points="996.0054999999998,462.76666666666665 990.2994999999999,579.0666666666666" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostApi" data-to="idempotency" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="deduplicates writes" points="957.5452499999998,462.76666666666665 957.5452499999999,474.76666666666665 801.5674999999999,474.76666666666665 801.5674999999999,579.0666666666666" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostApi" data-to="commandFacade" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="calls product operation" points="1034.4657499999998,462.76666666666665 1034.4657499999998,474.76666666666665 1177.924,474.76666666666665 1177.924,543.0666666666666 1189.0301458333333,543.0666666666666 1189.0301458333333,579.0666666666666" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="commandFacade" data-to="repositories" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="uses existing logic" points="1189.0301458333333,632.8666666666667 1189.0301458333333,644.8666666666667 1166.5579999999998,644.8666666666667 1166.5579999999998,749.1666666666667" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="repositories" data-to="database" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="reads and writes locally" points="1141.5353333333333,802.9666666666667 1141.5353333333333,814.9666666666667 987.7716249999999,814.9666666666667 987.7716249999999,883.2666666666667 785.6817708333333,883.2666666666667 785.6817708333333,919.2666666666667" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="repositories" data-to="attachments" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="stores and reads files" points="1191.5806666666665,802.9666666666667 1191.5806666666665,814.9666666666667 1284.1946249999999,814.9666666666667 1284.1946249999999,883.2666666666667 1236.1114791666666,883.2666666666667 1236.1114791666666,919.2666666666667" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostOps" data-to="database" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="exclusive storage guard" points="862.9359999999998,802.9666666666667 862.9359999999998,814.9666666666667 736.7252916666665,814.9666666666667 736.7252916666665,883.2666666666667 747.9625208333332,883.2666666666667 747.9625208333332,919.2666666666667" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="hostOps" data-to="attachments" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="backup package includes" points="918.9093333333332,802.9666666666667 918.9093333333332,826.9666666666667 1125.499625,826.9666666666667 1125.499625,883.2666666666667 1179.6441458333331,883.2666666666667 1179.6441458333331,919.2666666666667" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="clientApp" data-to="dataClient" data-label="uses views">
+  <rect x="228.94899999999998" y="91.79999999999995" width="70.516" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="264.207" y="106.94999999999996" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">uses views</text>
+</g>
+<g class="edge-label" data-from="dataClient" data-to="remoteAdapter" data-label="client mode">
+  <rect x="569.464" y="50.899999999999984" width="69.328" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="604.128" y="66.04999999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">client mode</text>
+</g>
+<g class="edge-label" data-from="dataClient" data-to="localAdapter" data-label="local or host mode">
+  <rect x="609.973" y="132.70000000000005" width="101.40400000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="660.675" y="147.85000000000005" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">local or host mode</text>
+</g>
+<g class="edge-label" data-from="remoteAdapter" data-to="hostApi" data-label="authenticated JSON over LAN">
+  <rect x="866.5540000000001" y="50.899999999999984" width="158.428" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="945.768" y="66.04999999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">authenticated JSON over LAN</text>
+</g>
+<g class="edge-label" data-from="localAdapter" data-to="commandFacade" data-label="invoke commands">
+  <rect x="923.578" y="132.70000000000005" width="101.40400000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="974.28" y="147.85000000000005" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">invoke commands</text>
+</g>
+<g class="edge-label" data-from="commandFacade" data-to="shardLater" data-label="keeps APIs as operations">
+  <rect x="464.02404166666656" y="997.0666666666666" width="138.23199999999997" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="533.1400416666665" y="1012.2166666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">keeps APIs as operations</text>
+</g>
+<g class="edge-label" data-from="shardLater" data-to="database" data-label="not in MVP">
+  <rect x="535.3040416666665" y="185.76666666666665" width="66.952" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="568.7800416666665" y="200.91666666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">not in MVP</text>
+</g>
+<g class="edge-label" data-from="hostApp" data-to="hostApi" data-label="starts after DB ready">
+  <rect x="901.5289999999999" y="335.6666666666667" width="114.47200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="958.7649999999999" y="350.81666666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">starts after DB ready</text>
+</g>
+<g class="edge-label" data-from="hostApi" data-to="auth" data-label="validates token">
+  <rect x="951.5054999999999" y="505.76666666666665" width="88.33600000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="995.6734999999999" y="520.9166666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">validates token</text>
+</g>
+<g class="edge-label" data-from="hostApi" data-to="idempotency" data-label="deduplicates writes">
+  <rect x="747.0674999999999" y="505.76666666666665" width="108.53200000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="801.3335" y="520.9166666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">deduplicates writes</text>
+</g>
+<g class="edge-label" data-from="hostApi" data-to="commandFacade" data-label="calls product operation">
+  <rect x="1114.924" y="505.76666666666665" width="125.75800000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1177.8029999999999" y="520.9166666666666" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">calls product operation</text>
+</g>
+<g class="edge-label" data-from="commandFacade" data-to="repositories" data-label="uses existing logic">
+  <rect x="1114.058" y="675.8666666666667" width="104.37400000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1166.245" y="691.0166666666667" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">uses existing logic</text>
+</g>
+<g class="edge-label" data-from="repositories" data-to="database" data-label="reads and writes locally">
+  <rect x="923.2716249999999" y="845.9666666666667" width="128.728" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="987.6356249999999" y="861.1166666666667" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">reads and writes locally</text>
+</g>
+<g class="edge-label" data-from="repositories" data-to="attachments" data-label="stores and reads files">
+  <rect x="1224.1946249999996" y="845.9666666666667" width="119.22400000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1283.8066249999997" y="861.1166666666667" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">stores and reads files</text>
+</g>
+<g class="edge-label" data-from="hostOps" data-to="database" data-label="exclusive storage guard">
+  <rect x="670.2252916666665" y="845.9666666666667" width="132.88600000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="736.6682916666665" y="861.1166666666667" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">exclusive storage guard</text>
+</g>
+<g class="edge-label" data-from="hostOps" data-to="attachments" data-label="backup package includes">
+  <rect x="1055.999625" y="845.9666666666667" width="138.82600000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1125.412625" y="861.1166666666667" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">backup package includes</text>
+</g>
+<g class="node" data-id="clientApp" data-label="Client workstation
+Tauri app" data-shape="rectangle">
+  <rect x="40" y="80.89999999999998" width="144.949" height="53.800000000000004" rx="0" ry="0" fill="#eef2ff" stroke="#4f46e5" stroke-width="0.75" />
+  <text x="112.4745" y="107.79999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="112.4745" dy="-3.9000000000000012">Client workstation</tspan><tspan x="112.4745" dy="16.900000000000002">Tauri app</tspan></text>
+</g>
+<g class="node" data-id="dataClient" data-label="Frontend data client
+chooses local or remote" data-shape="rectangle">
+  <rect x="343.46500000000003" y="80.89999999999998" width="181.999" height="53.800000000000004" rx="0" ry="0" fill="#eef2ff" stroke="#4f46e5" stroke-width="0.75" />
+  <text x="434.46450000000004" y="107.79999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="434.46450000000004" dy="-3.9000000000000012">Frontend data client</tspan><tspan x="434.46450000000004" dy="16.900000000000002">chooses local or remote</tspan></text>
+</g>
+<g class="node" data-id="remoteAdapter" data-label="Remote adapter
+HTTP plus token" data-shape="rectangle">
+  <rect x="672.5240208333332" y="40" width="139.762" height="53.800000000000004" rx="0" ry="0" fill="#eef2ff" stroke="#4f46e5" stroke-width="0.75" />
+  <text x="742.4050208333332" y="66.9" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="742.4050208333332" dy="-3.9000000000000012">Remote adapter</tspan><tspan x="742.4050208333332" dy="16.900000000000002">HTTP plus token</tspan></text>
+</g>
+<g class="node" data-id="localAdapter" data-label="Local adapter
+Tauri invoke" data-shape="rectangle">
+  <rect x="755.377" y="121.79999999999995" width="124.20100000000001" height="53.800000000000004" rx="0" ry="0" fill="#eef2ff" stroke="#4f46e5" stroke-width="0.75" />
+  <text x="817.4775" y="148.69999999999996" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="817.4775" dy="-3.9000000000000012">Local adapter</tspan><tspan x="817.4775" dy="16.900000000000002">Tauri invoke</tspan></text>
+</g>
+<g class="node" data-id="shardLater" data-label="Future sharding
+deferred design" data-shape="rectangle">
+  <rect x="306.4850416666666" y="580.5166666666667" width="137.539" height="53.800000000000004" rx="0" ry="0" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.75" />
+  <text x="375.25454166666657" y="607.4166666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#78350f"><tspan x="375.25454166666657" dy="-3.9000000000000012">Future sharding</tspan><tspan x="375.25454166666657" dy="16.900000000000002">deferred design</tspan></text>
+</g>
+<g class="node" data-id="hostApp" data-label="Host Tauri app" data-shape="rectangle">
+  <rect x="900.7819999999998" y="255.76666666666665" width="127.90599999999999" height="36.900000000000006" rx="0" ry="0" fill="#f8fafc" stroke="#64748b" stroke-width="0.75" />
+  <text x="964.7349999999998" y="274.21666666666664" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b" dy="4.55">Host Tauri app</text>
+</g>
+<g class="node" data-id="hostApi" data-label="LAN API server
+product operations" data-shape="rectangle">
+  <rect x="919.0849999999998" y="408.96666666666664" width="153.841" height="53.800000000000004" rx="0" ry="0" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.75" />
+  <text x="996.0054999999998" y="435.8666666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="996.0054999999998" dy="-3.9000000000000012">LAN API server</tspan><tspan x="996.0054999999998" dy="16.900000000000002">product operations</tspan></text>
+</g>
+<g class="node" data-id="auth" data-label="Pairing and device auth" data-shape="rectangle">
+  <rect x="900.7819999999998" y="579.0666666666666" width="179.03499999999997" height="36.900000000000006" rx="0" ry="0" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.75" />
+  <text x="990.2994999999999" y="597.5166666666667" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b" dy="4.55">Pairing and device auth</text>
+</g>
+<g class="node" data-id="idempotency" data-label="Idempotency guard
+safe retries" data-shape="rectangle">
+  <rect x="724.6469999999998" y="579.0666666666666" width="153.841" height="53.800000000000004" rx="0" ry="0" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.75" />
+  <text x="801.5674999999999" y="605.9666666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="801.5674999999999" dy="-3.9000000000000012">Idempotency guard</tspan><tspan x="801.5674999999999" dy="16.900000000000002">safe retries</tspan></text>
+</g>
+<g class="node" data-id="commandFacade" data-label="Command facade
+shared business handlers" data-shape="rectangle">
+  <rect x="1123.1768124999999" y="579.0666666666666" width="197.55999999999997" height="53.800000000000004" rx="0" ry="0" fill="#f8fafc" stroke="#64748b" stroke-width="0.75" />
+  <text x="1221.9568124999998" y="605.9666666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="1221.9568124999998" dy="-3.9000000000000012">Command facade</tspan><tspan x="1221.9568124999998" dy="16.900000000000002">shared business handlers</tspan></text>
+</g>
+<g class="node" data-id="repositories" data-label="Repositories
+existing SQL rules" data-shape="rectangle">
+  <rect x="1091.4899999999998" y="749.1666666666667" width="150.136" height="53.800000000000004" rx="0" ry="0" fill="#f8fafc" stroke="#64748b" stroke-width="0.75" />
+  <text x="1166.5579999999998" y="776.0666666666667" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="1166.5579999999998" dy="-3.9000000000000012">Repositories</tspan><tspan x="1166.5579999999998" dy="16.900000000000002">existing SQL rules</tspan></text>
+</g>
+<g class="node" data-id="database" data-label="database.db
+SQLCipher SQLite" data-shape="cylinder">
+  <rect x="672.5240208333332" y="926.2666666666667" width="150.877" height="53.80000000000001" fill="#dcfce7" stroke="none" />
+  <line x1="672.5240208333332" y1="926.2666666666667" x2="672.5240208333332" y2="980.0666666666666" stroke="#10b981" stroke-width="0.75" />
+  <line x1="823.4010208333332" y1="926.2666666666667" x2="823.4010208333332" y2="980.0666666666666" stroke="#10b981" stroke-width="0.75" />
+  <ellipse cx="747.9625208333332" cy="980.0666666666666" rx="75.4385" ry="7" fill="#dcfce7" stroke="#10b981" stroke-width="0.75" />
+  <ellipse cx="747.9625208333332" cy="926.2666666666667" rx="75.4385" ry="7" fill="#dcfce7" stroke="#10b981" stroke-width="0.75" />
+  <text x="747.9625208333332" y="953.1666666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#064e3b"><tspan x="747.9625208333332" dy="-3.9000000000000012">database.db</tspan><tspan x="747.9625208333332" dy="16.900000000000002">SQLCipher SQLite</tspan></text>
+</g>
+<g class="node" data-id="attachments" data-label="database.attachments
+files" data-shape="cylinder">
+  <rect x="1123.1768124999999" y="926.2666666666667" width="169.402" height="53.80000000000001" fill="#dcfce7" stroke="none" />
+  <line x1="1123.1768124999999" y1="926.2666666666667" x2="1123.1768124999999" y2="980.0666666666666" stroke="#10b981" stroke-width="0.75" />
+  <line x1="1292.5788125" y1="926.2666666666667" x2="1292.5788125" y2="980.0666666666666" stroke="#10b981" stroke-width="0.75" />
+  <ellipse cx="1207.8778125" cy="980.0666666666666" rx="84.701" ry="7" fill="#dcfce7" stroke="#10b981" stroke-width="0.75" />
+  <ellipse cx="1207.8778125" cy="926.2666666666667" rx="84.701" ry="7" fill="#dcfce7" stroke="#10b981" stroke-width="0.75" />
+  <text x="1207.8778125" y="953.1666666666666" text-anchor="middle" font-size="13" font-weight="500" fill="#064e3b"><tspan x="1207.8778125" dy="-3.9000000000000012">database.attachments</tspan><tspan x="1207.8778125" dy="16.900000000000002">files</tspan></text>
+</g>
+<g class="node" data-id="hostOps" data-label="Backup restore reset
+host only" data-shape="rectangle">
+  <rect x="806.9626666666666" y="749.1666666666667" width="167.92" height="53.800000000000004" rx="0" ry="0" fill="#f8fafc" stroke="#64748b" stroke-width="0.75" />
+  <text x="890.9226666666666" y="776.0666666666667" text-anchor="middle" font-size="13" font-weight="500" fill="#1e293b"><tspan x="890.9226666666666" dy="-3.9000000000000012">Backup restore reset</tspan><tspan x="890.9226666666666" dy="16.900000000000002">host only</tspan></text>
+</g>
+</svg>

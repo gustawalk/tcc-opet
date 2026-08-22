@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { 
   Plus, 
   Search, 
@@ -52,7 +52,7 @@ const fetchTemplatesPage = (args: {
   offset: number;
   search: string;
 }): Promise<Page<ChecklistTemplate>> => {
-  return invoke<Page<ChecklistTemplate>>("get_checklist_templates_page", args);
+  return dataCommand<Page<ChecklistTemplate>>("get_checklist_templates_page", args);
 };
 
 export function Templates() {
@@ -113,7 +113,7 @@ export function Templates() {
     if (!confirmDeleteId || isDeleting) return;
     try {
       setIsDeleting(true);
-      await invoke("delete_checklist_template", { id: confirmDeleteId });
+      await dataCommand("delete_checklist_template", { id: confirmDeleteId });
       await queryClient.invalidateQueries({ queryKey: ["checklist-templates-page"] });
       toastSuccess("Template removido com sucesso.");
     } catch (error) {

@@ -15,6 +15,7 @@ use uuid::Uuid;
 // Static connection pool for simple desktop usage
 static DB_PATH: OnceCell<PathBuf> = OnceCell::new();
 static APP_DATA_DIR: OnceCell<PathBuf> = OnceCell::new();
+static STORAGE_MODE_CONFIG: OnceCell<StorageModeConfig> = OnceCell::new();
 static STORAGE_INSTANCE_LOCK: OnceCell<File> = OnceCell::new();
 static STORAGE_OPERATION_LOCK: LazyLock<RwLock<()>> = LazyLock::new(|| RwLock::new(()));
 
@@ -27,6 +28,187 @@ pub(crate) type ExclusiveStorageGuard = RwLockWriteGuard<'static, ()>;
 
 const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const STORAGE_FORMAT_VERSION: u8 = 1;
+const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
+const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
+const DATABASE_FILE_NAME: &str = "database.db";
+const DEFAULT_LAN_PORT: u16 = 8743;
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum StorageMode {
+    #[default]
+    Local,
+    Host,
+    Client,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StorageModeConfig {
+    pub mode: StorageMode,
+    pub host_port: u16,
+    pub client_url: Option<String>,
+    pub client_device_name: Option<String>,
+    pub client_token: Option<String>,
+    pub client_certificate_fingerprint: Option<String>,
+    #[serde(default)]
+    pub client_certificate_pem: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct DatabaseLocationConfig {
+    database_directory: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) enum LanIdempotencyLookup {
+    Missing,
+    InProgress,
+    Replay(String),
+    BodyConflict,
+}
+
+impl Default for StorageModeConfig {
+    fn default() -> Self {
+        Self {
+            mode: StorageMode::Local,
+            host_port: DEFAULT_LAN_PORT,
+            client_url: None,
+            client_device_name: None,
+            client_token: None,
+            client_certificate_fingerprint: None,
+            client_certificate_pem: None,
+        }
+    }
+}
+
+impl StorageModeConfig {
+    pub(crate) fn validate(&self) -> io::Result<()> {
+        if self.host_port == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "LAN host port must be between 1 and 65535.",
+            ));
+        }
+
+        if self.mode != StorageMode::Client {
+            return Ok(());
+        }
+
+        let url = self.client_url.as_deref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client mode requires a host URL.",
+            )
+        })?;
+        validate_client_url(url)?;
+
+        if self
+            .client_device_name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client mode requires a device name.",
+            ));
+        }
+
+        if self.client_token.is_some() != self.client_certificate_fingerprint.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client token and certificate fingerprint must be stored together.",
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+fn validate_client_url(url: &str) -> io::Result<()> {
+    let authority = url.strip_prefix("https://").ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "LAN host URL must use HTTPS.")
+    })?;
+    if authority.is_empty()
+        || authority.contains(['/', '?', '#', '@'])
+        || authority.starts_with(':')
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "LAN host URL must contain only a host and optional port.",
+        ));
+    }
+
+    if let Some((host, port)) = authority.rsplit_once(':') {
+        if host.is_empty() || port.parse::<u16>().is_err() || port == "0" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "LAN host URL contains an invalid port.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn storage_mode_config_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(STORAGE_MODE_CONFIG_FILE)
+}
+
+fn database_location_config_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(DATABASE_LOCATION_CONFIG_FILE)
+}
+
+fn load_database_location_config(app_data_dir: &Path) -> io::Result<DatabaseLocationConfig> {
+    let path = database_location_config_path(app_data_dir);
+    if !path.exists() {
+        return Ok(DatabaseLocationConfig::default());
+    }
+    serde_json::from_slice(&fs::read(path)?)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn save_database_location_config(
+    app_data_dir: &Path,
+    config: &DatabaseLocationConfig,
+) -> io::Result<()> {
+    ensure_private_dir(app_data_dir)?;
+    let path = database_location_config_path(app_data_dir);
+    let temporary_path = app_data_dir.join(format!(".{DATABASE_LOCATION_CONFIG_FILE}.tmp"));
+    let bytes = serde_json::to_vec_pretty(config)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    fs::write(&temporary_path, bytes)?;
+    secure_private_file(&temporary_path)?;
+    fs::rename(&temporary_path, &path)?;
+    secure_private_file(&path)
+}
+
+pub(crate) fn load_storage_mode_config(app_data_dir: &Path) -> io::Result<StorageModeConfig> {
+    let path = storage_mode_config_path(app_data_dir);
+    if !path.exists() {
+        return Ok(StorageModeConfig::default());
+    }
+    let config: StorageModeConfig = serde_json::from_slice(&fs::read(path)?)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    config.validate()?;
+    Ok(config)
+}
+
+pub(crate) fn save_storage_mode_config(
+    app_data_dir: &Path,
+    config: &StorageModeConfig,
+) -> io::Result<()> {
+    config.validate()?;
+    ensure_private_dir(app_data_dir)?;
+    let path = storage_mode_config_path(app_data_dir);
+    let temporary_path = app_data_dir.join(format!(".{STORAGE_MODE_CONFIG_FILE}.tmp"));
+    let bytes = serde_json::to_vec_pretty(config)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    fs::write(&temporary_path, bytes)?;
+    secure_private_file(&temporary_path)?;
+    fs::rename(&temporary_path, &path)?;
+    secure_private_file(&path)
+}
 
 pub struct DatabaseConnection {
     connection: MutexGuard<'static, Option<Connection>>,
@@ -97,22 +279,49 @@ pub fn init_db(app: &tauri::App) -> Result<()> {
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(error)))
     })?;
+    let storage_mode_config = load_storage_mode_config(&app_data_dir).map_err(io_error)?;
     let resolved_database_path = get_database_path(&app_data_dir)?;
-    if let Some(parent) = resolved_database_path.parent() {
-        ensure_private_dir(parent).map_err(io_error)?;
-    }
-    acquire_storage_instance_lock(&resolved_database_path)?;
-    initialize_storage_at(&resolved_database_path, should_seed_demo_data())?;
+    let storage_lock = initialize_storage_for_mode(
+        &app_data_dir,
+        &resolved_database_path,
+        &storage_mode_config,
+        should_seed_demo_data(),
+    )?;
     APP_DATA_DIR.set(app_data_dir).map_err(|_| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
             "Application data path was already initialized.",
         )))
     })?;
-    DB_PATH.set(resolved_database_path).map_err(|_| {
-        rusqlite::Error::ToSqlConversionFailure(Box::new(io::Error::other(
-            "Database path was already initialized.",
-        )))
-    })
+    STORAGE_MODE_CONFIG
+        .set(storage_mode_config)
+        .map_err(|_| database_error("Application storage mode was already initialized."))?;
+    if let Some(storage_lock) = storage_lock {
+        STORAGE_INSTANCE_LOCK.set(storage_lock).map_err(|_| {
+            database_error("Application storage instance lock was already initialized.")
+        })?;
+        DB_PATH
+            .set(resolved_database_path)
+            .map_err(|_| database_error("Database path was already initialized."))?;
+    }
+    Ok(())
+}
+
+fn initialize_storage_for_mode(
+    app_data_dir: &Path,
+    database_path: &Path,
+    config: &StorageModeConfig,
+    seed_demo_data: bool,
+) -> Result<Option<File>> {
+    ensure_private_dir(app_data_dir).map_err(io_error)?;
+    if config.mode == StorageMode::Client {
+        return Ok(None);
+    }
+    if let Some(parent) = database_path.parent() {
+        ensure_private_dir(parent).map_err(io_error)?;
+    }
+    let storage_lock = open_storage_instance_lock(database_path)?;
+    initialize_storage_at(database_path, seed_demo_data)?;
+    Ok(Some(storage_lock))
 }
 
 fn storage_instance_lock_path(database_path: &Path) -> PathBuf {
@@ -137,13 +346,6 @@ fn open_storage_instance_lock(database_path: &Path) -> Result<File> {
     })?;
     secure_private_file(&path).map_err(io_error)?;
     Ok(file)
-}
-
-fn acquire_storage_instance_lock(database_path: &Path) -> Result<()> {
-    let file = open_storage_instance_lock(database_path)?;
-    STORAGE_INSTANCE_LOCK
-        .set(file)
-        .map_err(|_| database_error("Application storage instance lock was already initialized."))
 }
 
 pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) -> Result<()> {
@@ -368,6 +570,10 @@ fn is_skip_db_seed_enabled(value: Option<&str>) -> bool {
 
 // Get database path from environment or fallback
 fn get_database_path(app_data_dir: &Path) -> Result<PathBuf> {
+    let configured_location = load_database_location_config(app_data_dir).map_err(io_error)?;
+    if let Some(directory) = configured_location.database_directory {
+        return Ok(directory.join(DATABASE_FILE_NAME));
+    }
     let configured_path = env::var("DATABASE_PATH")
         .ok()
         .or_else(|| env::var("DB_PATH").ok())
@@ -381,7 +587,7 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
         Some(path) => env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path),
-        None => app_data_dir.join("database.db"),
+        None => app_data_dir.join(DATABASE_FILE_NAME),
     }
 }
 
@@ -572,6 +778,31 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             FOREIGN KEY (inventory_item_id) REFERENCES inventory_items (id)
         );
 
+        -- Paired LAN workstations. Raw bearer tokens are never persisted.
+        CREATE TABLE IF NOT EXISTS lan_devices (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            token_fingerprint TEXT NOT NULL UNIQUE,
+            app_version TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT,
+            revoked_at TEXT
+        );
+
+        -- Durable results for safely replaying mutating LAN requests.
+        CREATE TABLE IF NOT EXISTS lan_idempotency_records (
+            device_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            route TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed')),
+            response_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (device_id, idempotency_key),
+            FOREIGN KEY (device_id) REFERENCES lan_devices(id) ON DELETE CASCADE
+        );
+
         -- Index for faster snapshot queries by date
         CREATE INDEX IF NOT EXISTS idx_financial_snapshots_date ON financial_snapshots(snapshot_date);
 
@@ -580,6 +811,8 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_service_order_events_order ON service_order_events(service_order_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_service_order_attachments_order ON service_order_attachments(service_order_id, created_at DESC);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_service_orders_display_id ON service_orders(display_id) WHERE display_id <> '';
+        CREATE INDEX IF NOT EXISTS idx_lan_devices_last_seen ON lan_devices(last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_lan_idempotency_updated ON lan_idempotency_records(updated_at);
         ",
     )?;
 
@@ -707,6 +940,50 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
 
     migrate_integer_money(conn)?;
     Ok(())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn lookup_lan_idempotency(
+    conn: &Connection,
+    device_id: &str,
+    idempotency_key: &str,
+    route: &str,
+    body_hash: &str,
+) -> Result<LanIdempotencyLookup> {
+    let record = conn.query_row(
+        "SELECT route, body_hash, status, response_json
+         FROM lan_idempotency_records
+         WHERE device_id = ?1 AND idempotency_key = ?2",
+        params![device_id, idempotency_key],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        },
+    );
+    let (stored_route, stored_body_hash, status, response) = match record {
+        Ok(record) => record,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(LanIdempotencyLookup::Missing),
+        Err(error) => return Err(error),
+    };
+    if stored_route != route || stored_body_hash != body_hash {
+        return Ok(LanIdempotencyLookup::BodyConflict);
+    }
+    if status == "completed" {
+        return Ok(LanIdempotencyLookup::Replay(response.unwrap_or_default()));
+    }
+    Ok(LanIdempotencyLookup::InProgress)
+}
+
+pub(crate) fn lan_device_is_revoked(conn: &Connection, device_id: &str) -> Result<bool> {
+    conn.query_row(
+        "SELECT revoked_at IS NOT NULL FROM lan_devices WHERE id = ?1",
+        [device_id],
+        |row| row.get(0),
+    )
 }
 
 pub(crate) fn ensure_core_defaults(conn: &Connection) -> Result<()> {
@@ -863,6 +1140,11 @@ fn make_legacy_part_prices_optional(conn: &Connection) -> Result<()> {
 
 // Get database connection - returns a new connection using the stored path
 pub fn get_db() -> Result<DatabaseConnection> {
+    if storage_mode_config().mode == StorageMode::Client {
+        return Err(database_error(
+            "Local database access is unavailable in Client mode.",
+        ));
+    }
     let guard = STORAGE_OPERATION_LOCK
         .read()
         .map_err(|_| database_error("Storage operation lock is unavailable."))?;
@@ -891,6 +1173,35 @@ pub fn database_path() -> PathBuf {
         .expect("Database path must be initialized before use")
 }
 
+pub(crate) fn storage_mode_config() -> StorageModeConfig {
+    STORAGE_MODE_CONFIG.get().cloned().unwrap_or_default()
+}
+
+pub(crate) fn persisted_storage_mode_config() -> io::Result<StorageModeConfig> {
+    load_storage_mode_config(&app_data_dir())
+}
+
+pub(crate) fn update_storage_mode_config(config: &StorageModeConfig) -> io::Result<()> {
+    save_storage_mode_config(&app_data_dir(), config)
+}
+
+pub(crate) fn update_database_directory(directory: &Path) -> io::Result<()> {
+    if !directory.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Database directory must be absolute.",
+        ));
+    }
+    fs::create_dir_all(directory)?;
+    let directory = fs::canonicalize(directory)?;
+    save_database_location_config(
+        &app_data_dir(),
+        &DatabaseLocationConfig {
+            database_directory: Some(directory),
+        },
+    )
+}
+
 pub(crate) fn app_data_dir() -> PathBuf {
     APP_DATA_DIR
         .get()
@@ -911,6 +1222,10 @@ pub(crate) fn attachments_dir_for(database_path: &Path) -> PathBuf {
 #[cfg(test)]
 pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
     initialize_storage_at(path, false)?;
+    if let Some(parent) = path.parent() {
+        let _ = APP_DATA_DIR.set(parent.to_path_buf());
+        let _ = STORAGE_MODE_CONFIG.set(StorageModeConfig::default());
+    }
     match DB_PATH.get() {
         Some(initialized) if initialized == path => Ok(()),
         Some(_) => Err(database_error(
@@ -926,6 +1241,140 @@ pub(crate) fn initialize_test_database(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use crate::test_helpers::{setup_db, setup_legacy_users_db};
+
+    fn client_storage_mode_config() -> StorageModeConfig {
+        StorageModeConfig {
+            mode: StorageMode::Client,
+            host_port: DEFAULT_LAN_PORT,
+            client_url: Some("https://192.168.1.10:8743".to_string()),
+            client_device_name: Some("Balcao 2".to_string()),
+            client_token: Some("device-token".to_string()),
+            client_certificate_fingerprint: Some("sha256:fingerprint".to_string()),
+            client_certificate_pem: Some("certificate".to_string()),
+        }
+    }
+
+    #[test]
+    fn storage_mode_defaults_to_backward_compatible_local_mode() {
+        let directory = tempfile::tempdir().unwrap();
+
+        let config = load_storage_mode_config(directory.path()).unwrap();
+
+        assert_eq!(config, StorageModeConfig::default());
+        assert_eq!(config.mode, StorageMode::Local);
+        assert_eq!(config.host_port, DEFAULT_LAN_PORT);
+    }
+
+    #[test]
+    fn storage_mode_round_trip_persists_client_pairing_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = client_storage_mode_config();
+
+        save_storage_mode_config(directory.path(), &config).unwrap();
+
+        assert_eq!(load_storage_mode_config(directory.path()).unwrap(), config);
+    }
+
+    #[test]
+    fn database_location_persists_the_selected_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let selected = directory.path().join("selected");
+        std::fs::create_dir_all(&selected).unwrap();
+        save_database_location_config(
+            directory.path(),
+            &DatabaseLocationConfig {
+                database_directory: Some(selected.clone()),
+            },
+        )
+        .unwrap();
+
+        let configured = load_database_location_config(directory.path()).unwrap();
+        assert_eq!(configured.database_directory, Some(selected.clone()));
+        assert_eq!(
+            configured
+                .database_directory
+                .unwrap()
+                .join(DATABASE_FILE_NAME),
+            selected.join("database.db")
+        );
+    }
+
+    #[test]
+    fn storage_mode_rejects_non_https_client_url() {
+        let mut config = client_storage_mode_config();
+        config.client_url = Some("http://192.168.1.10:8743".to_string());
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "LAN host URL must use HTTPS."
+        );
+    }
+
+    #[test]
+    fn storage_mode_rejects_invalid_host_port() {
+        let mut config = StorageModeConfig {
+            mode: StorageMode::Host,
+            ..StorageModeConfig::default()
+        };
+        config.host_port = 0;
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "LAN host port must be between 1 and 65535."
+        );
+    }
+
+    #[test]
+    fn storage_mode_rejects_partial_client_credentials() {
+        let mut config = client_storage_mode_config();
+        config.client_certificate_fingerprint = None;
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "Client token and certificate fingerprint must be stored together."
+        );
+    }
+
+    #[test]
+    fn storage_mode_client_startup_does_not_touch_production_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let app_data_dir = directory.path().join("client-app-data");
+        let database_path = directory.path().join("production").join("database.db");
+        let config = client_storage_mode_config();
+
+        let storage_lock =
+            initialize_storage_for_mode(&app_data_dir, &database_path, &config, false).unwrap();
+
+        assert!(storage_lock.is_none());
+        assert!(app_data_dir.is_dir());
+        assert!(!database_path.exists());
+        assert!(!storage_metadata_path_for(&database_path).exists());
+        assert!(!attachments_dir_for(&database_path).exists());
+        assert!(!storage_instance_lock_path(&database_path).exists());
+    }
+
+    #[test]
+    fn storage_mode_local_startup_initializes_and_locks_production_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let app_data_dir = directory.path().join("local-app-data");
+        let database_path = directory.path().join("production").join("database.db");
+
+        let storage_lock = initialize_storage_for_mode(
+            &app_data_dir,
+            &database_path,
+            &StorageModeConfig::default(),
+            false,
+        )
+        .unwrap();
+
+        assert!(storage_lock.is_some());
+        assert!(database_path.exists());
+        assert!(storage_metadata_path_for(&database_path).exists());
+        assert!(storage_instance_lock_path(&database_path).exists());
+        assert!(open_storage_instance_lock(&database_path).is_err());
+        drop(storage_lock);
+        assert!(open_storage_instance_lock(&database_path).is_ok());
+    }
 
     #[test]
     fn default_database_path_uses_the_application_data_directory() {
@@ -1084,7 +1533,8 @@ mod tests {
                     'settings', 'customers', 'users', 'inventory_items', 'service_orders',
                     'checklist_templates', 'template_items', 'service_order_checklists',
                     'service_order_parts', 'financial_snapshots', 'inventory_movements',
-                    'service_order_sequences', 'service_order_events', 'service_order_attachments'
+                    'service_order_sequences', 'service_order_events', 'service_order_attachments',
+                    'lan_devices', 'lan_idempotency_records'
                 )",
                 [],
                 |row| row.get(0),
@@ -1100,8 +1550,72 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(table_count, 14);
+        assert_eq!(table_count, 16);
         assert_eq!(index_count, 2);
+    }
+
+    #[test]
+    fn lan_migrations_are_idempotent_and_create_device_tables() {
+        let conn = setup_db();
+
+        run_schema_migrations(&conn).unwrap();
+        run_schema_migrations(&conn).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+                 AND name IN ('lan_devices', 'lan_idempotency_records')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn lan_idempotency_lookup_distinguishes_replay_and_body_conflict() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO lan_devices (id, name, token_fingerprint, app_version)
+             VALUES ('device-1', 'Balcao', 'fingerprint', '0.3.2')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO lan_idempotency_records
+             (device_id, idempotency_key, route, body_hash, status, response_json)
+             VALUES ('device-1', 'request-1', '/orders', 'body-a', 'completed', '{\"id\":\"order-1\"}')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(
+            lookup_lan_idempotency(&conn, "device-1", "request-1", "/orders", "body-a").unwrap(),
+            LanIdempotencyLookup::Replay("{\"id\":\"order-1\"}".to_string())
+        );
+        assert_eq!(
+            lookup_lan_idempotency(&conn, "device-1", "request-1", "/orders", "body-b").unwrap(),
+            LanIdempotencyLookup::BodyConflict
+        );
+    }
+
+    #[test]
+    fn lan_device_revocation_state_changes_after_revocation() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO lan_devices (id, name, token_fingerprint, app_version)
+             VALUES ('device-1', 'Balcao', 'fingerprint', '0.3.2')",
+            [],
+        )
+        .unwrap();
+
+        assert!(!lan_device_is_revoked(&conn, "device-1").unwrap());
+        conn.execute(
+            "UPDATE lan_devices SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'device-1'",
+            [],
+        )
+        .unwrap();
+        assert!(lan_device_is_revoked(&conn, "device-1").unwrap());
     }
 
     #[test]

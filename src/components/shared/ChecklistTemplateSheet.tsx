@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { ChevronDown, ChevronUp, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,12 +82,12 @@ export function ChecklistTemplateSheet({
     setIsSaving(true);
     try {
       if (template) {
-        await invoke("update_checklist_template", { id: template.id, title, items });
+        await dataCommand("update_checklist_template", { id: template.id, title, items });
         await queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
         await queryClient.invalidateQueries({ queryKey: ["checklist-templates-page"] });
         toastSuccess("Template atualizado com sucesso.");
       } else {
-        const id = await invoke<string>("create_checklist_template", { title, items });
+        const id = await dataCommand<string>("create_checklist_template", { title, items });
         const created = { id, title, items };
         queryClient.setQueryData<ChecklistTemplate[]>(
           ["checklist-templates"],

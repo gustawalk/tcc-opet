@@ -2,6 +2,7 @@ use crate::attachment_service;
 use crate::error::AppError;
 use crate::models::service_order_attachment::ServiceOrderAttachment;
 use crate::repositories::service_order_attachment_repo::ServiceOrderAttachmentRepository;
+use base64::Engine;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -13,6 +14,13 @@ use uuid::Uuid;
 
 pub(crate) static PENDING_ATTACHMENT_SELECTIONS: Lazy<Mutex<HashMap<String, Vec<PathBuf>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanAttachmentFile {
+    file_name: String,
+    data_base64: String,
+}
 
 pub(crate) struct PendingAttachmentReservation {
     token: String,
@@ -113,6 +121,46 @@ pub async fn select_service_order_attachments(
 }
 
 #[command]
+pub async fn select_lan_attachment_files(
+    app: AppHandle,
+) -> Result<Vec<LanAttachmentFile>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        pick_attachment_paths(&app)?
+            .into_iter()
+            .map(|path| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "Selected attachment has an invalid filename.",
+                            "O anexo selecionado possui um nome inválido.",
+                        )
+                    })?;
+                let bytes = std::fs::read(&path).map_err(|error| {
+                    AppError::new(
+                        format!("Failed to read selected attachment: {error}"),
+                        format!("Erro ao ler o anexo selecionado: {error}"),
+                    )
+                })?;
+                Ok(LanAttachmentFile {
+                    file_name,
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|error| {
+        AppError::new(
+            format!("Failed to select attachments: {error}"),
+            format!("Erro ao selecionar anexos: {error}"),
+        )
+    })?
+}
+
+#[command]
 pub async fn select_pending_service_order_attachments(
     app: AppHandle,
 ) -> Result<Option<PendingAttachmentSelection>, AppError> {
@@ -202,4 +250,31 @@ pub fn read_service_order_attachment(id: String) -> Result<String, AppError> {
 #[command]
 pub fn export_service_order_attachment(id: String, destination: String) -> Result<(), AppError> {
     attachment_service::export_attachment(&id, std::path::Path::new(&destination))
+}
+
+pub(crate) fn upload_service_order_attachment(
+    service_order_id: String,
+    file_name: String,
+    data_base64: String,
+) -> Result<ServiceOrderAttachment, AppError> {
+    let encoded = data_base64
+        .split_once(',')
+        .map(|(_, encoded)| encoded)
+        .unwrap_or(&data_base64);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| {
+            AppError::new(
+                format!("Attachment data is invalid: {error}"),
+                "Os dados do anexo são inválidos.",
+            )
+        })?;
+    let conn = crate::database::get_db()?;
+    attachment_service::add_attachment_bytes_with_paths(
+        &conn,
+        &service_order_id,
+        &file_name,
+        &bytes,
+        &crate::database::attachments_dir(),
+    )
 }

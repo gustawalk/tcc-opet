@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { Eye, Paperclip, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -62,14 +63,14 @@ interface ServiceOrderEditorSheetProps {
 }
 
 const fetchOrder = (id: string) =>
-  invoke<ServiceOrder | null>("get_service_order", { id });
-const fetchInventory = () => invoke<InventoryItem[]>("get_inventory_items");
+  dataCommand<ServiceOrder | null>("get_service_order", { id });
+const fetchInventory = () => dataCommand<InventoryItem[]>("get_inventory_items");
 const fetchItems = (id: string) =>
-  invoke<ServiceOrderPart[]>("get_service_order_parts", { serviceOrderId: id });
+  dataCommand<ServiceOrderPart[]>("get_service_order_parts", { serviceOrderId: id });
 const fetchChecklist = (id: string) =>
-  invoke<ChecklistItem[]>("get_service_order_checklist", { osId: id });
+  dataCommand<ChecklistItem[]>("get_service_order_checklist", { osId: id });
 const fetchAttachments = (id: string) =>
-  invoke<ServiceOrderAttachment[]>("get_service_order_attachments", {
+  dataCommand<ServiceOrderAttachment[]>("get_service_order_attachments", {
     serviceOrderId: id,
   });
 
@@ -194,7 +195,7 @@ export function ServiceOrderEditorSheet({
     if (existingItem) return removeItem(existingItem.id);
     setItemActionId(item.id);
     try {
-      await invoke("add_part_to_service_order", {
+      await dataCommand("add_part_to_service_order", {
         serviceOrderId: orderId,
         inventoryItemId: item.id,
         quantity: 1,
@@ -213,7 +214,7 @@ export function ServiceOrderEditorSheet({
     if (itemActionId) return;
     setItemActionId(id);
     try {
-      await invoke("remove_part_from_service_order", { partId: id });
+      await dataCommand("remove_part_from_service_order", { partId: id });
       await invalidateOrder();
     } catch (error) {
       toastError(error, "Erro ao remover item.");
@@ -236,7 +237,7 @@ export function ServiceOrderEditorSheet({
         ),
     );
     try {
-      await invoke("update_service_order_part_quantity", { partId, quantity });
+      await dataCommand("update_service_order_part_quantity", { partId, quantity });
     } catch (error) {
       toastError(error, "Erro ao atualizar quantidade do item.");
     } finally {
@@ -257,10 +258,29 @@ export function ServiceOrderEditorSheet({
     if (!orderId || isUploadingAttachments) return;
     try {
       setIsUploadingAttachments(true);
-      const selected = await invoke<ServiceOrderAttachment[]>(
-        "select_service_order_attachments",
-        { serviceOrderId: orderId },
-      );
+      const selected =
+        getDataClientMode() === "client"
+          ? await invoke<Array<{ fileName: string; dataBase64: string }>>(
+              "select_lan_attachment_files",
+            ).then(async (files) => {
+              const uploaded: ServiceOrderAttachment[] = [];
+              for (const file of files) {
+                uploaded.push(
+                  await dataCommand<ServiceOrderAttachment>(
+                    "upload_service_order_attachment",
+                    {
+                      serviceOrderId: orderId,
+                      fileName: file.fileName,
+                      dataBase64: file.dataBase64,
+                    },
+                  ),
+                );
+              }
+              return uploaded;
+            })
+          : await invoke<ServiceOrderAttachment[]>("select_service_order_attachments", {
+              serviceOrderId: orderId,
+            });
       await invalidateOrder();
       if (selected.length)
         toastSuccess(`${selected.length} anexo(s) adicionado(s) à ordem.`);
@@ -272,7 +292,7 @@ export function ServiceOrderEditorSheet({
   };
   const deleteAttachmentMutation = useMutation({
     mutationFn: (id: string) =>
-      invoke("delete_service_order_attachment", { id }),
+      dataCommand("delete_service_order_attachment", { id }),
     onSuccess: async () => {
       await invalidateOrder();
       setAttachmentToDelete(null);
@@ -287,7 +307,7 @@ export function ServiceOrderEditorSheet({
       return;
     }
     try {
-      await invoke("transition_service_order_status", {
+      await dataCommand("transition_service_order_status", {
         id: orderId,
         status,
         restoreStock: false,
@@ -319,7 +339,7 @@ export function ServiceOrderEditorSheet({
     }
     setIsSaving(true);
     try {
-      await invoke("save_service_order_edit", {
+      await dataCommand("save_service_order_edit", {
         request: {
           id: order.id,
           description: editDescription,
@@ -346,7 +366,7 @@ export function ServiceOrderEditorSheet({
     if (!orderId || isSaving) return;
     setIsSaving(true);
     try {
-      await invoke("transition_service_order_status", {
+      await dataCommand("transition_service_order_status", {
         id: orderId,
         status: "Cancelada",
         restoreStock: true,

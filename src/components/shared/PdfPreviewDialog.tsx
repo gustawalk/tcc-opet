@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   Download,
   FileText,
@@ -57,7 +59,9 @@ export function PdfPreviewDialog({
     return () => {
       const timer = setTimeout(() => {
         discardTimers.delete(token);
-        void invoke("discard_pdf_preview", { token });
+        void (getDataClientMode() === "client"
+          ? dataCommand("discard_pdf_preview", { token })
+          : invoke("discard_pdf_preview", { token }));
       }, 0);
       discardTimers.set(token, timer);
     };
@@ -68,9 +72,26 @@ export function PdfPreviewDialog({
 
     setIsSaving(true);
     try {
-      const saved = await invoke<boolean>("save_pdf_preview", {
-        token: preview.token,
-      });
+      let saved: boolean;
+      if (getDataClientMode() === "client") {
+        const download = await dataCommand<{ fileName: string; dataBase64: string }>(
+          "download_pdf_preview",
+          { token: preview.token },
+        );
+        const destination = await save({
+          defaultPath: download.fileName,
+          filters: [{ name: "PDF", extensions: ["pdf"] }],
+        });
+        saved = Boolean(destination);
+        if (destination) {
+          await invoke("save_lan_base64_file", {
+            destination,
+            dataBase64: download.dataBase64,
+          });
+        }
+      } else {
+        saved = await invoke<boolean>("save_pdf_preview", { token: preview.token });
+      }
       if (saved) toastSuccess("PDF salvo com sucesso.");
     } catch (saveError) {
       toastError(saveError, "Erro ao salvar PDF.");

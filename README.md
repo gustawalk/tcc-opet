@@ -12,6 +12,7 @@ O público-alvo são pequenas oficinas e técnicos autônomos que precisam de:
 - Relatórios financeiros
 - Backup e restauração completos
 - Funcionamento 100% offline, sem necessidade de internet
+- Compartilhamento opcional com até cinco computadores na mesma rede local
 
 ## Stack de Desenvolvimento
 
@@ -94,6 +95,7 @@ Em builds de desenvolvimento, os dados demonstrativos são inseridos por padrão
 - O reset remove todos os dados e anexos, recria as tabelas e restaura somente registros técnicos padrão.
 - O backup `.osbkp` contém um snapshot do banco e todos os anexos protegidos. A senha de exportação é opcional; backups protegidos validam a senha antes da confirmação de restauração, enquanto backups legados ou sem senha seguem direto para essa confirmação.
 - A restauração valida manifesto, schema, integridade, chaves estrangeiras e limites de tamanho antes de substituir banco e anexos. Em caso de falha, os dados anteriores são restaurados.
+- O modo LAN mantém o SQLite somente no Host e oferece acesso HTTPS autenticado aos Clientes. Consulte [Banco compartilhado na rede local](docs/guides/lan-host-client.md).
 
 ## Validação
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import {
   Plus,
   Search,
@@ -84,15 +84,15 @@ const fetchInventoryPage = (args: {
   offset: number;
   search: string;
 }): Promise<Page<InventoryItem>> => {
-  return invoke<Page<InventoryItem>>("get_inventory_items_page", args);
+  return dataCommand<Page<InventoryItem>>("get_inventory_items_page", args);
 };
 
 const fetchMovements = async (itemId: string): Promise<InventoryMovement[]> => {
-  return await invoke<InventoryMovement[]>("get_inventory_movements", { id: itemId });
+  return await dataCommand<InventoryMovement[]>("get_inventory_movements", { id: itemId });
 };
 
 const deleteInventoryItem = async (id: string) => {
-  return await invoke("delete_inventory_item", { id });
+  return await dataCommand("delete_inventory_item", { id });
 };
 
 export function Inventory() {
@@ -178,7 +178,7 @@ export function Inventory() {
 
   const { data: summary, isLoading: isSummaryLoading } = useQuery({
     queryKey: ["inventorySummary"],
-    queryFn: () => invoke<InventorySummary>("get_inventory_summary"),
+    queryFn: () => dataCommand<InventorySummary>("get_inventory_summary"),
   });
 
   const deleteMutation = useMutation({
@@ -194,7 +194,7 @@ export function Inventory() {
 
   const restockMutation = useMutation({
     mutationFn: async ({ id, quantity, unitCost, reason }: { id: string; quantity: number; unitCost?: number; reason?: string }) => {
-      return await invoke("restock_inventory_item", { id, quantity, unitCost, reason });
+      return await dataCommand("restock_inventory_item", { id, quantity, unitCost, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] });
@@ -211,7 +211,7 @@ export function Inventory() {
 
   const removeStockMutation = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
-      return await invoke("remove_stock_inventory_item", { id, quantity });
+      return await dataCommand("remove_stock_inventory_item", { id, quantity });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] });
@@ -233,7 +233,7 @@ export function Inventory() {
   const { data: insights, isLoading: isInsightsLoading, error: insightsError } = useQuery({
     queryKey: ["inventory-insights", inactiveDays],
     queryFn: () =>
-      invoke<InventoryInsights>("get_inventory_insights", {
+      dataCommand<InventoryInsights>("get_inventory_insights", {
         inactiveDays: integerInputToNumber(inactiveDays) ?? 0,
       }),
   });

@@ -1475,6 +1475,10 @@ pub fn start_scheduler(app: AppHandle) -> std::io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn should_start_scheduler(mode: &crate::database::StorageMode) -> bool {
+    *mode != crate::database::StorageMode::Client
+}
+
 pub fn stop_scheduler() {
     SCHEDULER_STOP.store(true, Ordering::Release);
     notify_scheduler();
@@ -1497,6 +1501,15 @@ pub fn stop_scheduler() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_mode_does_not_start_the_local_backup_scheduler() {
+        assert!(!should_start_scheduler(
+            &crate::database::StorageMode::Client
+        ));
+        assert!(should_start_scheduler(&crate::database::StorageMode::Local));
+        assert!(should_start_scheduler(&crate::database::StorageMode::Host));
+    }
     use crate::database::run_migrations;
     use rusqlite::Connection;
 

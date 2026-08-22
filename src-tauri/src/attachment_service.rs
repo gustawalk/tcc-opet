@@ -307,6 +307,56 @@ pub(crate) fn add_attachment_with_paths(
     Ok(attachment)
 }
 
+pub(crate) fn add_attachment_bytes_with_paths(
+    conn: &rusqlite::Connection,
+    service_order_id: &str,
+    file_name: &str,
+    bytes: &[u8],
+    storage_dir: &Path,
+) -> Result<ServiceOrderAttachment, AppError> {
+    ServiceOrderRepository::get_by_id_with_conn(conn, service_order_id)?
+        .ok_or_else(|| not_found("Service order", "Ordem de serviço"))?;
+    if file_name.trim().is_empty()
+        || Path::new(file_name)
+            .file_name()
+            .and_then(|value| value.to_str())
+            != Some(file_name)
+    {
+        return Err(business_error(
+            "Attachment file name is invalid.",
+            "O nome do arquivo do anexo é inválido.",
+        ));
+    }
+    let mime_type = validate_attachment_bytes(bytes)?;
+    let attachment = ServiceOrderAttachment::new(
+        service_order_id.to_string(),
+        file_name.to_string(),
+        Uuid::new_v4().to_string(),
+        mime_type.to_string(),
+        bytes.len() as i64,
+    );
+    let transaction = conn.unchecked_transaction()?;
+    write_encrypted_attachment(storage_dir, &attachment, bytes)?;
+    let result = (|| -> Result<(), AppError> {
+        ServiceOrderAttachmentRepository::create_with_conn(&transaction, &attachment)?;
+        ServiceOrderEventRepository::create_with_conn(
+            &transaction,
+            &ServiceOrderEvent::new(
+                service_order_id.to_string(),
+                "attachment_added".to_string(),
+                serde_json::json!({ "fileName": attachment.file_name }).to_string(),
+            ),
+        )?;
+        transaction.commit()?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_file(storage_dir.join(&attachment.storage_name));
+        return Err(error);
+    }
+    Ok(attachment)
+}
+
 pub fn delete_attachment(id: &str) -> Result<(), AppError> {
     let _guard = crate::database::exclusive_storage_guard()?;
     let conn = crate::database::open_encrypted_database(&crate::database::database_path())?;
@@ -713,6 +763,47 @@ mod tests {
         assert_eq!(validate_attachment_file(&source).unwrap().0, "image/png");
         assert!(validate_attachment_file(&temp_dir.join("missing.png")).is_err());
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn lan_attachment_upload_rolls_back_file_and_metadata_when_event_fails() {
+        let conn = setup_db();
+        let customer = Customer::new(
+            "Cliente LAN".to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
+        CustomerRepository::create_with_conn(&conn, &customer).unwrap();
+        let mut order = ServiceOrder::new(customer.id, "Notebook".to_string(), "Teste".to_string());
+        ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_lan_attachment_event
+             BEFORE INSERT ON service_order_events
+             WHEN NEW.event_type = 'attachment_added'
+             BEGIN SELECT RAISE(ABORT, 'forced event failure'); END;",
+        )
+        .unwrap();
+        let storage = tempfile::tempdir().unwrap();
+
+        let result = add_attachment_bytes_with_paths(
+            &conn,
+            &order.id,
+            "foto.png",
+            b"\x89PNG\r\n\x1a\n",
+            storage.path(),
+        );
+
+        assert!(result.is_err());
+        let metadata_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM service_order_attachments",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(metadata_count, 0);
+        assert_eq!(fs::read_dir(storage.path()).unwrap().count(), 0);
     }
 
     #[test]

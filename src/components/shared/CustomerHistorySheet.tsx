@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { Copy, FileText, History, Mail, MapPin, Phone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,9 @@ interface CustomerHistorySheetProps {
   onClose: () => void;
 }
 
-const fetchCustomer = (id: string) => invoke<Customer | null>("get_customer", { id });
+const fetchCustomer = (id: string) => dataCommand<Customer | null>("get_customer", { id });
 const fetchCustomerOrders = (customerId: string) =>
-  invoke<ServiceOrder[]>("get_service_orders_by_customer_id", { customerId });
+  dataCommand<ServiceOrder[]>("get_service_orders_by_customer_id", { customerId });
 
 export function CustomerHistorySheet({
   customerId,

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -94,7 +95,7 @@ function reportFilters(
   };
 }
 
-const fetchUsers = () => invoke<AppUser[]>("get_users");
+const fetchUsers = () => dataCommand<AppUser[]>("get_users");
 
 function BreakdownTable<T extends FinancialBreakdown>({
   items,
@@ -312,7 +313,7 @@ export function Reports() {
     refetch,
   } = useQuery({
     queryKey: ["financial-report", startDate, endDate, technicianId, rankingMetric, rankingLimit],
-    queryFn: () => invoke<FinancialReport>("get_financial_report", filters),
+    queryFn: () => dataCommand<FinancialReport>("get_financial_report", filters),
     placeholderData: keepPreviousData,
   });
 
@@ -332,10 +333,12 @@ export function Reports() {
       if (!destination) return;
 
       setExporting("csv");
-      await invoke("export_financial_report_csv", {
-        ...filters,
-        destination,
-      });
+      if (getDataClientMode() === "client") {
+        const contents = await dataCommand<string>("create_financial_report_csv", filters);
+        await invoke("save_lan_text_file", { destination, contents });
+      } else {
+        await dataCommand("export_financial_report_csv", { ...filters, destination });
+      }
       toastSuccess("Relatório em CSV exportado.");
     } catch (err) {
       toastError(err, "Erro ao exportar o relatório em CSV.");
@@ -347,7 +350,7 @@ export function Reports() {
   const previewPdf = async () => {
     try {
       setExporting("pdf");
-      const preview = await invoke<PdfPreview>(
+      const preview = await dataCommand<PdfPreview>(
         "preview_financial_report_pdf",
         filters,
       );

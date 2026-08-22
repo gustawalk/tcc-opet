@@ -1,0 +1,53 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4f46e5', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#3730a3', 'lineColor': '#94a3b8', 'secondaryColor': '#10b981', 'tertiaryColor': '#f59e0b', 'background': '#ffffff', 'mainBkg': '#f8fafc', 'nodeBorder': '#cbd5e1', 'clusterBkg': '#f1f5f9', 'clusterBorder': '#e2e8f0', 'titleColor': '#1e293b', 'edgeLabelBackground': '#ffffff', 'textColor': '#334155'}}}%%
+flowchart LR
+    clientApp[Client workstation<br/>Tauri app]
+    dataClient[Frontend data client<br/>chooses local or remote]
+    remoteAdapter[Remote adapter<br/>HTTP plus token]
+    localAdapter[Local adapter<br/>Tauri invoke]
+
+    subgraph hostMachine[Host computer]
+        direction TB
+        hostApp[Host Tauri app]
+        hostApi[LAN API server<br/>product operations]
+        auth[Pairing and device auth]
+        idempotency[Idempotency guard<br/>safe retries]
+        commandFacade[Command facade<br/>shared business handlers]
+        repositories[Repositories<br/>existing SQL rules]
+        database[(database.db<br/>SQLCipher SQLite)]
+        attachments[(database.attachments<br/>files)]
+        hostOps[Backup restore reset<br/>host only]
+    end
+
+    shardLater[Future sharding<br/>deferred design]
+
+    clientApp -->|"uses views"| dataClient
+    dataClient -->|"client mode"| remoteAdapter
+    dataClient -->|"local or host mode"| localAdapter
+
+    remoteAdapter -->|"authenticated JSON over LAN"| hostApi
+    localAdapter -->|"invoke commands"| commandFacade
+    hostApp -->|"starts after DB ready"| hostApi
+
+    hostApi -->|"validates token"| auth
+    hostApi -->|"deduplicates writes"| idempotency
+    hostApi -->|"calls product operation"| commandFacade
+    commandFacade -->|"uses existing logic"| repositories
+    repositories -->|"reads and writes locally"| database
+    repositories -->|"stores and reads files"| attachments
+    hostOps -->|"exclusive storage guard"| database
+    hostOps -->|"backup package includes"| attachments
+
+    commandFacade -. "keeps APIs as operations" .-> shardLater
+    shardLater -. "not in MVP" .-> database
+
+    classDef client fill:#eef2ff,stroke:#4f46e5,color:#1e293b
+    classDef host fill:#f8fafc,stroke:#64748b,color:#1e293b
+    classDef api fill:#dbeafe,stroke:#3b82f6,color:#1e293b
+    classDef data fill:#dcfce7,stroke:#10b981,color:#064e3b
+    classDef warning fill:#fef3c7,stroke:#f59e0b,color:#78350f
+
+    class clientApp,dataClient,remoteAdapter,localAdapter client
+    class hostApp,commandFacade,repositories,hostOps host
+    class hostApi,auth,idempotency api
+    class database,attachments data
+    class shardLater warning

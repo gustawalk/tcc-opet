@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { dataCommand } from "@/lib/data-client";
 import { IdCard, Phone, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,7 +65,7 @@ export function EmployeeCreateSheet({
 
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormData) => {
-      const id = await invoke<string>("create_user", data);
+      const id = await dataCommand<string>("create_user", data);
       return { id, ...data };
     },
   });

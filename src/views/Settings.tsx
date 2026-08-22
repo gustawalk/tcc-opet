@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Building2, ChevronDown, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, ShieldX, Sun, Upload, WifiOff } from "lucide-react";
+import { Building2, ChevronDown, Copy, Database, Eye, EyeOff, FolderOpen, HardDriveDownload, History, Info, LoaderCircle, LockKeyhole, MapPin, Monitor, Moon, Network, RefreshCw, Save, Server, ShieldCheck, ShieldX, Sun, Upload, WifiOff } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -51,7 +51,7 @@ import {
 import { settingsSchema, parseErrors, clearFieldError, ValidationErrors } from "@/lib/validation";
 import { formatCNPJ } from "@/lib/formatters";
 import { RelativeDate } from "@/components/shared/RelativeDate";
-import { toastSuccess, toastError } from "@/lib/errors";
+import { copyToClipboard, toastSuccess, toastError } from "@/lib/errors";
 import { releaseNotes } from "@/lib/release-notes";
 import {
   THEME_OPTIONS,
@@ -76,6 +76,11 @@ import {
 const ERROR_MESSAGES: Record<string, string> = {
   "error sending request for url (https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json)": "Não foi possível verificar as atualizações."
 }
+
+const splitVerificationCode = (value: string) => {
+  const [pairingCode, fingerprint] = value.split("|", 2);
+  return { pairingCode, fingerprint: fingerprint ?? "" };
+};
 
 const fetchSettings = async (): Promise<Settings> => {
   return await dataCommand<Settings>("get_settings");
@@ -851,14 +856,73 @@ export function Settings() {
                   </p>
                 )}
                 {hostStatus?.verificationCode && (
-                  <div className="space-y-1">
-                    <Label>Código de verificação</Label>
-                    <code className="block break-all rounded bg-muted p-2 text-xs">
-                      {hostStatus.verificationCode}
-                    </code>
-                    <p className="text-xs text-muted-foreground">
-                      Compartilhe este código somente com o funcionário que está pareando agora.
-                    </p>
+                  <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">Parear um computador</p>
+                        <p className="text-xs text-muted-foreground">
+                          Informe o código numérico e confirme a impressão digital no outro computador.
+                        </p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const { pairingCode, fingerprint } = splitVerificationCode(hostStatus.verificationCode!);
+                      return (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <Label>Código de pareamento</Label>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                aria-label="Copiar código de pareamento"
+                                onClick={async () => {
+                                  if (await copyToClipboard(pairingCode)) toastSuccess("Código copiado.");
+                                }}
+                              >
+                                <Copy className="h-3.5 w-3.5" /> Copiar
+                              </Button>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-4 py-3">
+                              <code className="text-3xl font-bold tracking-[0.2em] text-foreground">
+                                {pairingCode}
+                              </code>
+                            </div>
+                          </div>
+                          {fingerprint && (
+                            <div className="space-y-2 border-t pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <Label>Impressão digital de segurança</Label>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  aria-label="Copiar impressão digital"
+                                  title="Copiar impressão digital"
+                                  onClick={async () => {
+                                    if (await copyToClipboard(fingerprint)) toastSuccess("Impressão digital copiada.");
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                              <code className="block break-all rounded-md bg-background p-2 text-[11px] text-muted-foreground">
+                                {fingerprint}
+                              </code>
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            O funcionário deve colar o valor completo no campo de pareamento. Compartilhe-o somente durante esta conexão.
+                          </p>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
                 {hostStatus?.running && (

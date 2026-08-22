@@ -271,7 +271,8 @@ describe("Settings LAN host and client", () => {
     expect(await screen.findByText("Servidor LAN")).toBeInTheDocument();
     expect(screen.getByText("Ativo")).toBeInTheDocument();
     expect(screen.getByText("https://192.168.1.10:8743", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("123456|blake3:abc123")).toBeInTheDocument();
+    expect(screen.getByText("123456")).toBeInTheDocument();
+    expect(screen.getByText("blake3:abc123")).toBeInTheDocument();
     expect(screen.getByLabelText("Porta local")).toHaveValue(8743);
     expect(screen.getByText("Balcão 2")).toBeInTheDocument();
   });

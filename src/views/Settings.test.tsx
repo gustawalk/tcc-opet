@@ -295,7 +295,7 @@ describe("Settings LAN host and client", () => {
     installModeMock("client");
     renderSettings();
 
-    expect(await screen.findByText(/Tráfego criptografado/)).toHaveTextContent("blake3:abc123");
+    expect(await screen.findByLabelText("Impressão digital do host")).toHaveValue("blake3:abc123");
     expect(await screen.findByText(/Leituras e alterações permanecem bloqueadas/)).toBeInTheDocument();
     expect(screen.getByText(/disponíveis somente no computador host/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Importar Backup" })).not.toBeInTheDocument();
@@ -323,7 +323,8 @@ describe("Settings LAN host and client", () => {
     const user = userEvent.setup();
     installModeMock("client");
     renderSettings();
-    await user.type(await screen.findByLabelText("Código de verificação"), "123456|blake3:abc123");
+    await user.type(await screen.findByLabelText("Código de pareamento"), "123456");
+    expect(screen.getByLabelText("Impressão digital do host")).toHaveValue("blake3:abc123");
     await user.click(screen.getByRole("button", { name: "Parear e reiniciar" }));
 
     await waitFor(() => {
@@ -350,7 +351,9 @@ describe("Settings LAN host and client", () => {
       return original ? original(command, args) : Promise.resolve(null);
     });
     renderSettings();
-    await user.type(await screen.findByLabelText("Código de verificação"), "bad|blake3:bad");
+    await user.type(await screen.findByLabelText("Código de pareamento"), "bad");
+    await user.clear(screen.getByLabelText("Impressão digital do host"));
+    await user.type(screen.getByLabelText("Impressão digital do host"), "blake3:bad");
     await user.click(screen.getByRole("button", { name: "Parear e reiniciar" }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());

@@ -109,6 +109,7 @@ type UpdateProgress = {
 type BackupPassphraseDialogMode = "export" | "restore";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
+const LAN_MODE_SELECTION_STORAGE_KEY = "opets.lan-mode-selection";
 
 const formatVersion = (version: string) => (version.startsWith("v") ? version : `v${version}`);
 
@@ -134,11 +135,15 @@ export function Settings() {
   const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
-  const [selectedLanMode, setSelectedLanMode] = useState<LanMode>("local");
+  const [selectedLanMode, setSelectedLanMode] = useState<LanMode>(() => {
+    const stored = localStorage.getItem(LAN_MODE_SELECTION_STORAGE_KEY);
+    return stored === "host" || stored === "client" || stored === "local" ? stored : "local";
+  });
   const [hostPort, setHostPort] = useState(8743);
   const [clientUrl, setClientUrl] = useState("");
   const [clientDeviceName, setClientDeviceName] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [clientCertificateFingerprint, setClientCertificateFingerprint] = useState("");
   const [remoteBackupSettings, setRemoteBackupSettings] = useState(
     loadLanRemoteBackupSettings,
   );
@@ -211,6 +216,8 @@ export function Settings() {
     setHostPort(lanMode.config.hostPort);
     setClientUrl(lanMode.config.clientUrl ?? "");
     setClientDeviceName(lanMode.config.clientDeviceName ?? "");
+    setClientCertificateFingerprint(lanMode.config.clientCertificateFingerprint ?? "");
+    localStorage.setItem(LAN_MODE_SELECTION_STORAGE_KEY, lanMode.config.mode);
   }, [lanMode]);
 
   useEffect(() => {
@@ -325,7 +332,7 @@ export function Settings() {
       invoke<LanModeStatus>("pair_lan_client", {
         url: clientUrl,
         deviceName: clientDeviceName,
-        verificationCode,
+        verificationCode: `${verificationCode}|${clientCertificateFingerprint}`,
       }),
     onSuccess: async () => relaunch(),
     onError: (err) => toastError(err, "Não foi possível parear com o host."),
@@ -802,21 +809,28 @@ export function Settings() {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Network className="h-5 w-5 text-primary" /> Rede local
-            </CardTitle>
-            <CardDescription>
-              Compartilhe os dados somente nesta rede, sem depender da internet.
-            </CardDescription>
-          </CardHeader>
+        <details className="order-4 rounded-xl border bg-card text-card-foreground shadow group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-6 marker:content-none">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Network className="h-5 w-5 text-primary" /> Rede local
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Compartilhe os dados somente nesta rede, sem depender da internet.
+              </CardDescription>
+            </div>
+            <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
           <CardContent className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="lan-mode">Modo deste computador</Label>
               <Select
                 value={selectedLanMode}
-                onValueChange={(value) => setSelectedLanMode(value as LanMode)}
+                onValueChange={(value) => {
+                  const mode = value as LanMode;
+                  setSelectedLanMode(mode);
+                  localStorage.setItem(LAN_MODE_SELECTION_STORAGE_KEY, mode);
+                }}
               >
                 <SelectTrigger id="lan-mode" aria-label="Modo LAN">
                   <SelectValue />
@@ -918,7 +932,7 @@ export function Settings() {
                             </div>
                           )}
                           <p className="text-xs text-muted-foreground">
-                            O funcionário deve colar o valor completo no campo de pareamento. Compartilhe-o somente durante esta conexão.
+                            O código numérico e a impressão digital são informações separadas. Compartilhe ambos somente durante esta conexão.
                           </p>
                         </>
                       );
@@ -1002,21 +1016,28 @@ export function Settings() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="lan-verification-code">Código de verificação</Label>
+                  <Label htmlFor="lan-verification-code">Código de pareamento</Label>
                   <Input
                     id="lan-verification-code"
+                    inputMode="numeric"
+                    placeholder="221018"
                     value={verificationCode}
                     onChange={(event) => setVerificationCode(event.target.value)}
                   />
                 </div>
-                {lanMode?.config.clientCertificateFingerprint && (
+                <div className="grid gap-2">
+                  <Label htmlFor="lan-certificate-fingerprint">Impressão digital do host</Label>
+                  <Input
+                    id="lan-certificate-fingerprint"
+                    placeholder="blake3:..."
+                    value={clientCertificateFingerprint}
+                    onChange={(event) => setClientCertificateFingerprint(event.target.value)}
+                  />
                   <div className="flex gap-2 text-xs text-muted-foreground">
                     <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span className="break-all">
-                      Tráfego criptografado. Certificado: {lanMode.config.clientCertificateFingerprint}
-                    </span>
+                    <span>Tráfego criptografado. Cole a impressão digital exibida no Host.</span>
                   </div>
-                )}
+                </div>
                 {clientConnection.isError && (
                   <div className="flex gap-2 text-xs text-destructive">
                     <WifiOff className="h-4 w-4 shrink-0" />
@@ -1027,7 +1048,7 @@ export function Settings() {
                   type="button"
                   className="w-full"
                   onClick={() => pairMutation.mutate()}
-                  disabled={pairMutation.isPending || !clientUrl || !clientDeviceName || !verificationCode}
+                  disabled={pairMutation.isPending || !clientUrl || !clientDeviceName || !verificationCode || !clientCertificateFingerprint}
                 >
                   {pairMutation.isPending ? "Pareando..." : "Parear e reiniciar"}
                 </Button>
@@ -1045,9 +1066,9 @@ export function Settings() {
               </Button>
             )}
           </CardContent>
-        </Card>
+        </details>
 
-        <Card>
+        <Card className="order-3">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Database className="h-5 w-5 text-primary" /> Banco de Dados & Backup

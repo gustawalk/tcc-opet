@@ -14,12 +14,13 @@ import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvid
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
-import { initializeDataClient } from "./lib/data-client";
+import { getDataClientMode, initializeDataClient } from "./lib/data-client";
 import { runDueLanRemoteBackup } from "./lib/lan-backup";
 import { getErrorMessage } from "./lib/errors";
 import type { LanModeConfig } from "./lib/types";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
+const LAN_CONNECTION_CHECK_INTERVAL_MS = 5_000;
 
 const Dashboard = lazy(() =>
   import("./views/Dashboard").then(({ Dashboard }) => ({ default: Dashboard })),
@@ -230,6 +231,32 @@ function App() {
     const timer = window.setInterval(run, 60_000);
     return () => window.clearInterval(timer);
   }, [dataClientReady]);
+
+  useEffect(() => {
+    if (
+      !dataClientReady ||
+      dataClientError !== null ||
+      getDataClientMode() !== "client"
+    ) {
+      return;
+    }
+
+    let disposed = false;
+    const checkLanConnection = () => {
+      void invoke("check_lan_client_connection").catch((error: unknown) => {
+        if (!disposed) setDataClientError(error);
+      });
+    };
+
+    const timer = window.setInterval(
+      checkLanConnection,
+      LAN_CONNECTION_CHECK_INTERVAL_MS,
+    );
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [dataClientError, dataClientReady]);
 
   if (dataClientError) {
     return <LanStartupError error={dataClientError} onRetry={initialize} />;

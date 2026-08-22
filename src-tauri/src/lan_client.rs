@@ -4,8 +4,11 @@ use base64::Engine;
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
+use std::time::Duration;
 
 const APP_VERSION_HEADER: &str = "x-opets-version";
+const LAN_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+const LAN_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Deserialize)]
 struct RemoteError {
@@ -64,6 +67,8 @@ pub(crate) fn pair_client(
     let insecure_agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .https_only(true)
+        .timeout_connect(Some(LAN_CONNECT_TIMEOUT))
+        .timeout_global(Some(LAN_REQUEST_TIMEOUT))
         .tls_config(
             ureq::tls::TlsConfig::builder()
                 .disable_verification(true)
@@ -242,6 +247,8 @@ fn pinned_agent(certificate_pem: &str) -> Result<ureq::Agent, AppError> {
     Ok(ureq::Agent::config_builder()
         .http_status_as_error(false)
         .https_only(true)
+        .timeout_connect(Some(LAN_CONNECT_TIMEOUT))
+        .timeout_global(Some(LAN_REQUEST_TIMEOUT))
         .tls_config(
             ureq::tls::TlsConfig::builder()
                 .root_certs(ureq::tls::RootCerts::new_with_certs(&[certificate]))

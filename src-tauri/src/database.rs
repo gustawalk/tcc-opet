@@ -1140,6 +1140,11 @@ fn make_legacy_part_prices_optional(conn: &Connection) -> Result<()> {
 
 // Get database connection - returns a new connection using the stored path
 pub fn get_db() -> Result<DatabaseConnection> {
+    if storage_mode_config().mode == StorageMode::Client {
+        return Err(database_error(
+            "Local database access is unavailable in Client mode.",
+        ));
+    }
     let guard = STORAGE_OPERATION_LOCK
         .read()
         .map_err(|_| database_error("Storage operation lock is unavailable."))?;

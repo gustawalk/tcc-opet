@@ -114,6 +114,9 @@ const LAN_MODE_SELECTION_STORAGE_KEY = "opets.lan-mode-selection";
 
 const formatVersion = (version: string) => (version.startsWith("v") ? version : `v${version}`);
 
+export const formatDatabasePath = (path: string) =>
+  path.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/, "");
+
 export function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -188,6 +191,7 @@ export function Settings() {
   const { data: automaticBackupStatus, isLoading: isAutomaticBackupLoading, isError: isAutomaticBackupError, refetch: refetchAutomaticBackup } = useQuery({
     queryKey: ["automatic-backup-status"],
     queryFn: fetchAutomaticBackupStatus,
+    enabled: lanMode != null && lanMode.activeMode !== "client",
     refetchInterval: (query) => query.state.data?.running ? 1000 : false,
   });
 
@@ -1108,7 +1112,7 @@ export function Settings() {
               ) : (
                 <>
                   <code className="text-[10px] bg-muted p-2 rounded block truncate">
-                    {isSystemInfoLoading ? "Carregando..." : systemInfo?.databasePath}
+                    {isSystemInfoLoading ? "Carregando..." : systemInfo && formatDatabasePath(systemInfo.databasePath)}
                   </code>
                   <Button type="button" variant="outline" size="sm" className="w-full justify-start gap-2" onClick={handleSelectDatabaseDirectory}>
                     <FolderOpen className="h-4 w-4" /> Alterar pasta do banco

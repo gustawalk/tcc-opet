@@ -150,43 +150,68 @@ pub fn save_lan_text_file(destination: String, contents: String) -> Result<(), A
 }
 
 #[command]
-pub fn pair_lan_client(
+pub async fn pair_lan_client(
     url: String,
     device_name: String,
     verification_code: String,
 ) -> Result<crate::commands::settings_commands::LanModeStatus, AppError> {
-    crate::lan_client::pair_client(&url, &device_name, &verification_code)
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lan_client::pair_client(&url, &device_name, &verification_code)
+    })
+    .await
+    .map_err(lan_task_error)?
 }
 
 #[command]
-pub fn check_lan_client_connection() -> Result<Value, AppError> {
-    crate::lan_client::check_connection()
+pub async fn check_lan_client_connection() -> Result<Value, AppError> {
+    tauri::async_runtime::spawn_blocking(crate::lan_client::check_connection)
+        .await
+        .map_err(lan_task_error)?
 }
 
 #[command]
-pub fn download_lan_remote_backup(
+pub async fn download_lan_remote_backup(
     destination: String,
     passphrase: Option<String>,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
-    crate::lan_client::download_remote_backup(&destination, passphrase.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lan_client::download_remote_backup(&destination, passphrase.as_deref())
+    })
+    .await
+    .map_err(lan_task_error)?
 }
 
 #[command]
-pub fn run_scheduled_lan_remote_backup(
+pub async fn run_scheduled_lan_remote_backup(
     destination_directory: String,
 ) -> Result<crate::backup_service::BackupSummary, AppError> {
-    let destination = std::path::Path::new(&destination_directory).join(format!(
-        "opets-lan-auto-{}.osbkp",
-        chrono::Utc::now().format("%Y%m%d-%H%M%S")
-    ));
-    crate::lan_client::download_remote_backup(&destination.to_string_lossy(), None)
+    tauri::async_runtime::spawn_blocking(move || {
+        let destination = std::path::Path::new(&destination_directory).join(format!(
+            "opets-lan-auto-{}.osbkp",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        ));
+        crate::lan_client::download_remote_backup(&destination.to_string_lossy(), None)
+    })
+    .await
+    .map_err(lan_task_error)?
 }
 
 #[command]
-pub fn lan_remote_command(
+pub async fn lan_remote_command(
     operation: String,
     payload: Value,
     idempotency_key: Option<String>,
 ) -> Result<Value, AppError> {
-    crate::lan_client::remote_command(&operation, payload, idempotency_key.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::lan_client::remote_command(&operation, payload, idempotency_key.as_deref())
+    })
+    .await
+    .map_err(lan_task_error)?
+}
+
+fn lan_task_error(error: tauri::Error) -> AppError {
+    AppError::new(
+        format!("LAN task stopped unexpectedly: {error}"),
+        "A tarefa de conexão LAN foi interrompida inesperadamente.",
+    )
 }

@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Settings } from "@/views/Settings";
+import { formatDatabasePath, Settings } from "@/views/Settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
@@ -32,6 +32,13 @@ const automaticStatus = {
   phase: null,
 };
 
+describe("formatDatabasePath", () => {
+  it("hides the Windows extended-length prefix from the interface", () => {
+    expect(formatDatabasePath("\\\\?\\C:\\database.db")).toBe("C:\\database.db");
+    expect(formatDatabasePath("\\\\?\\UNC\\host\\share\\database.db")).toBe("\\\\host\\share\\database.db");
+  });
+});
+
 function renderSettings() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -51,6 +58,14 @@ describe("Settings automatic backup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_lan_mode_config") {
+        return Promise.resolve({
+          config: { mode: "local", hostPort: 8743 },
+          activeMode: "local",
+          restartRequired: false,
+          storageReady: true,
+        });
+      }
       if (command === "get_settings") {
         return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
       }
@@ -71,6 +86,7 @@ describe("Settings automatic backup", () => {
     renderSettings();
 
     const importButton = await screen.findByRole("button", { name: "Importar Backup" });
+    await screen.findByText("Desativado");
     const summary = screen.getByText("Backup automático").closest("summary");
     expect(summary).not.toBeNull();
     expect(importButton.compareDocumentPosition(summary as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -90,6 +106,7 @@ describe("Settings automatic backup", () => {
   it("warns only when the interval exceeds 48 hours", async () => {
     const user = userEvent.setup();
     renderSettings();
+    await screen.findByText("Desativado");
     await user.click((await screen.findByText("Backup automático")).closest("summary") as HTMLElement);
     await user.click(screen.getByRole("checkbox", { name: "Ativar backup automático" }));
     await waitFor(() => {
@@ -112,6 +129,14 @@ describe("Settings automatic backup", () => {
     const user = userEvent.setup();
     let resolveUpdate: ((value: typeof automaticStatus) => void) | undefined;
     mockedInvoke.mockImplementation((command) => {
+      if (command === "get_lan_mode_config") {
+        return Promise.resolve({
+          config: { mode: "local", hostPort: 8743 },
+          activeMode: "local",
+          restartRequired: false,
+          storageReady: true,
+        });
+      }
       if (command === "get_settings") {
         return Promise.resolve({ companyName: "OPETS", cnpj: "", address: "", logoPath: "" });
       }
@@ -128,6 +153,7 @@ describe("Settings automatic backup", () => {
     });
 
     renderSettings();
+    await screen.findByText("Desativado");
     await user.click((await screen.findByText("Backup automático")).closest("summary") as HTMLElement);
     await user.click(screen.getByRole("checkbox", { name: "Ativar backup automático" }));
 
@@ -302,6 +328,7 @@ describe("Settings LAN host and client", () => {
     expect(screen.queryByRole("button", { name: "Resetar Todos os Dados" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Baixar backup remoto automaticamente" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alterar pasta do banco" })).not.toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_automatic_backup_status");
   });
 
   it("confirms a local database folder before saving and restarting", async () => {

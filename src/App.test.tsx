@@ -121,4 +121,31 @@ describe("LanStartupError", () => {
 
     expect(screen.getByRole("heading", { name: "Não foi possível conectar ao computador host" })).toBeInTheDocument();
   });
+
+  it("shows LAN connection progress while startup checks the host", async () => {
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_lan_mode_config") {
+        return Promise.resolve({
+          config: {
+            mode: "client",
+            hostPort: 8743,
+            clientUrl: "https://192.168.1.10:8743",
+            clientDeviceName: "Balcão 2",
+            clientToken: "token",
+            clientCertificateFingerprint: "blake3:fingerprint",
+            clientCertificatePem: "certificate",
+          },
+          activeMode: "client",
+          restartRequired: false,
+          storageReady: false,
+        });
+      }
+      if (command === "check_lan_client_connection") return new Promise(() => undefined);
+      return Promise.resolve(null);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/Verificando conexão com o computador host/)).toBeInTheDocument();
+  });
 });

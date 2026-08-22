@@ -14,6 +14,7 @@ import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvid
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
+import { LoaderCircle } from "lucide-react";
 import { getDataClientMode, initializeDataClient } from "./lib/data-client";
 import { runDueLanRemoteBackup } from "./lib/lan-backup";
 import { getErrorMessage } from "./lib/errors";
@@ -56,10 +57,11 @@ const Reports = lazy(() =>
 
 type PendingPatchNotes = { version: string; body: string };
 
-function RouteLoading() {
+function RouteLoading({ message = "Carregando página..." }: { message?: string }) {
   return (
-    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-      Carregando página...
+    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+      <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+      <p>{message}</p>
     </div>
   );
 }
@@ -208,13 +210,16 @@ function UpdatePatchNotes() {
 function App() {
   const [dataClientReady, setDataClientReady] = useState(false);
   const [dataClientError, setDataClientError] = useState<unknown>(null);
+  const [startupMessage, setStartupMessage] = useState("Preparando aplicativo...");
 
   const initialize = useCallback(() => {
     setDataClientReady(false);
     setDataClientError(null);
+    setStartupMessage("Preparando aplicativo...");
     void initializeDataClient()
       .then(async (status) => {
         if (status.activeMode === "client") {
+          setStartupMessage("Verificando conexão com o computador host...");
           await invoke("check_lan_client_connection");
         }
         setDataClientReady(true);
@@ -261,14 +266,14 @@ function App() {
   if (dataClientError) {
     return <LanStartupError error={dataClientError} onRetry={initialize} />;
   }
-  if (!dataClientReady) return <RouteLoading />;
+  if (!dataClientReady) return <RouteLoading message={startupMessage} />;
 
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <UpdateAvailabilityNotice />
         <UpdatePatchNotes />
-        <AutomaticBackupProgress />
+        {getDataClientMode() !== "client" && <AutomaticBackupProgress />}
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
             <MainLayout>

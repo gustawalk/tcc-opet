@@ -1302,7 +1302,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        {lanMode?.activeMode !== "client" && <Card className="border-destructive/20">
+        {lanMode?.activeMode !== "client" && <Card className="order-5 border-destructive/20">
           <CardHeader>
             <CardTitle className="text-lg text-destructive">Zona de Perigo</CardTitle>
           </CardHeader>

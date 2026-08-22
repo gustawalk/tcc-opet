@@ -5,7 +5,12 @@ pub const ACTIVE_KEY_VERSION: u8 = 1;
 static MASTER_KEY: Lazy<[u8; 32]> = Lazy::new(|| {
     let value = env!("OPETS_DATA_KEY_V1");
     let mut key = [0_u8; 32];
-    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+    let (chunks, remainder) = value.as_bytes().as_chunks::<2>();
+    assert!(
+        chunks.len() == key.len() && remainder.is_empty(),
+        "build key must contain exactly 64 UTF-8 hex characters"
+    );
+    for (index, chunk) in chunks.iter().enumerate() {
         let hex = std::str::from_utf8(chunk).expect("build key must be UTF-8 hex");
         key[index] = u8::from_str_radix(hex, 16).expect("build key must be valid hex");
     }

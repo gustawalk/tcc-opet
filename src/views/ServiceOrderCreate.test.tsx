@@ -20,6 +20,11 @@ const existingCustomer = {
   email: "cliente@example.com",
   address: "Rua de Teste, 123",
 };
+const existingEmployee = {
+  id: "employee-1",
+  name: "Funcionário Existente",
+  email: "funcionario@example.com",
+};
 
 function renderCreate(initialEntries = ["/os/new"]) {
   const queryClient = new QueryClient({
@@ -48,13 +53,16 @@ describe("ServiceOrderCreate", () => {
       if (command === "get_customers_page") {
         return Promise.resolve({ items: [existingCustomer], total: 1 });
       }
+      if (command === "get_users_page") {
+        return Promise.resolve({ items: [existingEmployee], total: 1 });
+      }
       if (
-        command === "get_users" ||
         command === "get_checklist_templates" ||
         command === "get_inventory_items"
       ) {
         return Promise.resolve([]);
       }
+      if (command === "create_user") return Promise.resolve("employee-created");
       if (command === "create_full_service_order") {
         return Promise.resolve("order-created");
       }
@@ -141,7 +149,6 @@ describe("ServiceOrderCreate", () => {
     mockedInvoke.mockImplementation((command) => {
       if (command === "get_customers_page") return Promise.reject(new Error("offline"));
       if (
-        command === "get_users" ||
         command === "get_checklist_templates" ||
         command === "get_inventory_items"
       ) {
@@ -174,6 +181,135 @@ describe("ServiceOrderCreate", () => {
         expect.anything(),
       );
     });
+  });
+
+  it("loads technicians on demand and retains a selection outside the current page", async () => {
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_customers_page") {
+        return Promise.resolve({ items: [existingCustomer], total: 1 });
+      }
+      if (command === "get_users_page") {
+        const search = (args as { search?: string } | undefined)?.search;
+        return Promise.resolve({
+          items: search ? [] : [existingEmployee],
+          total: search ? 0 : 1,
+        });
+      }
+      if (
+        command === "get_checklist_templates" ||
+        command === "get_inventory_items"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(null);
+    });
+    const user = userEvent.setup();
+    renderCreate();
+    const employeeSelector = await screen.findByRole("button", {
+      name: "Selecione um responsável...",
+    });
+
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_users");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_users_page", expect.anything());
+
+    await user.click(employeeSelector);
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("get_users_page", {
+        limit: 20,
+        offset: 0,
+        search: "",
+      });
+    });
+    await user.click(await screen.findByRole("option", { name: /Funcionário Existente/ }));
+
+    await user.click(
+      screen.getByRole("button", { name: "Funcionário Existente" }),
+    );
+    await user.type(screen.getByPlaceholderText("Buscar por nome..."), "Ausente");
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("get_users_page", {
+        limit: 20,
+        offset: 0,
+        search: "Ausente",
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Funcionário Existente" }),
+    ).toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_users");
+  });
+
+  it("shows a local technician lookup error", async () => {
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_users_page") return Promise.reject(new Error("offline"));
+      if (command === "get_customers_page") {
+        return Promise.resolve({ items: [existingCustomer], total: 1 });
+      }
+      if (
+        command === "get_checklist_templates" ||
+        command === "get_inventory_items"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(null);
+    });
+    const user = userEvent.setup();
+    renderCreate();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Selecione um responsável...",
+      }),
+    );
+    expect(
+      await screen.findByText("Não foi possível buscar funcionários."),
+    ).toBeInTheDocument();
+  });
+
+  it("selects an employee created inline without loading the full employee list", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Selecione um responsável...",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Criar funcionário" }));
+    await user.type(screen.getByLabelText("Nome completo"), "Ana Técnica");
+    await user.type(
+      screen.getByLabelText("E-mail", {
+        selector: "#employee-create-email",
+      }),
+      "ana@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Criar funcionário" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Ana Técnica" }),
+    ).toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_users");
+  });
+
+  it("keeps the selected technician when inline employee creation is cancelled", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Selecione um responsável...",
+      }),
+    );
+    await user.click(await screen.findByRole("option", { name: /Funcionário Existente/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Funcionário Existente" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Criar funcionário" }));
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Funcionário Existente" }),
+    ).toBeInTheDocument();
   });
 
   it("does not navigate back when Enter is pressed in a regular input", async () => {

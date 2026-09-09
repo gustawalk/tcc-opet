@@ -143,6 +143,7 @@ employee creation.
 **Tests**: integration/component
 **Gate**: full
 **Commit**: `feat(service-orders): load technicians on demand`
+**Status**: Complete
 
 ## Phase Execution Map
 

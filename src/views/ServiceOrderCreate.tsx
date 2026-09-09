@@ -77,7 +77,12 @@ const fetchCustomersPage = (search: string) =>
     offset: 0,
     search,
   });
-const fetchUsers = () => dataCommand<UserType[]>("get_users");
+const fetchUsersPage = (search: string) =>
+  dataCommand<Page<UserType>>("get_users_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
 const fetchTemplates = () =>
   dataCommand<ChecklistTemplate[]>("get_checklist_templates");
 const fetchInventory = () => dataCommand<InventoryItem[]>("get_inventory_items");
@@ -94,6 +99,11 @@ export function ServiceOrderCreate() {
   );
   const [showCustomers, setShowCustomers] = useState(false);
   const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
+  const [isEmployeeLookupOpen, setIsEmployeeLookupOpen] = useState(false);
+  const [employeeLookupSearch, setEmployeeLookupSearch] = useState("");
+  const [selectedEmployee, setSelectedEmployee] = useState<UserType | null>(
+    null,
+  );
   const [lines, setLines] = useState<ServiceOrderItemLine[]>([]);
   const [selectedTemplate, setSelectedTemplate] =
     useState<ChecklistTemplate | null>(null);
@@ -120,13 +130,22 @@ export function ServiceOrderCreate() {
     customerSearch,
     LOOKUP_DEBOUNCE_MS,
   );
+  const debouncedEmployeeSearch = useDebounce(
+    employeeLookupSearch,
+    LOOKUP_DEBOUNCE_MS,
+  );
   const customersQuery = useQuery({
     queryKey: ["customersLookup", debouncedCustomerSearch],
     queryFn: () => fetchCustomersPage(debouncedCustomerSearch),
     enabled: isCustomerLookupOpen,
     placeholderData: (previousData) => previousData,
   });
-  const usersQuery = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+  const usersQuery = useQuery({
+    queryKey: ["usersLookup", debouncedEmployeeSearch],
+    queryFn: () => fetchUsersPage(debouncedEmployeeSearch),
+    enabled: isEmployeeLookupOpen,
+    placeholderData: (previousData) => previousData,
+  });
   const templatesQuery = useQuery({
     queryKey: ["checklist-templates"],
     queryFn: fetchTemplates,
@@ -135,15 +154,13 @@ export function ServiceOrderCreate() {
     queryKey: ["inventory-lookup"],
     queryFn: fetchInventory,
   });
-  const users = usersQuery.data ?? EMPTY_USERS;
+  const users = usersQuery.data?.items ?? EMPTY_USERS;
   const templates = templatesQuery.data ?? EMPTY_TEMPLATES;
   const inventory = inventoryQuery.data ?? EMPTY_INVENTORY;
   const lookupLoading =
-    usersQuery.isLoading ||
     templatesQuery.isLoading ||
     inventoryQuery.isLoading;
   const lookupError =
-    usersQuery.isError ||
     templatesQuery.isError ||
     inventoryQuery.isError;
 
@@ -561,8 +578,18 @@ export function ServiceOrderCreate() {
             <SearchableSelect
               options={users}
               value={formData.techId}
-              onSelect={(user) =>
-                setFormData((data) => ({ ...data, techId: user.id }))
+              onSelect={(user) => {
+                setSelectedEmployee(user);
+                setFormData((data) => ({ ...data, techId: user.id }));
+              }}
+              onOpenChange={setIsEmployeeLookupOpen}
+              onSearchChange={setEmployeeLookupSearch}
+              selectedLabel={selectedEmployee?.name}
+              isLoading={usersQuery.isLoading}
+              errorMessage={
+                usersQuery.isError
+                  ? "Não foi possível buscar funcionários."
+                  : undefined
               }
               placeholder="Selecione um responsável..."
               searchPlaceholder="Buscar por nome..."
@@ -604,8 +631,7 @@ export function ServiceOrderCreate() {
                 <span className="text-muted-foreground">Técnico resp.:</span>
                 <span className="font-medium flex items-center gap-1 text-right">
                   <ShieldCheck className="h-3 w-3 shrink-0 text-primary" />
-                  {users.find((user) => user.id === formData.techId)?.name ||
-                    "Nenhum"}
+                  {selectedEmployee?.name || "Nenhum"}
                 </span>
               </div>
               <div className="flex justify-between gap-3">
@@ -791,9 +817,10 @@ export function ServiceOrderCreate() {
         <EmployeeCreateSheet
           open={isEmployeeSheetOpen}
           onOpenChange={setIsEmployeeSheetOpen}
-          onCreated={(employee) =>
-            setFormData((data) => ({ ...data, techId: employee.id }))
-          }
+          onCreated={(employee) => {
+            setSelectedEmployee(employee);
+            setFormData((data) => ({ ...data, techId: employee.id }));
+          }}
         />
         <InventoryItemSheet
           open={createInventoryType !== null}

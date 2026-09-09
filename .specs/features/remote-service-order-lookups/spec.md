@@ -128,14 +128,14 @@ unchanged.
 | RSL-05 | P1: Customer lookup | Execute (T2) | Verified |
 | RSL-06 | P1: Customer lookup | Execute (T2) | Verified |
 | RSL-07 | P1: Customer lookup | Execute (T2) | Verified |
-| RSL-08 | P1: Employee lookup | Design | Pending |
-| RSL-09 | P1: Employee lookup | Design | Pending |
-| RSL-10 | P1: Employee lookup | Design | Pending |
-| RSL-11 | P1: Employee lookup | Design | Pending |
-| RSL-12 | P1: Employee lookup | Design | Pending |
-| RSL-13 | P1: Employee lookup | Design | Pending |
-| RSL-14 | P2: Inline employee creation | Design | Pending |
-| RSL-15 | P2: Inline employee creation | Design | Pending |
+| RSL-08 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-09 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-10 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-11 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-12 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-13 | P1: Employee lookup | Execute (T3) | Verified |
+| RSL-14 | P2: Inline employee creation | Execute (T3) | Verified |
+| RSL-15 | P2: Inline employee creation | Execute (T3) | Verified |
 
 **Coverage:** 15 total, 0 mapped to tasks, 15 unmapped pending design.
 

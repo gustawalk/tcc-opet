@@ -72,4 +72,28 @@ describe("SearchableSelect", () => {
       screen.getByRole("button", { name: "Cliente Selecionado" }),
     ).toBeInTheDocument();
   });
+
+  it("reports remote lookup open and close state", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <SearchableSelect
+        options={options}
+        value={null}
+        onSelect={vi.fn()}
+        onOpenChange={onOpenChange}
+        placeholder="Clientes"
+        getKey={(option) => option.id}
+        getLabel={(option) => option.name}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Clientes" });
+    await user.click(trigger);
+    await user.click(trigger);
+
+    expect(onOpenChange).toHaveBeenNthCalledWith(1, true);
+    expect(onOpenChange).toHaveBeenNthCalledWith(2, false);
+    expect(onOpenChange).toHaveBeenCalledTimes(2);
+  });
 });

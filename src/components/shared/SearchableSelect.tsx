@@ -16,6 +16,7 @@ interface SearchableSelectProps<T> {
   getLabel: (item: T) => string;
   getSubtitle?: (item: T) => string | undefined;
   onSearchChange?: (value: string) => void;
+  onOpenChange?: (open: boolean) => void;
   selectedLabel?: string;
   isLoading?: boolean;
   errorMessage?: string;
@@ -38,6 +39,7 @@ export function SearchableSelect<T>({
   getLabel,
   getSubtitle,
   onSearchChange,
+  onOpenChange,
   selectedLabel: providedSelectedLabel,
   isLoading = false,
   errorMessage,
@@ -78,6 +80,7 @@ export function SearchableSelect<T>({
 
   const close = (restoreFocus = false) => {
     setIsOpen(false);
+    onOpenChange?.(false);
     if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
@@ -94,6 +97,7 @@ export function SearchableSelect<T>({
           : Math.max(selectedIndex, 0),
     );
     setIsOpen(true);
+    onOpenChange?.(true);
   };
 
   useEffect(() => {
@@ -107,12 +111,14 @@ export function SearchableSelect<T>({
       if (
         containerRef.current &&
         !containerRef.current.contains(event.target as Node)
-      )
-        close();
+      ) {
+        setIsOpen(false);
+        onOpenChange?.(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [onOpenChange]);
 
   const handleSelect = (item: T) => {
     onSelect(item);

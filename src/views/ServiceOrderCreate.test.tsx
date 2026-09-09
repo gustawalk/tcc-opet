@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +25,11 @@ const existingEmployee = {
   name: "Funcionário Existente",
   email: "funcionario@example.com",
 };
+const newerEmployee = {
+  id: "employee-2",
+  name: "Funcionária Mais Recente",
+  email: "recente@example.com",
+};
 
 function renderCreate(initialEntries = ["/os/new"]) {
   const queryClient = new QueryClient({
@@ -46,6 +51,10 @@ function renderCreate(initialEntries = ["/os/new"]) {
 
 describe("ServiceOrderCreate", () => {
   afterEach(cleanup);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +82,7 @@ describe("ServiceOrderCreate", () => {
   it("shows customer matches only while the combobox has focus", async () => {
     const user = userEvent.setup();
     renderCreate();
-    const customerInput = await screen.findByLabelText("Nome do Cliente");
+    const customerInput = screen.getByLabelText("Nome do Cliente");
 
     await user.type(customerInput, "Cliente");
     expect(
@@ -112,6 +121,63 @@ describe("ServiceOrderCreate", () => {
       });
     });
     expect(mockedInvoke).not.toHaveBeenCalledWith("get_customers");
+  });
+
+  it("waits 300ms before requesting a changed customer search", async () => {
+    vi.useFakeTimers();
+    renderCreate();
+    const customerInput = screen.getByLabelText("Nome do Cliente");
+
+    fireEvent.focus(customerInput);
+    await act(async () => {});
+    mockedInvoke.mockClear();
+    fireEvent.change(customerInput, { target: { value: "Outro" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_customers_page", expect.anything());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("get_customers_page", {
+      limit: 20,
+      offset: 0,
+      search: "Outro",
+    });
+  });
+
+  it("populates and submits the selected customer's contact data", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    await user.type(customerInput, "Cliente");
+    await user.click(await screen.findByRole("button", { name: /Cliente Existente/ }));
+    expect(screen.getByLabelText("Telefone")).toHaveValue("(41) 99999-9999");
+    expect(screen.getByLabelText("E-mail")).toHaveValue("cliente@example.com");
+    expect(screen.getByLabelText("Endereço Completo")).toHaveValue("Rua de Teste, 123");
+
+    expect(customerInput).toHaveValue("Cliente Existente");
+    await user.type(screen.getByLabelText("Equipamento"), "Notebook");
+    await user.type(screen.getByLabelText("Descrição do Problema"), "Equipamento não liga corretamente");
+    await user.click(screen.getByRole("button", { name: "Criar ordem" }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith(
+      "create_full_service_order",
+      expect.objectContaining({ request: expect.objectContaining({ customerAction: { type: "existing", id: "customer-1", update: null } }) }),
+    ));
+  });
+
+  it("keeps typed customer text when focus leaves the lookup panel", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    await user.type(customerInput, "Novo Cliente");
+    await user.click(screen.getByLabelText("Telefone"));
+
+    expect(customerInput).toHaveValue("Novo Cliente");
+    expect(screen.queryByRole("button", { name: /Cliente Existente/ })).not.toBeInTheDocument();
   });
 
   it("clears reused customer identity when the selected name changes", async () => {
@@ -239,9 +305,70 @@ describe("ServiceOrderCreate", () => {
     expect(mockedInvoke).not.toHaveBeenCalledWith("get_users");
   });
 
-  it("shows a local technician lookup error", async () => {
+  it("waits 300ms before requesting a changed technician search", async () => {
+    vi.useFakeTimers();
+    renderCreate();
+    const selector = screen.getByRole("button", { name: "Selecione um responsável..." });
+
+    fireEvent.click(selector);
+    await act(async () => {});
+    mockedInvoke.mockClear();
+    fireEvent.change(screen.getByPlaceholderText("Buscar por nome..."), { target: { value: "Ana" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_users_page", expect.anything());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("get_users_page", {
+      limit: 20,
+      offset: 0,
+      search: "Ana",
+    });
+  });
+
+  it("keeps the latest technician results when an older request finishes later", async () => {
+    let resolveOlderSearch!: (value: { items: (typeof existingEmployee)[]; total: number }) => void;
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_users_page") {
+        const search = (args as { search?: string }).search;
+        if (search === "Antigo") {
+          return new Promise((resolve) => {
+            resolveOlderSearch = resolve;
+          });
+        }
+        return Promise.resolve({
+          items: search === "Novo" ? [newerEmployee] : [existingEmployee],
+          total: 1,
+        });
+      }
+      if (command === "get_customers_page") return Promise.resolve({ items: [existingCustomer], total: 1 });
+      if (command === "get_checklist_templates" || command === "get_inventory_items") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    const user = userEvent.setup();
+    renderCreate();
+
+    await user.click(await screen.findByRole("button", { name: "Selecione um responsável..." }));
+    const search = screen.getByPlaceholderText("Buscar por nome...");
+    await user.type(search, "Antigo");
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await user.clear(search);
+    await user.type(search, "Novo");
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(await screen.findByRole("option", { name: "Funcionária Mais Recente" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolveOlderSearch({ items: [existingEmployee], total: 1 });
+    });
+    expect(screen.getByRole("option", { name: "Funcionária Mais Recente" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Funcionário Existente" })).not.toBeInTheDocument();
+  });
+
+  it("shows a local technician lookup error without clearing its selection", async () => {
     mockedInvoke.mockImplementation((command) => {
-      if (command === "get_users_page") return Promise.reject(new Error("offline"));
+      if (command === "get_users_page") return Promise.resolve({ items: [existingEmployee], total: 1 });
       if (command === "get_customers_page") {
         return Promise.resolve({ items: [existingCustomer], total: 1 });
       }
@@ -256,14 +383,19 @@ describe("ServiceOrderCreate", () => {
     const user = userEvent.setup();
     renderCreate();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Selecione um responsável...",
-      }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Selecione um responsável..." }));
+    await user.click(await screen.findByRole("option", { name: /Funcionário Existente/ }));
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_users_page") return Promise.reject(new Error("offline"));
+      if (command === "get_customers_page") return Promise.resolve({ items: [existingCustomer], total: 1 });
+      if (command === "get_checklist_templates" || command === "get_inventory_items") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    await user.click(screen.getByRole("button", { name: "Funcionário Existente" }));
     expect(
       await screen.findByText("Não foi possível buscar funcionários."),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Funcionário Existente" })).toBeInTheDocument();
   });
 
   it("selects an employee created inline without loading the full employee list", async () => {
@@ -291,7 +423,7 @@ describe("ServiceOrderCreate", () => {
     expect(mockedInvoke).not.toHaveBeenCalledWith("get_users");
   });
 
-  it("keeps the selected technician when inline employee creation is cancelled", async () => {
+  it("keeps the order draft and selected technician when inline employee creation is cancelled or fails", async () => {
     const user = userEvent.setup();
     renderCreate();
 
@@ -301,6 +433,7 @@ describe("ServiceOrderCreate", () => {
       }),
     );
     await user.click(await screen.findByRole("option", { name: /Funcionário Existente/ }));
+    await user.type(screen.getByLabelText("Equipamento"), "Notebook");
     await user.click(
       screen.getByRole("button", { name: "Funcionário Existente" }),
     );
@@ -310,6 +443,24 @@ describe("ServiceOrderCreate", () => {
     expect(
       await screen.findByRole("button", { name: "Funcionário Existente" }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Equipamento")).toHaveValue("Notebook");
+
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "create_user") return Promise.reject(new Error("offline"));
+      if (command === "get_users_page") return Promise.resolve({ items: [existingEmployee], total: 1 });
+      if (command === "get_customers_page") return Promise.resolve({ items: [existingCustomer], total: 1 });
+      if (command === "get_checklist_templates" || command === "get_inventory_items") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    await user.click(screen.getByRole("button", { name: "Funcionário Existente" }));
+    await user.click(screen.getByRole("button", { name: "Criar funcionário" }));
+    await user.type(screen.getByLabelText("Nome completo"), "Ana Técnica");
+    await user.type(screen.getByLabelText("E-mail", { selector: "#employee-create-email" }), "ana@example.com");
+    await user.click(screen.getByRole("button", { name: "Criar funcionário" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Criar funcionário" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.getByRole("button", { name: "Funcionário Existente" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Equipamento")).toHaveValue("Notebook");
   });
 
   it("does not navigate back when Enter is pressed in a regular input", async () => {

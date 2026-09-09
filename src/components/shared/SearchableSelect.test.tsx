@@ -91,6 +91,7 @@ describe("SearchableSelect", () => {
     const trigger = screen.getByRole("button", { name: "Clientes" });
     await user.click(trigger);
     await user.click(trigger);
+    await user.click(document.body);
 
     expect(onOpenChange).toHaveBeenNthCalledWith(1, true);
     expect(onOpenChange).toHaveBeenNthCalledWith(2, false);

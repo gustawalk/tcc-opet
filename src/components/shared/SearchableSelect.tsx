@@ -109,6 +109,7 @@ export function SearchableSelect<T>({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
+        isOpen &&
         containerRef.current &&
         !containerRef.current.contains(event.target as Node)
       ) {
@@ -118,7 +119,7 @@ export function SearchableSelect<T>({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onOpenChange]);
+  }, [isOpen, onOpenChange]);
 
   const handleSelect = (item: T) => {
     onSelect(item);

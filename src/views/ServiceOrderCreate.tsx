@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { useDebounce } from "@/hooks/use-debounce";
 import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
 import { EmployeeCreateSheet } from "@/components/shared/EmployeeCreateSheet";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
@@ -54,13 +55,15 @@ import {
   ChecklistTemplate,
   Customer,
   InventoryItem,
+  Page,
   User as UserType,
 } from "@/lib/types";
 
-const EMPTY_CUSTOMERS: Customer[] = [];
 const EMPTY_USERS: UserType[] = [];
 const EMPTY_TEMPLATES: ChecklistTemplate[] = [];
 const EMPTY_INVENTORY: InventoryItem[] = [];
+const LOOKUP_LIMIT = 20;
+const LOOKUP_DEBOUNCE_MS = 300;
 
 type PendingAttachmentSelection = {
   token?: string;
@@ -68,7 +71,12 @@ type PendingAttachmentSelection = {
   files?: Array<{ fileName: string; dataBase64: string }>;
 };
 
-const fetchCustomers = () => dataCommand<Customer[]>("get_customers");
+const fetchCustomersPage = (search: string) =>
+  dataCommand<Page<Customer>>("get_customers_page", {
+    limit: LOOKUP_LIMIT,
+    offset: 0,
+    search,
+  });
 const fetchUsers = () => dataCommand<UserType[]>("get_users");
 const fetchTemplates = () =>
   dataCommand<ChecklistTemplate[]>("get_checklist_templates");
@@ -85,6 +93,7 @@ export function ServiceOrderCreate() {
     null,
   );
   const [showCustomers, setShowCustomers] = useState(false);
+  const [isCustomerLookupOpen, setIsCustomerLookupOpen] = useState(false);
   const [lines, setLines] = useState<ServiceOrderItemLine[]>([]);
   const [selectedTemplate, setSelectedTemplate] =
     useState<ChecklistTemplate | null>(null);
@@ -107,9 +116,15 @@ export function ServiceOrderCreate() {
     description: "",
     techId: "",
   });
+  const debouncedCustomerSearch = useDebounce(
+    customerSearch,
+    LOOKUP_DEBOUNCE_MS,
+  );
   const customersQuery = useQuery({
-    queryKey: ["customers-list"],
-    queryFn: fetchCustomers,
+    queryKey: ["customersLookup", debouncedCustomerSearch],
+    queryFn: () => fetchCustomersPage(debouncedCustomerSearch),
+    enabled: isCustomerLookupOpen,
+    placeholderData: (previousData) => previousData,
   });
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
   const templatesQuery = useQuery({
@@ -120,17 +135,14 @@ export function ServiceOrderCreate() {
     queryKey: ["inventory-lookup"],
     queryFn: fetchInventory,
   });
-  const customers = customersQuery.data ?? EMPTY_CUSTOMERS;
   const users = usersQuery.data ?? EMPTY_USERS;
   const templates = templatesQuery.data ?? EMPTY_TEMPLATES;
   const inventory = inventoryQuery.data ?? EMPTY_INVENTORY;
   const lookupLoading =
-    customersQuery.isLoading ||
     usersQuery.isLoading ||
     templatesQuery.isLoading ||
     inventoryQuery.isLoading;
   const lookupError =
-    customersQuery.isError ||
     usersQuery.isError ||
     templatesQuery.isError ||
     inventoryQuery.isError;
@@ -146,15 +158,7 @@ export function ServiceOrderCreate() {
     };
   }, [pendingAttachments?.token]);
 
-  const filteredCustomers = useMemo(
-    () =>
-      customerSearch
-        ? customers.filter((customer) =>
-            customer.name.toLowerCase().includes(customerSearch.toLowerCase()),
-          )
-        : [],
-    [customers, customerSearch],
-  );
+  const customers = customersQuery.data?.items ?? [];
   const total = useMemo(
     () =>
       lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -166,6 +170,7 @@ export function ServiceOrderCreate() {
     setOriginalCustomer({ ...customer, phone: formatBRPhone(customer.phone) });
     setCustomerSearch(customer.name);
     setShowCustomers(false);
+    setIsCustomerLookupOpen(false);
     setFormData((data) => ({
       ...data,
       phone: formatBRPhone(customer.phone),
@@ -178,6 +183,7 @@ export function ServiceOrderCreate() {
     setOriginalCustomer(null);
     setCustomerSearch("");
     setShowCustomers(false);
+    setIsCustomerLookupOpen(false);
     setFormData((data) => ({
       ...data,
       phone: "",
@@ -322,7 +328,7 @@ export function ServiceOrderCreate() {
       }
       if (pendingAttachments) setPendingAttachments(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customers-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customersLookup"] }),
         queryClient.invalidateQueries({ queryKey: ["customersPage"] }),
         queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
@@ -407,7 +413,10 @@ export function ServiceOrderCreate() {
           <CardContent className="space-y-4">
             <div
               className="relative"
-              onFocusCapture={() => setShowCustomers(true)}
+              onFocusCapture={() => {
+                setShowCustomers(true);
+                setIsCustomerLookupOpen(true);
+              }}
               onBlurCapture={(event) => {
                 const nextTarget = event.relatedTarget;
                 if (
@@ -415,6 +424,7 @@ export function ServiceOrderCreate() {
                   !event.currentTarget.contains(nextTarget)
                 ) {
                   setShowCustomers(false);
+                  setIsCustomerLookupOpen(false);
                   setCustomerSearch((current) => formatName(current));
                 }
               }}
@@ -427,6 +437,10 @@ export function ServiceOrderCreate() {
                   className="pl-9"
                   value={customerSearch}
                   onChange={(e) => {
+                    if (selectedCustomer) {
+                      setSelectedCustomer(null);
+                      setOriginalCustomer(null);
+                    }
                     setCustomerSearch(e.target.value);
                     setShowCustomers(true);
                     setErrors(clearFieldError(errors, "name"));
@@ -436,11 +450,19 @@ export function ServiceOrderCreate() {
               {errors.name && !selectedCustomer && (
                 <p className="text-xs text-destructive mt-1">{errors.name}</p>
               )}
-              {showCustomers && customerSearch && (
+              {showCustomers && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg">
                   <CardContent className="p-1">
-                    {filteredCustomers.length ? (
-                      filteredCustomers.map((customer) => (
+                    {customersQuery.isLoading ? (
+                      <p className="p-2 text-sm text-muted-foreground">
+                        Carregando clientes...
+                      </p>
+                    ) : customersQuery.isError ? (
+                      <p className="p-2 text-sm text-destructive">
+                        Não foi possível buscar clientes. Você ainda pode cadastrar um novo cliente.
+                      </p>
+                    ) : customers.length ? (
+                      customers.map((customer) => (
                         <button
                           type="button"
                           className="block w-full text-left p-2 hover:bg-accent rounded"
@@ -457,7 +479,9 @@ export function ServiceOrderCreate() {
                       ))
                     ) : (
                       <p className="p-2 text-sm text-primary">
-                        Novo cliente: {customerSearch}
+                        {customerSearch
+                          ? `Novo cliente: ${customerSearch}`
+                          : "Digite para buscar ou cadastrar um novo cliente."}
                       </p>
                     )}
                   </CardContent>

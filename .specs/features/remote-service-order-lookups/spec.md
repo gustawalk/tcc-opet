@@ -121,13 +121,13 @@ unchanged.
 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| RSL-01 | P1: Customer lookup | Design | Pending |
-| RSL-02 | P1: Customer lookup | Design | Pending |
-| RSL-03 | P1: Customer lookup | Design | Pending |
-| RSL-04 | P1: Customer lookup | Design | Pending |
-| RSL-05 | P1: Customer lookup | Design | Pending |
-| RSL-06 | P1: Customer lookup | Design | Pending |
-| RSL-07 | P1: Customer lookup | Design | Pending |
+| RSL-01 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-02 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-03 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-04 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-05 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-06 | P1: Customer lookup | Execute (T2) | Verified |
+| RSL-07 | P1: Customer lookup | Execute (T2) | Verified |
 | RSL-08 | P1: Employee lookup | Design | Pending |
 | RSL-09 | P1: Employee lookup | Design | Pending |
 | RSL-10 | P1: Employee lookup | Design | Pending |

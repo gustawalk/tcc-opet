@@ -45,7 +45,9 @@ describe("ServiceOrderCreate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedInvoke.mockImplementation((command) => {
-      if (command === "get_customers") return Promise.resolve([existingCustomer]);
+      if (command === "get_customers_page") {
+        return Promise.resolve({ items: [existingCustomer], total: 1 });
+      }
       if (
         command === "get_users" ||
         command === "get_checklist_templates" ||
@@ -74,6 +76,104 @@ describe("ServiceOrderCreate", () => {
     expect(
       screen.queryByRole("button", { name: /Cliente Existente/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("loads customers on demand and debounces remote search", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_customers");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_customers_page", expect.anything());
+
+    await user.click(customerInput);
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("get_customers_page", {
+        limit: 20,
+        offset: 0,
+        search: "",
+      });
+    });
+
+    await user.type(customerInput, "Outro");
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("get_customers_page", {
+        limit: 20,
+        offset: 0,
+        search: "Outro",
+      });
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("get_customers");
+  });
+
+  it("clears reused customer identity when the selected name changes", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    await user.type(customerInput, "Cliente");
+    await user.click(await screen.findByRole("button", { name: /Cliente Existente/ }));
+    await user.clear(customerInput);
+    await user.type(customerInput, "Novo Cliente");
+    await user.type(screen.getByLabelText("Equipamento"), "Notebook");
+    await user.type(
+      screen.getByLabelText("Descrição do Problema"),
+      "Equipamento não inicializa corretamente",
+    );
+    await user.click(screen.getByRole("button", { name: "Criar ordem" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "create_full_service_order",
+        expect.objectContaining({
+          request: expect.objectContaining({
+            customerAction: expect.objectContaining({
+              type: "new",
+              name: "Novo Cliente",
+            }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("keeps valid new-customer submission available after lookup failure", async () => {
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_customers_page") return Promise.reject(new Error("offline"));
+      if (
+        command === "get_users" ||
+        command === "get_checklist_templates" ||
+        command === "get_inventory_items"
+      ) {
+        return Promise.resolve([]);
+      }
+      if (command === "create_full_service_order") return Promise.resolve("order-created");
+      return Promise.resolve(null);
+    });
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    await user.type(customerInput, "Novo Cliente");
+    expect(
+      await screen.findByText("Não foi possível buscar clientes. Você ainda pode cadastrar um novo cliente."),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Telefone"), "41999999999");
+    await user.type(screen.getByLabelText("E-mail"), "novo@example.com");
+    await user.type(screen.getByLabelText("Endereço Completo"), "Rua de Teste, 123");
+    await user.type(screen.getByLabelText("Equipamento"), "Notebook");
+    await user.type(
+      screen.getByLabelText("Descrição do Problema"),
+      "Equipamento não inicializa corretamente",
+    );
+    await user.click(screen.getByRole("button", { name: "Criar ordem" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "create_full_service_order",
+        expect.anything(),
+      );
+    });
   });
 
   it("does not navigate back when Enter is pressed in a regular input", async () => {

@@ -109,6 +109,7 @@ customer identity handling.
 **Tests**: integration/component
 **Gate**: quick
 **Commit**: `feat(service-orders): load customers on demand`
+**Status**: Complete
 
 ### T3: Move technician selection to a bounded remote lookup
 

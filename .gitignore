@@ -24,6 +24,7 @@ coverage/
 *.sln
 *.sw?
 *.md
+*.pdf
 !docs/**/*.md
 !.specs/*.md
 !.specs/**/*.md

@@ -9,10 +9,10 @@ lookup pattern already existing elsewhere in the application.
 
 ## Goals
 
-- [ ] Prevent service-order creation from transferring complete customer or
+- [x] Prevent service-order creation from transferring complete customer or
   employee lists.
-- [ ] Preserve the existing customer-reuse and technician-selection workflows.
-- [ ] Make lookup loading and failure states understandable without blocking a
+- [x] Preserve the existing customer-reuse and technician-selection workflows.
+- [x] Make lookup loading and failure states understandable without blocking a
   valid new-customer service order.
 
 ## Out of Scope
@@ -141,9 +141,9 @@ unchanged.
 
 ## Success Criteria
 
-- [ ] No complete customer or employee list is requested by `ServiceOrderCreate`.
-- [ ] Both lookups request at most 20 records per search and debounce input by 300 ms.
-- [ ] Customer reuse, new-customer creation, technician selection, and inline
+- [x] No complete customer or employee list is requested by `ServiceOrderCreate`.
+- [x] Both lookups request at most 20 records per search and debounce input by 300 ms.
+- [x] Customer reuse, new-customer creation, technician selection, and inline
   employee creation remain functional.
-- [ ] Focus, keyboard, loading, error, and selected-label behavior have focused
+- [x] Focus, keyboard, loading, error, and selected-label behavior have focused
   frontend test coverage.

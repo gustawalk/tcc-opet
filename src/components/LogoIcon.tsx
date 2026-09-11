@@ -7,7 +7,7 @@ type LogoIconProps = React.HTMLAttributes<HTMLSpanElement> & {
 
 export function LogoIcon({ width = 24, height = 24, style, ...props }: LogoIconProps) {
   const iconMarkup = icon
-    .replace(/fill="#05DF72"/g, 'fill="currentColor"')
+    .replace(/fill="#[A-Fa-f0-9]{6}"/g, 'fill="currentColor"')
     .replace(/width="\d+"/, 'width="100%"')
     .replace(/height="\d+"/, 'height="100%"');
 

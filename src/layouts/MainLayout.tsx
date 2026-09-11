@@ -44,11 +44,11 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar collapsible="icon">
           <SidebarHeader className="h-16 flex items-center px-6 border-b group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
-            <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0">
-              <div className="rounded-lg flex items-center justify-center">
-                <LogoIcon width={32} height={32} />
+            <div className="flex items-center gap-6 group-data-[collapsible=icon]:gap-0">
+              <div className="rounded-lg flex h-7 w-7 shrink-0 items-center justify-center group-data-[collapsible=icon]:h-6 group-data-[collapsible=icon]:w-6">
+                <LogoIcon width="100%" height="100%" />
               </div>
-              <span className="font-bold text-lg tracking-tight group-data-[collapsible=icon]:hidden">OpetS Manager</span>
+              <span className="font-bold text-lg leading-tight tracking-tight group-data-[collapsible=icon]:hidden">OpetS Manager</span>
             </div>
           </SidebarHeader>
           <SidebarContent className="py-4">
@@ -61,7 +61,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                     tooltip={item.label}
                   >
                     <Link to={item.path} className="flex items-center gap-3 px-3">
-                       <item.icon className="h-7 w-7" />
+                      <item.icon className="h-7 w-7" />
                       <span>{item.label}</span>
                     </Link>
                   </SidebarMenuButton>

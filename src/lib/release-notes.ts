@@ -11,6 +11,27 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.4.0",
+    date: "11/09/2026",
+    title: "Buscas sob demanda e novo ícone",
+    sections: [
+      {
+        title: "Ordens de serviço",
+        items: [
+          "A busca de clientes passou a carregar resultados conforme o texto é digitado, sem carregar a lista completa ao abrir a tela.",
+          "A busca de técnicos também é carregada sob demanda e mantém a seleção atual durante a atualização dos resultados.",
+          "As sugestões aparecem somente enquanto o campo correspondente está em foco, evitando resultados fora de contexto.",
+        ],
+      },
+      {
+        title: "Identidade visual",
+        items: [
+          "O aplicativo, o favicon e os instaladores agora usam o novo ícone em todas as plataformas.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.3.3",
     date: "22/08/2026",
     title: "Conexão LAN mais estável e controle de dados aprimorado",

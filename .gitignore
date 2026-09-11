@@ -24,6 +24,8 @@ coverage/
 *.sln
 *.sw?
 *.md
+!AGENTS.md
+!ROADMAP.md
 *.pdf
 !docs/**/*.md
 !.specs/*.md

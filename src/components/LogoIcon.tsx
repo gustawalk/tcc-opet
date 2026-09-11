@@ -1,4 +1,4 @@
-import icon from "@/public/icons/icon.svg?raw";
+import icon from "@/icons/icon.svg?raw";
 
 type LogoIconProps = React.HTMLAttributes<HTMLSpanElement> & {
   width?: number | string;

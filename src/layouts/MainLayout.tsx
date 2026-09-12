@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { LogoIcon } from "@/components/LogoIcon";
+import { GlobalSearch } from "@/components/shared/GlobalSearch";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -76,6 +77,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger />
             </div>
             <div className="flex items-center gap-2">
+              <GlobalSearch />
               <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>
                 <Plus />
                 Nova Ordem</Button>

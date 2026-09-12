@@ -8,6 +8,8 @@ use std::ops::{Deref, DerefMut};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tauri::Manager;
 use uuid::Uuid;
@@ -32,6 +34,12 @@ const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
 const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
 const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
+const BASELINE_SCHEMA_VERSION: i64 = 1;
+const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
+
+#[cfg(test)]
+static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -398,7 +406,6 @@ pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) 
             path.display()
         );
     }
-
     Ok(())
 }
 
@@ -428,6 +435,8 @@ fn create_pre_encryption_recovery_backup(
         None,
     )
     .map_err(database_error)?;
+    crate::backup_service::validate_backup_contents_with_passphrase(&destination, None)
+        .map_err(database_error)?;
     Ok(destination)
 }
 
@@ -591,11 +600,74 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
     }
 }
 
-// Run full migrations: schema + core defaults
+// Run full migrations: schema + core defaults. Version zero is the historical
+// unversioned state, so it must run the compatibility baseline exactly once.
 pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
-    run_schema_migrations(conn)?;
+    let mut version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(database_error(format!(
+            "Database schema version {version} is newer than this application supports."
+        )));
+    }
+    // Version-zero databases are either fresh or historical accepted schemas.
+    // The baseline routine owns both paths before the numbered chain begins.
+    if version == 0 || !has_core_schema(conn)? {
+        run_schema_migrations(conn)?;
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)?;
+        version = BASELINE_SCHEMA_VERSION;
+    }
+    if version == BASELINE_SCHEMA_VERSION {
+        apply_performance_index_migration(conn)?;
+    }
     ensure_core_defaults(conn)?;
+    validate_migrated_database(conn)?;
     Ok(())
+}
+
+fn validate_migrated_database(conn: &Connection) -> Result<()> {
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(database_error(
+            "Database integrity check failed after migration.",
+        ));
+    }
+    let mut foreign_key_check = conn.prepare("PRAGMA foreign_key_check")?;
+    if foreign_key_check.query([])?.next()?.is_some() {
+        return Err(database_error(
+            "Database foreign-key check failed after migration.",
+        ));
+    }
+    Ok(())
+}
+
+fn apply_performance_index_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_service_orders_customer_created
+             ON service_orders(customer_id, deleted_at, created_date);
+         CREATE INDEX IF NOT EXISTS idx_template_items_template
+             ON template_items(template_id);",
+        )?;
+        #[cfg(test)]
+        if FAIL_PERFORMANCE_INDEX_MIGRATION.swap(false, Ordering::SeqCst) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        conn.pragma_update(None, "user_version", PERFORMANCE_INDEX_SCHEMA_VERSION)?;
+        conn.execute_batch("COMMIT")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
+fn has_core_schema(conn: &Connection) -> Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings')",
+        [],
+        |row| row.get(0),
+    )
 }
 
 pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
@@ -1452,6 +1524,97 @@ mod tests {
     }
 
     #[test]
+    fn fresh_migrations_apply_the_complete_versioned_chain() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn performance_index_migration_upgrades_the_baseline_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)
+            .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, PERFORMANCE_INDEX_SCHEMA_VERSION);
+        assert_eq!(indexes, 2);
+
+        run_migrations(&conn).unwrap();
+        let rerun_version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rerun_version, PERFORMANCE_INDEX_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn failed_performance_index_migration_rolls_back_schema_and_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)
+            .unwrap();
+        FAIL_PERFORMANCE_INDEX_MIGRATION.store(true, Ordering::SeqCst);
+
+        assert!(run_migrations(&conn).is_err());
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let integrity: String = conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, BASELINE_SCHEMA_VERSION);
+        assert_eq!(indexes, 0);
+        assert_eq!(integrity, "ok");
+    }
+
+    #[test]
+    fn migrations_reject_a_future_schema_version_without_mutation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION + 1)
+            .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(table_count, 0);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION + 1);
+    }
+
+    #[test]
     fn encrypted_database_cannot_be_read_without_the_application_key() {
         let path = std::env::temp_dir().join(format!("opets-encrypted-{}.db", Uuid::new_v4()));
         let conn = open_encrypted_database(&path).unwrap();
@@ -1714,6 +1877,16 @@ mod tests {
         assert_eq!(migrated_row.0, "Maria");
         assert_eq!(migrated_row.1, "");
         assert_eq!(migrated_row.2, "");
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        run_migrations(&conn).unwrap();
+        let rerun_version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rerun_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]
@@ -1726,6 +1899,11 @@ mod tests {
         conn.execute("INSERT INTO inventory_items (id, name, type, cost_price) VALUES ('part-1', 'Tela', 'part', 42.5)", []).unwrap();
 
         run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
 
         let item: (i64, Option<String>) = conn
             .query_row(

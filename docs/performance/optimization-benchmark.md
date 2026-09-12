@@ -1,4 +1,9 @@
-# Benchmark das otimizações
+# Optimization Benchmark
+
+The latest evidence for the versioned-migration performance work is recorded
+in [Versioned Migrations and Performance Index Benchmark](versioned-migrations-performance-benchmark.md).
+The results below are the historical baseline for the earlier connection and
+pagination package.
 
 Medição executada em 12 de agosto de 2026 para validar o pacote de otimizações de conexão, listagens paginadas e relatório financeiro.
 

@@ -431,4 +431,37 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    fn template_item_lookup_uses_the_template_index_for_multiple_ids() {
+        let mut conn = setup_db();
+        let first = ChecklistRepository::create_template_with_conn(
+            &mut conn,
+            "Recepção",
+            vec!["Tela".to_string()],
+        )
+        .unwrap();
+        let second = ChecklistRepository::create_template_with_conn(
+            &mut conn,
+            "Entrega",
+            vec!["Carregador".to_string()],
+        )
+        .unwrap();
+        let mut statement = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT template_id, label FROM template_items
+                 WHERE template_id IN (?1, ?2)",
+            )
+            .unwrap();
+        let plan = statement
+            .query_map(params![first, second], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("idx_template_items_template")));
+    }
 }

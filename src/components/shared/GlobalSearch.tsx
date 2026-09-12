@@ -20,6 +20,7 @@ export function GlobalSearch() {
   const [term, setTerm] = useState("");
   const [groups, setGroups] = useState<ResultGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedOption, setSelectedOption] = useState(-1);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => {
@@ -39,6 +40,31 @@ export function GlobalSearch() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    setSelectedOption(-1);
+  }, [open, term, groups]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter") return;
+      const options = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-global-search-option]"));
+      if (options.length === 0) return;
+      if (event.key === "Enter") {
+        if (selectedOption >= 0) { event.preventDefault(); options[selectedOption]?.click(); }
+        return;
+      }
+      event.preventDefault();
+      const next = event.key === "ArrowDown"
+        ? (selectedOption + 1) % options.length
+        : (selectedOption - 1 + options.length) % options.length;
+      setSelectedOption(next);
+      options[next]?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, selectedOption]);
 
   useEffect(() => {
     const query = term.trim();
@@ -88,7 +114,7 @@ export function GlobalSearch() {
   return <>
     <Button variant="outline" size="sm" className="hidden md:flex" onClick={() => setOpen(true)}><Search />Buscar <kbd className="ml-2 text-xs text-muted-foreground">Ctrl K</kbd></Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Busca global</DialogTitle></DialogHeader><Input autoFocus value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar clientes, OS, estoque ou modelos..." />
-      <div className="max-h-80 space-y-4 overflow-y-auto">{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Buscas recentes</h3>{history.map((item) => <button key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section> : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>
+      <div className="max-h-80 space-y-4 overflow-y-auto">{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button data-global-search-option key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Buscas recentes</h3>{history.map((item) => <button data-global-search-option key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section> : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button data-global-search-option key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>
     </DialogContent></Dialog>
   </>;
 }

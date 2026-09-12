@@ -8,6 +8,7 @@
 | AD-002 | active | The first LAN version exposes product operations, not arbitrary SQL. | Existing Tauri commands already define business operation boundaries; exposing SQL would bypass validation, authorization, idempotency, and domain transactions. | 2026-08-21 |
 | AD-003 | active | Sharding is explicitly deferred until host/client mode is stable and measured. | Current service order, inventory, reporting, backup, and display-ID flows require one complete database view. Sharding would introduce distributed ownership and transaction rules before the simpler LAN requirement is solved. | 2026-08-21 |
 | AD-004 | active | LAN traffic uses a host-generated TLS certificate pinned by clients during pairing, and host/client builds must match exactly. | The deployment must remain fully offline while encrypting every transaction; certificate pinning avoids public CA and manual trust-store setup, while exact build equality prevents operation-contract drift. | 2026-08-21 |
+| AD-005 | active | Schema changes after the v0.4.0 baseline use numbered `PRAGMA user_version` migrations; legacy backup import adapts accepted historical schemas to that baseline first. | This makes future database upgrades atomic and testable without dropping existing backup-import compatibility. | 2026-09-12 |
 
 ## Handoff
 

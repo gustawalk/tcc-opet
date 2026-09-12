@@ -32,6 +32,8 @@ const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
 const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
 const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
+const V0_4_SCHEMA_VERSION: i64 = 1;
+const CURRENT_SCHEMA_VERSION: i64 = V0_4_SCHEMA_VERSION;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -591,9 +593,19 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
     }
 }
 
-// Run full migrations: schema + core defaults
+// Run full migrations: schema + core defaults. Version zero is the historical
+// unversioned state, so it must run the compatibility baseline exactly once.
 pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
-    run_schema_migrations(conn)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(database_error(format!(
+            "Database schema version {version} is newer than this application supports."
+        )));
+    }
+    if version == 0 {
+        run_schema_migrations(conn)?;
+        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)?;
+    }
     ensure_core_defaults(conn)?;
     Ok(())
 }
@@ -1449,6 +1461,40 @@ mod tests {
 
         assert!(table_count >= 14);
         assert_eq!(settings_count, 0);
+    }
+
+    #[test]
+    fn fresh_migrations_create_the_v0_4_schema_baseline() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, V0_4_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn migrations_reject_a_future_schema_version_without_mutation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION + 1)
+            .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(table_count, 0);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION + 1);
     }
 
     #[test]

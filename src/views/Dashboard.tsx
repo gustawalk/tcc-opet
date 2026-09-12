@@ -127,8 +127,20 @@ export function Dashboard() {
     );
   }
 
+  const statusCountsOrder: Record<string, number> = {
+    'Orçamento': 0,
+    'Aguardando Peça': 1,
+    'Em Manutenção': 2,
+    'Finalizada': 3,
+    'Cancelada': 4,
+  }
+
   const { summary, recentOrders, inventoryAlerts, inventoryAlertSummary, statusCounts } = data;
   const prioritizedInventoryAlerts = prioritizeInventoryAlerts(inventoryAlerts);
+
+  const orderedStatusCount = [...statusCounts].sort(
+    (a, b) => (statusCountsOrder[a.status] ?? Number.MAX_SAFE_INTEGER) - (statusCountsOrder[b.status] ?? Number.MAX_SAFE_INTEGER),
+  )
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-200">
@@ -277,7 +289,7 @@ export function Dashboard() {
               <CardTitle className="text-lg">Resumo de Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {statusCounts.map((s, i) => (
+              {orderedStatusCount.map((s, i) => (
                 <div key={s.status}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">

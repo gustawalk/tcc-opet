@@ -144,9 +144,9 @@ its printed labels with the performance document.
 | VMP-01 | P1: Safe v0.4 upgrade | Execute (T1) | Verified |
 | VMP-02 | P1: Safe v0.4 upgrade | Design | Pending |
 | VMP-03 | P1: Safe v0.4 upgrade | Execute (T3) | Verified |
-| VMP-04 | P1: Safe v0.4 upgrade | Design | Pending |
-| VMP-05 | P1: Safe v0.4 upgrade | Design | Pending |
-| VMP-06 | P1: Safe v0.4 upgrade | Design | Pending |
+| VMP-04 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
+| VMP-05 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
+| VMP-06 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
 | VMP-07 | P1: Historical backup import | Execute (T2) | Verified |
 | VMP-08 | P1: Historical backup import | Design | Pending |
 | VMP-09 | P1: Historical backup import | Execute (T2) | Verified |

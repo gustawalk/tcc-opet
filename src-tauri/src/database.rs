@@ -8,6 +8,8 @@ use std::ops::{Deref, DerefMut};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tauri::Manager;
 use uuid::Uuid;
@@ -35,6 +37,9 @@ const DEFAULT_LAN_PORT: u16 = 8743;
 const V0_4_SCHEMA_VERSION: i64 = 1;
 const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
 const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
+
+#[cfg(test)]
+static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -619,14 +624,20 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
 
 fn apply_performance_index_migration(conn: &Connection) -> Result<()> {
     conn.execute_batch("BEGIN IMMEDIATE")?;
-    let result = conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_service_orders_customer_created
+    let result = (|| {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_service_orders_customer_created
              ON service_orders(customer_id, deleted_at, created_date);
          CREATE INDEX IF NOT EXISTS idx_template_items_template
-             ON template_items(template_id);
-         PRAGMA user_version = 2;
-         COMMIT;",
-    );
+             ON template_items(template_id);",
+        )?;
+        #[cfg(test)]
+        if FAIL_PERFORMANCE_INDEX_MIGRATION.swap(false, Ordering::SeqCst) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        conn.pragma_update(None, "user_version", PERFORMANCE_INDEX_SCHEMA_VERSION)?;
+        conn.execute_batch("COMMIT")
+    })();
     if result.is_err() {
         let _ = conn.execute_batch("ROLLBACK");
     }
@@ -1533,6 +1544,34 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(rerun_version, PERFORMANCE_INDEX_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn failed_performance_index_migration_rolls_back_schema_and_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+            .unwrap();
+        FAIL_PERFORMANCE_INDEX_MIGRATION.store(true, Ordering::SeqCst);
+
+        assert!(run_migrations(&conn).is_err());
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let integrity: String = conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, V0_4_SCHEMA_VERSION);
+        assert_eq!(indexes, 0);
+        assert_eq!(integrity, "ok");
     }
 
     #[test]

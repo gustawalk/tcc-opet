@@ -157,6 +157,8 @@ multiple template IDs.
 
 ### T6: Verify migration rollback and post-migration validation
 
+**Status**: Complete
+
 **What**: Add deterministic migration failpoint coverage for rollback, version
 retention, integrity, and foreign-key validation.
 **Where**: `src-tauri/src/database.rs`

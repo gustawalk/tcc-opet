@@ -14,7 +14,6 @@ import { getFontScalePreference, setFontScalePreference, FONT_SCALE_OPTIONS, typ
 type ResultGroup = { label: string; path: string; items: { id: string; title: string; detail: string }[] };
 type SearchHistoryItem = { id: string; title: string; detail: string; path: string; kind: "order" | "page" };
 const HISTORY_KEY = "opets-global-search-history";
-const QUERY_HISTORY_KEY = "opets-global-search-query-history";
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
@@ -26,9 +25,6 @@ export function GlobalSearch() {
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]"); } catch { return []; }
-  });
-  const [queryHistory, setQueryHistory] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) ?? "[]"); } catch { return []; }
   });
   const navigate = useNavigate();
   const { toggleSidebar } = useSidebar();
@@ -74,11 +70,6 @@ export function GlobalSearch() {
     const query = term.trim();
     if (query.length < 2) { setGroups([]); return; }
     const timer = window.setTimeout(() => {
-      setQueryHistory((current) => {
-        const next = [query, ...current.filter((value) => value.toLocaleLowerCase() !== query.toLocaleLowerCase())].slice(0, 3);
-        localStorage.setItem(QUERY_HISTORY_KEY, JSON.stringify(next));
-        return next;
-      });
       setLoading(true);
       void Promise.all([
         dataCommand<Page<Customer>>("get_customers_page", { limit: 5, offset: 0, search: query }),
@@ -123,7 +114,7 @@ export function GlobalSearch() {
   return <>
     <Button variant="outline" size="sm" className="hidden md:flex" onClick={() => setOpen(true)}><Search />Buscar <kbd className="ml-2 text-xs text-muted-foreground">Ctrl K</kbd></Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Busca global</DialogTitle></DialogHeader><Input autoFocus value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar clientes, OS, estoque ou modelos..." />
-      <div className="max-h-80 space-y-4 overflow-y-auto">{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button data-global-search-option key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? <>{queryHistory.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Pesquisas recentes</h3>{queryHistory.map((query) => <button data-global-search-option key={query} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => setTerm(query)}>{query}</button>)}</section>}{history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Itens recentes</h3>{history.map((item) => <button data-global-search-option key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>}</> : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button data-global-search-option key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>
+      <div className="max-h-80 space-y-4 overflow-y-auto">{term.trim().length < 2 && history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Itens recentes</h3>{history.map((item) => <button data-global-search-option key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>}{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button data-global-search-option key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? null : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button data-global-search-option key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>
     </DialogContent></Dialog>
   </>;
 }

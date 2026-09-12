@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Plus,
+  CircleXIcon,
+  CircleDollarSignIcon,
 } from "lucide-react";
 import { FinancialCard } from "@/components/shared/FinancialCard";
 import {
@@ -280,19 +282,28 @@ export function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div
-                        className={`p-1.5 rounded-md ${
-                          s.status === "Orçamento"
-                            ? "bg-blue-100 text-blue-600"
+                        className={`p-1.5 rounded-md ${s.status === "Orçamento"
+                          ? "bg-blue-100 text-blue-600"
+                          : s.status === "Cancelada"
+                            ? "bg-red-100 text-red-600"
                             : s.status === "Em Manutenção"
                               ? "bg-amber-100 text-amber-600"
-                              : "bg-green-100 text-green-600"
-                        }`}
+                              : s.status === "Aguardando Peça"
+                                ? "bg-purple-100 text-purple-600"
+                                : "bg-green-100 text-green-600"
+                          }`}
                       >
                         {s.status === "Orçamento" && (
+                          <CircleDollarSignIcon className="h-4 w-4" />
+                        )}
+                        {s.status === "Aguardando Peça" && (
                           <Clock className="h-4 w-4" />
                         )}
                         {s.status === "Em Manutenção" && (
                           <Wrench className="h-4 w-4" />
+                        )}
+                        {s.status === "Cancelada" && (
+                          <CircleXIcon className="h-4 w-4" />
                         )}
                         {s.status === "Finalizada" && (
                           <CheckCircle2 className="h-4 w-4" />
@@ -326,54 +337,54 @@ export function Dashboard() {
           </Card>
 
           {prioritizedInventoryAlerts.length > 0 && (
-          <Card className="border-destructive/20 bg-destructive/5">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-destructive">
-                <AlertTriangle className="h-5 w-5" /> Alertas de Estoque
-                <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-                  <span>{inventoryAlertSummary.outOfStock} sem estoque</span>
-                  <span aria-hidden="true" className="size-1 rounded-full bg-current" />
-                  <span>{inventoryAlertSummary.lowStock} em alerta</span>
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {prioritizedInventoryAlerts.map((alert) => (
-                <div key={alert.id} className="flex flex-col gap-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{alert.name}</span>
-                    <span
-                      className={
-                        alert.currentStock === 0
-                          ? "text-destructive font-bold"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      {alert.currentStock} un.
-                    </span>
+            <Card className="border-destructive/20 bg-destructive/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-destructive">
+                  <AlertTriangle className="h-5 w-5" /> Alertas de Estoque
+                  <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                    <span>{inventoryAlertSummary.outOfStock} sem estoque</span>
+                    <span aria-hidden="true" className="size-1 rounded-full bg-current" />
+                    <span>{inventoryAlertSummary.lowStock} em alerta</span>
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {prioritizedInventoryAlerts.map((alert) => (
+                  <div key={alert.id} className="flex flex-col gap-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{alert.name}</span>
+                      <span
+                        className={
+                          alert.currentStock === 0
+                            ? "text-destructive font-bold"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {alert.currentStock} un.
+                      </span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-full ${alert.currentStock === 0 ? "bg-destructive" : "bg-amber-500"}`}
+                        style={{
+                          width: `${Math.max((alert.currentStock / alert.minStock) * 100, 5)}%`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className={`h-full ${alert.currentStock === 0 ? "bg-destructive" : "bg-amber-500"}`}
-                      style={{
-                        width: `${Math.max((alert.currentStock / alert.minStock) * 100, 5)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-            <CardFooter>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="w-full h-8"
-                onClick={() => navigate("/inventory")}
-              >
-                Fazer Reposição
-              </Button>
-            </CardFooter>
-          </Card>
+                ))}
+              </CardContent>
+              <CardFooter>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full h-8"
+                  onClick={() => navigate("/inventory")}
+                >
+                  Fazer Reposição
+                </Button>
+              </CardFooter>
+            </Card>
           )}
         </div>
       </div>

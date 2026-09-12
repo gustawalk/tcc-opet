@@ -40,6 +40,8 @@ const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
 
 #[cfg(test)]
 static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
+#[cfg(test)]
+static FAIL_MIGRATION_RECOVERY_BACKUP: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -379,7 +381,8 @@ pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) 
 
     // Open the connection once to run migrations with foreign keys enabled.
     let conn = open_encrypted_database(database_path)?;
-    run_migrations(&conn)?;
+    let migration_recovery_backup =
+        run_migrations_with_recovery_backup(&conn, database_path, &attachments_path)?;
     crate::attachment_service::recover_staged_attachment_deletions(&conn, &attachments_path)
         .map_err(database_error)?;
     crate::attachment_service::migrate_legacy_attachments(&conn, &attachments_path)
@@ -403,6 +406,12 @@ pub(crate) fn initialize_storage_at(database_path: &Path, seed_demo_data: bool) 
     if let Some(path) = recovery_backup {
         println!(
             "[MIGRATION] Encrypted pre-migration recovery backup created at {}.",
+            path.display()
+        );
+    }
+    if let Some(path) = migration_recovery_backup {
+        println!(
+            "[MIGRATION] Schema-upgrade recovery backup created at {}.",
             path.display()
         );
     }
@@ -436,6 +445,8 @@ fn create_pre_encryption_recovery_backup(
         None,
     )
     .map_err(database_error)?;
+    crate::backup_service::validate_backup_contents_with_passphrase(&destination, None)
+        .map_err(database_error)?;
     Ok(destination)
 }
 
@@ -619,6 +630,80 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
         apply_performance_index_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
+    validate_migrated_database(conn)?;
+    Ok(())
+}
+
+/// Runs a pending on-disk upgrade only after retaining a validated recovery
+/// archive. In-memory callers intentionally use `run_migrations` directly.
+fn run_migrations_with_recovery_backup(
+    conn: &Connection,
+    database_path: &Path,
+    attachments_path: &Path,
+) -> Result<Option<PathBuf>> {
+    let version = current_schema_version(conn)?;
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(database_error(format!(
+            "Database schema version {version} is newer than this application supports."
+        )));
+    }
+    if !has_core_schema(conn)? || version >= CURRENT_SCHEMA_VERSION {
+        run_migrations(conn)?;
+        return Ok(None);
+    }
+
+    let recovery_backup =
+        create_migration_recovery_backup(database_path, attachments_path, version)?;
+    run_migrations(conn)?;
+    Ok(Some(recovery_backup))
+}
+
+fn current_schema_version(conn: &Connection) -> Result<i64> {
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+}
+
+fn create_migration_recovery_backup(
+    database_path: &Path,
+    attachments_path: &Path,
+    version: i64,
+) -> Result<PathBuf> {
+    #[cfg(test)]
+    if FAIL_MIGRATION_RECOVERY_BACKUP.swap(false, Ordering::SeqCst) {
+        return Err(database_error("Test-only recovery backup failure."));
+    }
+
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| database_error("Database path has no parent."))?;
+    let destination = parent.join(format!(
+        "opets-pre-migration-v{version}-{}.osbkp",
+        Uuid::new_v4()
+    ));
+    crate::backup_service::export_backup_with_passphrase(
+        database_path,
+        attachments_path,
+        &destination,
+        None,
+    )
+    .map_err(database_error)?;
+    crate::backup_service::validate_backup_contents_with_passphrase(&destination, None)
+        .map_err(database_error)?;
+    Ok(destination)
+}
+
+fn validate_migrated_database(conn: &Connection) -> Result<()> {
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(database_error(
+            "Database integrity check failed after migration.",
+        ));
+    }
+    let mut foreign_key_check = conn.prepare("PRAGMA foreign_key_check")?;
+    if foreign_key_check.query([])?.next()?.is_some() {
+        return Err(database_error(
+            "Database foreign-key check failed after migration.",
+        ));
+    }
     Ok(())
 }
 
@@ -1572,6 +1657,76 @@ mod tests {
         assert_eq!(version, V0_4_SCHEMA_VERSION);
         assert_eq!(indexes, 0);
         assert_eq!(integrity, "ok");
+    }
+
+    #[test]
+    fn on_disk_upgrade_creates_one_validated_recovery_backup_before_migrating() {
+        let directory =
+            std::env::temp_dir().join(format!("opets-schema-upgrade-{}", Uuid::new_v4()));
+        let database = directory.join("database.db");
+        let attachments = directory.join("database.attachments");
+        fs::create_dir_all(&attachments).unwrap();
+        let conn = open_encrypted_database(&database).unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+            .unwrap();
+
+        let recovery = run_migrations_with_recovery_backup(&conn, &database, &attachments)
+            .unwrap()
+            .unwrap();
+        assert!(recovery.exists());
+        crate::backup_service::validate_backup_contents_with_passphrase(&recovery, None).unwrap();
+        assert_eq!(
+            current_schema_version(&conn).unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+        assert!(
+            run_migrations_with_recovery_backup(&conn, &database, &attachments)
+                .unwrap()
+                .is_none()
+        );
+        let archive_count = fs::read_dir(&directory)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("opets-pre-migration-")
+            })
+            .count();
+        assert_eq!(archive_count, 1);
+
+        drop(conn);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn recovery_backup_failure_aborts_an_on_disk_upgrade_before_mutation() {
+        let directory =
+            std::env::temp_dir().join(format!("opets-schema-recovery-failure-{}", Uuid::new_v4()));
+        let database = directory.join("database.db");
+        let attachments = directory.join("database.attachments");
+        fs::create_dir_all(&attachments).unwrap();
+        let conn = open_encrypted_database(&database).unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+            .unwrap();
+        FAIL_MIGRATION_RECOVERY_BACKUP.store(true, Ordering::SeqCst);
+
+        assert!(run_migrations_with_recovery_backup(&conn, &database, &attachments).is_err());
+        assert_eq!(current_schema_version(&conn).unwrap(), V0_4_SCHEMA_VERSION);
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(indexes, 0);
+
+        drop(conn);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]

@@ -142,7 +142,7 @@ its printed labels with the performance document.
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
 | VMP-01 | P1: Safe v0.4 upgrade | Execute (T1) | Verified |
-| VMP-02 | P1: Safe v0.4 upgrade | Design | Pending |
+| VMP-02 | P1: Safe v0.4 upgrade | Execute (T7) | Verified |
 | VMP-03 | P1: Safe v0.4 upgrade | Execute (T3) | Verified |
 | VMP-04 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
 | VMP-05 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |

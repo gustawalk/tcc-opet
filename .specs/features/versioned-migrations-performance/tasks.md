@@ -178,6 +178,8 @@ retention, integrity, and foreign-key validation.
 
 ### T7: Create validated recovery backups for on-disk migration
 
+**Status**: Complete
+
 **What**: Wire migration context into local startup so the first pending
 on-disk migration produces a retained, validated encrypted recovery backup.
 **Where**: `src-tauri/src/database.rs`

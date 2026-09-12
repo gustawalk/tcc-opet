@@ -36,8 +36,7 @@ indexes needed for the measured 10,000-record workload.
 | Migration ledger | Use `PRAGMA user_version`; version changes occur in the same `BEGIN IMMEDIATE` transaction as each migration. | SQLite-native, atomic, and requires no extra metadata table. | y |
 | Baseline | Assign the current v0.4.0 schema version 1. | It creates a finite, testable starting point for future migrations. | y |
 | Older backups | Validate and adapt every older backup format currently accepted by the restore path to version 1, then run numbered migrations. | Backup import must not regress when direct upgrade support starts at v0.4.0. | y |
-| Recovery backup | Before the first pending on-disk migration, create and validate a retained encrypted recovery backup beside the database. In-memory test databases do not create a file backup. | An upgrade must be recoverable before it mutates user data. | y |
-| Recovery failure | Abort before changing `user_version` or schema when the recovery backup cannot be created or validated. | A migration without recovery evidence is unsafe. | y |
+| Database-only upgrades | Do not create automatic recovery archives for transactional schema-only migrations. | SQLite transactions roll back failed versioned schema changes without adding files to user storage. | y |
 | Disk-full simulation | Use a deterministic test-only migration failpoint, then verify transaction rollback and unchanged version. | Real disk exhaustion is not deterministic in unit tests. | y |
 | Remaining dimensions | Authentication, rate limits, expiry, and external-service fallback are N/A. Ordering, retry, persistence, and failure behavior are covered below. | This is a local database migration feature. | y |
 
@@ -58,11 +57,11 @@ my records.
 **Acceptance Criteria**:
 
 1. WHEN a fresh database is initialized THEN the system SHALL create the v0.4.0 baseline schema and set `PRAGMA user_version` to `1`.
-2. WHEN a version-1 database starts with pending migrations THEN the system SHALL create and validate one encrypted recovery backup before its first schema mutation.
+2. WHEN a version-1 database starts with pending migrations THEN the system SHALL not create an automatic recovery archive.
 3. WHEN a pending database-only migration runs THEN the system SHALL execute its schema changes and `user_version` update inside one `BEGIN IMMEDIATE` transaction.
-4. IF a numbered migration fails THEN the system SHALL roll back its schema changes, retain its prior `user_version`, and leave the recovery backup available.
+4. IF a numbered migration fails THEN the system SHALL roll back its schema changes and retain its prior `user_version`.
 5. WHEN all pending migrations finish THEN the system SHALL pass `PRAGMA integrity_check` and `PRAGMA foreign_key_check` before continuing startup.
-6. WHEN no migration is pending THEN the system SHALL not create an additional recovery backup or modify the schema version.
+6. WHEN no migration is pending THEN the system SHALL not modify the schema version or create migration artifacts.
 
 **Independent Test**: Start from a version-1 encrypted database, inject a
 failing migration, and verify the schema/version are unchanged; repeat without

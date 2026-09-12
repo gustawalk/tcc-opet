@@ -176,26 +176,26 @@ retention, integrity, and foreign-key validation.
 **Gate**: full
 **Commit**: `test(migrations): cover rollback and validation`
 
-### T7: Create validated recovery backups for on-disk migration
+### T7: Keep transactional on-disk migrations artifact-free
 
 **Status**: Complete
 
-**What**: Wire migration context into local startup so the first pending
-on-disk migration produces a retained, validated encrypted recovery backup.
+**What**: Run transactional schema-only upgrades without creating automatic
+recovery archives in user storage.
 **Where**: `src-tauri/src/database.rs`
 **Depends on**: T6
-**Reuses**: `export_backup_with_passphrase`, backup validation, storage paths
+**Reuses**: `run_migrations`, transactional index migration tests
 **Requirement**: VMP-02, VMP-04
 **Tools**: MCP: NONE; Skill: NONE
 **Done when**:
 
-- [ ] Pending on-disk migration creates exactly one validated recovery archive before mutation.
-- [ ] Backup creation/validation failure aborts without changing the database version.
-- [ ] In-memory migration callers remain independent of filesystem backup setup.
+- [ ] Pending on-disk migration creates no migration archive or other artifact.
+- [ ] A migration failure rolls back without changing the database version.
+- [ ] Backups and legacy restore remain independent of schema startup.
 
 **Tests**: unit/integration
 **Gate**: full
-**Commit**: `feat(migrations): back up before on-disk upgrades`
+**Commit**: `refactor(migrations): avoid upgrade recovery artifacts`
 
 ### T8: Preserve legacy backup restoration through versioned migration
 

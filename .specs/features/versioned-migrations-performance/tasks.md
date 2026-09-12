@@ -137,6 +137,8 @@ preserving report semantics and testing the composite-index query plan.
 
 ### T5: Prove indexed template-item lookup
 
+**Status**: Complete
+
 **What**: Add a repository-level plan assertion for loading items by one and
 multiple template IDs.
 **Where**: `src-tauri/src/repositories/checklist_repo.rs`

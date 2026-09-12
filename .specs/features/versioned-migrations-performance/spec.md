@@ -155,7 +155,7 @@ its printed labels with the performance document.
 | VMP-12 | P1: Query indexes | Execute (T4) | Verified |
 | VMP-13 | P1: Query indexes | Execute (T4) | Verified |
 | VMP-14 | P1: Query indexes | Execute (T4) | Verified |
-| VMP-15 | P1: Query indexes | Design | Pending |
+| VMP-15 | P1: Query indexes | Execute (T5) | Verified |
 | VMP-16 | P2: Performance evidence | Design | Pending |
 | VMP-17 | P2: Performance evidence | Design | Pending |
 

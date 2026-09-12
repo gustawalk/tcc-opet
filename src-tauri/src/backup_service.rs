@@ -994,6 +994,10 @@ pub fn restore_backup_with_paths(
             let _ = fs::remove_file(recovery_path);
         }
         let encrypted_connection = open_encrypted_database(&staging_database)?;
+        // sqlcipher_export used for plaintext legacy archives does not retain
+        // PRAGMA user_version, so establish the current numbered schema after
+        // encryption before the staged database can replace active storage.
+        run_migrations(&encrypted_connection)?;
         crate::attachment_service::migrate_legacy_attachments(
             &encrypted_connection,
             &staging_attachments,
@@ -1315,7 +1319,13 @@ mod tests {
         fs::create_dir_all(&temp_dir).unwrap();
         let source_database = temp_dir.join("legacy.db");
         let source_conn = Connection::open(&source_database).unwrap();
-        run_migrations(&source_conn).unwrap();
+        crate::database::run_schema_migrations(&source_conn).unwrap();
+        source_conn
+            .execute(
+                "INSERT INTO customers (id, name) VALUES (?1, ?2)",
+                ["legacy-customer", "Cliente legado"],
+            )
+            .unwrap();
         drop(source_conn);
 
         let archive_path = temp_dir.join("legacy.osbkp");
@@ -1339,6 +1349,30 @@ mod tests {
         .unwrap();
 
         assert!(restore_database.exists());
+        let restored = open_encrypted_database(&restore_database).unwrap();
+        let version: i64 = restored
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let customer_name: String = restored
+            .query_row(
+                "SELECT name FROM customers WHERE id = 'legacy-customer'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let integrity: String = restored
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap();
+        let foreign_key_violations: i64 = restored
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 2);
+        assert_eq!(customer_name, "Cliente legado");
+        assert_eq!(integrity, "ok");
+        assert_eq!(foreign_key_violations, 0);
+        drop(restored);
         let _ = fs::remove_dir_all(temp_dir);
     }
 

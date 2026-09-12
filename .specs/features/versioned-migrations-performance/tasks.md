@@ -199,6 +199,8 @@ on-disk migration produces a retained, validated encrypted recovery backup.
 
 ### T8: Preserve legacy backup restoration through versioned migration
 
+**Status**: Complete
+
 **What**: Exercise staged restore of an accepted legacy backup through baseline
 adaptation, current migration, and validation before activation.
 **Where**: `src-tauri/src/backup_service.rs`

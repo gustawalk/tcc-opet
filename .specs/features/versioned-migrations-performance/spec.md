@@ -148,7 +148,7 @@ its printed labels with the performance document.
 | VMP-05 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
 | VMP-06 | P1: Safe v0.4 upgrade | Execute (T6) | Verified |
 | VMP-07 | P1: Historical backup import | Execute (T2) | Verified |
-| VMP-08 | P1: Historical backup import | Design | Pending |
+| VMP-08 | P1: Historical backup import | Execute (T8) | Verified |
 | VMP-09 | P1: Historical backup import | Execute (T2) | Verified |
 | VMP-10 | P1: Query indexes | Execute (T3) | Verified |
 | VMP-11 | P1: Query indexes | Execute (T3) | Verified |

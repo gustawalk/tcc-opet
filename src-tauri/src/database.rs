@@ -34,7 +34,7 @@ const STORAGE_MODE_CONFIG_FILE: &str = "lan_mode.json";
 const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
 const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
-const V0_4_SCHEMA_VERSION: i64 = 1;
+const BASELINE_SCHEMA_VERSION: i64 = 1;
 const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
 const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
 
@@ -613,10 +613,10 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     // The baseline routine owns both paths before the numbered chain begins.
     if version == 0 || !has_core_schema(conn)? {
         run_schema_migrations(conn)?;
-        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)?;
-        version = V0_4_SCHEMA_VERSION;
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)?;
+        version = BASELINE_SCHEMA_VERSION;
     }
-    if version == V0_4_SCHEMA_VERSION {
+    if version == BASELINE_SCHEMA_VERSION {
         apply_performance_index_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
@@ -1536,10 +1536,10 @@ mod tests {
     }
 
     #[test]
-    fn performance_index_migration_upgrades_the_v0_4_baseline() {
+    fn performance_index_migration_upgrades_the_baseline_schema() {
         let conn = Connection::open_in_memory().unwrap();
         run_schema_migrations(&conn).unwrap();
-        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)
             .unwrap();
 
         run_migrations(&conn).unwrap();
@@ -1568,7 +1568,7 @@ mod tests {
     fn failed_performance_index_migration_rolls_back_schema_and_version() {
         let conn = Connection::open_in_memory().unwrap();
         run_schema_migrations(&conn).unwrap();
-        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+        conn.pragma_update(None, "user_version", BASELINE_SCHEMA_VERSION)
             .unwrap();
         FAIL_PERFORMANCE_INDEX_MIGRATION.store(true, Ordering::SeqCst);
 
@@ -1587,7 +1587,7 @@ mod tests {
         let integrity: String = conn
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, V0_4_SCHEMA_VERSION);
+        assert_eq!(version, BASELINE_SCHEMA_VERSION);
         assert_eq!(indexes, 0);
         assert_eq!(integrity, "ok");
     }

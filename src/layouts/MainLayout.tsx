@@ -72,12 +72,14 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex-1 flex flex-col min-w-0 bg-muted/20">
-          <header className="h-16 flex items-center justify-between px-6 border-b bg-background sticky top-0 z-10">
+          <header className="relative h-16 flex items-center justify-between px-6 border-b bg-background sticky top-0 z-10">
             <div className="flex items-center gap-4">
               <SidebarTrigger />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="absolute left-1/2 -translate-x-1/2">
               <GlobalSearch />
+            </div>
+            <div className="flex items-center gap-2">
               <Button size="sm" className="hidden sm:flex" onClick={() => navigate("/os/new")}>
                 <Plus />
                 Nova Ordem</Button>

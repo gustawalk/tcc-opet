@@ -33,7 +33,8 @@ const DATABASE_LOCATION_CONFIG_FILE: &str = "database_location.json";
 const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
 const V0_4_SCHEMA_VERSION: i64 = 1;
-const CURRENT_SCHEMA_VERSION: i64 = V0_4_SCHEMA_VERSION;
+const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -596,7 +597,7 @@ fn resolve_database_path(configured_path: Option<PathBuf>, app_data_dir: &Path) 
 // Run full migrations: schema + core defaults. Version zero is the historical
 // unversioned state, so it must run the compatibility baseline exactly once.
 pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let mut version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version > CURRENT_SCHEMA_VERSION {
         return Err(database_error(format!(
             "Database schema version {version} is newer than this application supports."
@@ -607,9 +608,29 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     if version == 0 || !has_core_schema(conn)? {
         run_schema_migrations(conn)?;
         conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)?;
+        version = V0_4_SCHEMA_VERSION;
+    }
+    if version == V0_4_SCHEMA_VERSION {
+        apply_performance_index_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
     Ok(())
+}
+
+fn apply_performance_index_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_service_orders_customer_created
+             ON service_orders(customer_id, deleted_at, created_date);
+         CREATE INDEX IF NOT EXISTS idx_template_items_template
+             ON template_items(template_id);
+         PRAGMA user_version = 2;
+         COMMIT;",
+    );
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 fn has_core_schema(conn: &Connection) -> Result<bool> {
@@ -1474,7 +1495,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_migrations_create_the_v0_4_schema_baseline() {
+    fn fresh_migrations_apply_the_complete_versioned_chain() {
         let conn = Connection::open_in_memory().unwrap();
 
         run_migrations(&conn).unwrap();
@@ -1482,7 +1503,36 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, V0_4_SCHEMA_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn performance_index_migration_upgrades_the_v0_4_baseline() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_schema_migrations(&conn).unwrap();
+        conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)
+            .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let indexes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, PERFORMANCE_INDEX_SCHEMA_VERSION);
+        assert_eq!(indexes, 2);
+
+        run_migrations(&conn).unwrap();
+        let rerun_version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rerun_version, PERFORMANCE_INDEX_SCHEMA_VERSION);
     }
 
     #[test]
@@ -1773,13 +1823,13 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, V0_4_SCHEMA_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
 
         run_migrations(&conn).unwrap();
         let rerun_version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(rerun_version, V0_4_SCHEMA_VERSION);
+        assert_eq!(rerun_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]
@@ -1796,7 +1846,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, V0_4_SCHEMA_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
 
         let item: (i64, Option<String>) = conn
             .query_row(

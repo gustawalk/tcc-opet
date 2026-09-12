@@ -95,6 +95,8 @@ successful legacy adaptation as version 1.
 
 ### T3: Add version-2 performance indexes
 
+**Status**: Complete
+
 **What**: Implement numbered migration version 2 with both required indexes in
 one `IMMEDIATE` transaction and update the version only on commit.
 **Where**: `src-tauri/src/database.rs`

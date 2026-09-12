@@ -147,9 +147,9 @@ its printed labels with the performance document.
 | VMP-04 | P1: Safe v0.4 upgrade | Design | Pending |
 | VMP-05 | P1: Safe v0.4 upgrade | Design | Pending |
 | VMP-06 | P1: Safe v0.4 upgrade | Design | Pending |
-| VMP-07 | P1: Historical backup import | Design | Pending |
+| VMP-07 | P1: Historical backup import | Execute (T2) | Verified |
 | VMP-08 | P1: Historical backup import | Design | Pending |
-| VMP-09 | P1: Historical backup import | Design | Pending |
+| VMP-09 | P1: Historical backup import | Execute (T2) | Verified |
 | VMP-10 | P1: Query indexes | Design | Pending |
 | VMP-11 | P1: Query indexes | Design | Pending |
 | VMP-12 | P1: Query indexes | Design | Pending |

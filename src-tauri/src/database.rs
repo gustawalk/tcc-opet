@@ -602,12 +602,22 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
             "Database schema version {version} is newer than this application supports."
         )));
     }
-    if version == 0 {
+    // Version-zero databases are either fresh or historical accepted schemas.
+    // The baseline routine owns both paths before the numbered chain begins.
+    if version == 0 || !has_core_schema(conn)? {
         run_schema_migrations(conn)?;
         conn.pragma_update(None, "user_version", V0_4_SCHEMA_VERSION)?;
     }
     ensure_core_defaults(conn)?;
     Ok(())
+}
+
+fn has_core_schema(conn: &Connection) -> Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings')",
+        [],
+        |row| row.get(0),
+    )
 }
 
 pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
@@ -1760,6 +1770,16 @@ mod tests {
         assert_eq!(migrated_row.0, "Maria");
         assert_eq!(migrated_row.1, "");
         assert_eq!(migrated_row.2, "");
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, V0_4_SCHEMA_VERSION);
+
+        run_migrations(&conn).unwrap();
+        let rerun_version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rerun_version, V0_4_SCHEMA_VERSION);
     }
 
     #[test]
@@ -1772,6 +1792,11 @@ mod tests {
         conn.execute("INSERT INTO inventory_items (id, name, type, cost_price) VALUES ('part-1', 'Tela', 'part', 42.5)", []).unwrap();
 
         run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, V0_4_SCHEMA_VERSION);
 
         let item: (i64, Option<String>) = conn
             .query_row(

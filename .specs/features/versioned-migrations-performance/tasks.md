@@ -74,6 +74,8 @@ unsupported future version fails before mutation.
 
 ### T2: Adapt accepted legacy schemas to the baseline
 
+**Status**: Complete
+
 **What**: Isolate the existing version-zero compatibility transforms and mark
 successful legacy adaptation as version 1.
 **Where**: `src-tauri/src/database.rs`

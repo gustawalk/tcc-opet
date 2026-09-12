@@ -8,8 +8,8 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { dataCommand } from "@/lib/data-client";
 import type { ChecklistTemplate, Customer, InventoryItem, Page, ServiceOrder } from "@/lib/types";
-import { getThemePreference, setThemePreference, type Theme } from "@/lib/theme";
-import { getFontScalePreference, setFontScalePreference, type FontScale } from "@/lib/font-scale";
+import { getThemePreference, setThemePreference, THEME_OPTIONS, type Theme } from "@/lib/theme";
+import { getFontScalePreference, setFontScalePreference, FONT_SCALE_OPTIONS, type FontScale } from "@/lib/font-scale";
 
 type ResultGroup = { label: string; path: string; items: { id: string; title: string; detail: string }[] };
 type SearchHistoryItem = { id: string; title: string; detail: string; path: string; kind: "order" | "page" };
@@ -20,6 +20,8 @@ export function GlobalSearch() {
   const [term, setTerm] = useState("");
   const [groups, setGroups] = useState<ResultGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState<Theme>(getThemePreference);
+  const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]"); } catch { return []; }
   });
@@ -69,16 +71,24 @@ export function GlobalSearch() {
   const quickAction = (action: () => void) => { setOpen(false); action(); };
   const cycleTheme = () => {
     const themes: Theme[] = ["light", "dark", "system"];
-    setThemePreference(themes[(themes.indexOf(getThemePreference()) + 1) % themes.length]);
+    const next = themes[(themes.indexOf(theme) + 1) % themes.length];
+    setThemePreference(next); setTheme(next);
   };
   const cycleFontScale = () => {
     const scales: FontScale[] = ["sm", "md", "lg"];
-    setFontScalePreference(scales[(scales.indexOf(getFontScalePreference()) + 1) % scales.length]);
+    const next = scales[(scales.indexOf(fontScale) + 1) % scales.length];
+    setFontScalePreference(next); setFontScale(next);
   };
+  const quickActions = [
+    { label: "Nova ordem de serviço", run: () => quickAction(() => navigate("/os/new")) },
+    { label: "Alternar menu lateral", run: () => quickAction(toggleSidebar) },
+    { label: `Alterar tema — ${THEME_OPTIONS.find((option) => option.value === theme)?.label}`, run: () => quickAction(cycleTheme) },
+    { label: `Alterar tamanho da fonte — ${FONT_SCALE_OPTIONS.find((option) => option.value === fontScale)?.label}`, run: () => quickAction(cycleFontScale) },
+  ].filter((action) => !term.trim() || action.label.toLocaleLowerCase().includes(term.trim().toLocaleLowerCase()));
   return <>
     <Button variant="outline" size="sm" className="hidden md:flex" onClick={() => setOpen(true)}><Search />Buscar <kbd className="ml-2 text-xs text-muted-foreground">Ctrl K</kbd></Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Busca global</DialogTitle></DialogHeader><Input autoFocus value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar clientes, OS, estoque ou modelos..." />
-      {term.trim().length < 2 ? <div className="space-y-4"><section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3><div className="mt-1 grid gap-1"><button className="rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => quickAction(() => navigate("/os/new"))}>Nova ordem de serviço</button><button className="rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => quickAction(toggleSidebar)}>Alternar menu lateral</button><button className="rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => quickAction(cycleTheme)}>Alterar tema</button><button className="rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => quickAction(cycleFontScale)}>Alterar tamanho da fonte</button></div></section>{history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Buscas recentes</h3>{history.map((item) => <button key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>}</div> : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : <div className="max-h-80 space-y-3 overflow-y-auto">{groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>}
+      <div className="max-h-80 space-y-4 overflow-y-auto">{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Buscas recentes</h3>{history.map((item) => <button key={`${item.kind}-${item.id}`} className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(item.path, item, item.kind)}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section> : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => <section key={group.label}><h3 className="text-xs font-semibold uppercase text-muted-foreground">{group.label}</h3>{group.items.map((item) => <button key={item.id} type="button" className="mt-1 w-full rounded-md px-2 py-2 text-left hover:bg-muted" onClick={() => choose(group.path, item, group.path === "/os" ? "order" : "page")}><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></button>)}</section>)}</div>
     </DialogContent></Dialog>
   </>;
 }

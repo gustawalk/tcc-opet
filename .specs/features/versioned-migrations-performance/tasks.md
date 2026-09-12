@@ -116,6 +116,8 @@ one `IMMEDIATE` transaction and update the version only on commit.
 
 ### T4: Make returning-customer lookup indexable
 
+**Status**: Complete
+
 **What**: Change the prior-order predicate to compare `created_date` while
 preserving report semantics and testing the composite-index query plan.
 **Where**: `src-tauri/src/repositories/financial_report_repo.rs`

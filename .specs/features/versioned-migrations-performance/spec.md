@@ -152,9 +152,9 @@ its printed labels with the performance document.
 | VMP-09 | P1: Historical backup import | Execute (T2) | Verified |
 | VMP-10 | P1: Query indexes | Execute (T3) | Verified |
 | VMP-11 | P1: Query indexes | Execute (T3) | Verified |
-| VMP-12 | P1: Query indexes | Design | Pending |
-| VMP-13 | P1: Query indexes | Design | Pending |
-| VMP-14 | P1: Query indexes | Design | Pending |
+| VMP-12 | P1: Query indexes | Execute (T4) | Verified |
+| VMP-13 | P1: Query indexes | Execute (T4) | Verified |
+| VMP-14 | P1: Query indexes | Execute (T4) | Verified |
 | VMP-15 | P1: Query indexes | Design | Pending |
 | VMP-16 | P2: Performance evidence | Design | Pending |
 | VMP-17 | P2: Performance evidence | Design | Pending |

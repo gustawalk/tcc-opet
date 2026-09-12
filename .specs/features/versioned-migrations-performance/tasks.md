@@ -220,6 +220,8 @@ adaptation, current migration, and validation before activation.
 
 ### T9: Measure and document the completed optimization
 
+**Status**: Complete
+
 **What**: Add complete-report and paginated-template measurements, run the
 ignored release benchmark, and record reproducible results and plans.
 **Where**: `src-tauri/src/performance_benchmarks.rs`

@@ -709,6 +709,12 @@ fn performance_benchmarks() {
             .unwrap(),
         )
     });
+    let paginated_template_stats = measure(WARMUPS, ITERATIONS, || {
+        let conn = get_db().unwrap();
+        let items = ChecklistRepository::get_page_with_conn(&conn, PAGE_SIZE, 0, "").unwrap();
+        let total = ChecklistRepository::count_all_with_conn(&conn, "").unwrap();
+        json(&Page { items, total })
+    });
 
     println!("\n## Financial hot spots");
     println!("| scenario | baseline median us | baseline p95 us | optimized median us | optimized p95 us | speedup |");
@@ -730,9 +736,14 @@ fn performance_benchmarks() {
         old_summary_stats.median.as_secs_f64() / new_summary_stats.median.as_secs_f64(),
     );
     println!(
-        "current full financial report: median {:.1} us; p95 {:.1} us",
+        "complete financial report: median {:.1} us; p95 {:.1} us",
         micros(full_report_stats.median),
         micros(full_report_stats.p95),
+    );
+    println!(
+        "paginated template page: median {:.1} us; p95 {:.1} us",
+        micros(paginated_template_stats.median),
+        micros(paginated_template_stats.p95),
     );
 
     let (old_plan, new_plan) = {
@@ -745,4 +756,80 @@ fn performance_benchmarks() {
     println!("\n## Date filter query plans");
     println!("old: {}", old_plan.join(" | "));
     println!("new: {}", new_plan.join(" | "));
+
+    let (returning_customer_plan, template_item_plan) = {
+        let conn = get_db().unwrap();
+        (
+            explain_plan(
+                &conn,
+                "SELECT EXISTS(SELECT 1 FROM service_orders previous
+                 WHERE previous.customer_id = 'customer-00001'
+                   AND previous.deleted_at IS NULL
+                   AND previous.created_date < date('2024-12-31'))",
+            ),
+            explain_plan(
+                &conn,
+                "SELECT id FROM template_items
+                 WHERE template_id IN ('template-00000', 'template-00001')",
+            ),
+        )
+    };
+    println!("\n## Version 2 index query plans");
+    println!(
+        "returning customer: {}",
+        returning_customer_plan.join(" | ")
+    );
+    println!("template items: {}", template_item_plan.join(" | "));
+}
+
+#[test]
+#[ignore = "performance benchmark; run explicitly with --release --ignored --nocapture"]
+fn migration_index_benchmark() {
+    let _backend = setup_global_backend();
+    {
+        let mut conn = get_db().unwrap();
+        seed_benchmark_data(&mut conn);
+    }
+
+    let full_report = measure(0, 1, || {
+        let conn = get_db().unwrap();
+        json(
+            &FinancialReportRepository::get_report_with_conn_filtered(
+                &conn,
+                Some("2024-01-01"),
+                Some("2024-12-31"),
+                None,
+                Some("revenue"),
+                Some(10),
+            )
+            .unwrap(),
+        )
+    });
+    let templates = measure(WARMUPS, ITERATIONS, || {
+        let conn = get_db().unwrap();
+        let items = ChecklistRepository::get_page_with_conn(&conn, PAGE_SIZE, 0, "").unwrap();
+        let total = ChecklistRepository::count_all_with_conn(&conn, "").unwrap();
+        json(&Page { items, total })
+    });
+    let conn = get_db().unwrap();
+    let returning = explain_plan(&conn, "SELECT EXISTS(SELECT 1 FROM service_orders previous WHERE previous.customer_id = 'customer-00001' AND previous.deleted_at IS NULL AND previous.created_date < date('2024-12-31'))");
+    let template_items = explain_plan(
+        &conn,
+        "SELECT id FROM template_items WHERE template_id IN ('template-00000', 'template-00001')",
+    );
+
+    println!("\n# Versioned migration index benchmark");
+    println!("dataset: {RECORD_COUNT} primary records; {RECORD_COUNT} service orders; 30,000 template items");
+    println!(
+        "complete financial report: median {:.1} us; p95 {:.1} us",
+        micros(full_report.median),
+        micros(full_report.p95)
+    );
+    println!(
+        "paginated template page: median {:.1} us; p95 {:.1} us",
+        micros(templates.median),
+        micros(templates.p95)
+    );
+    println!("returning customer plan: {}", returning.join(" | "));
+    println!("template items plan: {}", template_items.join(" | "));
 }

@@ -156,8 +156,8 @@ its printed labels with the performance document.
 | VMP-13 | P1: Query indexes | Execute (T4) | Verified |
 | VMP-14 | P1: Query indexes | Execute (T4) | Verified |
 | VMP-15 | P1: Query indexes | Execute (T5) | Verified |
-| VMP-16 | P2: Performance evidence | Design | Pending |
-| VMP-17 | P2: Performance evidence | Design | Pending |
+| VMP-16 | P2: Performance evidence | Execute (T9) | Verified |
+| VMP-17 | P2: Performance evidence | Execute (T9) | Verified |
 
 **Coverage:** 17 total, 0 mapped to tasks, 17 unmapped pending design.
 

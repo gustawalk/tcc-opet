@@ -69,7 +69,7 @@ export const quantitySchema = z.object({
 
 export const serviceOrderCreateSchema = z.object({
   equipment: z.string().min(2, "Equipamento é obrigatório"),
-  description: z.string().min(10, "Descrição deve ter ao menos 10 caracteres"),
+  description: z.string().min(5, "Descrição deve ter ao menos 5 caracteres"),
   imei: z.string().optional(),
   techId: z.string().optional(),
 });
@@ -82,7 +82,7 @@ export const newCustomerSchema = z.object({
 });
 
 export const editServiceOrderSchema = z.object({
-  description: z.string().min(10, "Descrição deve ter ao menos 10 caracteres"),
+  description: z.string().min(5, "Descrição deve ter ao menos 5 caracteres"),
   discountBasisPoints: percentageValue.optional(),
 });
 

@@ -350,7 +350,11 @@ export function Customers() {
                   ))
                 ) : data && data.items.length > 0 ? (
                   data.items.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewOS(customer)}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex flex-col">
                           {customer.name}
@@ -391,6 +395,7 @@ export function Customers() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>

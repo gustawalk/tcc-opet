@@ -33,7 +33,7 @@ import {
 } from "@/lib/types";
 import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
-import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
+import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import {
   User,
   Smartphone,
@@ -356,7 +356,7 @@ export function ServiceOrderDetailSheet({
   onClose,
   onEdit,
 }: ServiceOrderDetailSheetProps) {
-  const { openCustomerHistory } = useCustomerDrawer();
+  const { openCustomerHistory } = useServiceOrderDrawer();
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const {
     data: order,

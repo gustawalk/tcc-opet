@@ -290,8 +290,8 @@ function App() {
         <UpdateAvailabilityNotice />
         <UpdatePatchNotes />
         {getDataClientMode() !== "client" && <AutomaticBackupProgress />}
-        <CustomerDrawerProvider>
-          <ServiceOrderDrawerProvider>
+        <ServiceOrderDrawerProvider>
+          <CustomerDrawerProvider>
             <InventoryDrawerProvider>
             <MainLayout>
               <Suspense fallback={<RouteLoading />}>
@@ -309,8 +309,8 @@ function App() {
               </Suspense>
             </MainLayout>
             </InventoryDrawerProvider>
-          </ServiceOrderDrawerProvider>
-        </CustomerDrawerProvider>
+          </CustomerDrawerProvider>
+        </ServiceOrderDrawerProvider>
       </BrowserRouter>
       <Toaster position="top-right" richColors closeButton duration={4000} />
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   editServiceOrderSchema,
   inventoryItemSchema,
+  newCustomerSchema,
   quantitySchema,
 } from "@/lib/validation";
 
@@ -46,6 +47,26 @@ describe("numeric validation", () => {
       editServiceOrderSchema.safeParse({
         description: "Descrição válida da manutenção",
         discountBasisPoints: "100,1",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows a new service-order customer without email or address", () => {
+    expect(
+      newCustomerSchema.safeParse({
+        name: "Maria Silva",
+        phone: "(41) 99999-1111",
+        email: "",
+        address: "",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      newCustomerSchema.safeParse({
+        name: "Maria Silva",
+        phone: "(41) 99999-1111",
+        email: "invalid-email",
+        address: "Rua",
       }).success,
     ).toBe(false);
   });

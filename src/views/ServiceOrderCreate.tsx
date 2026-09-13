@@ -469,7 +469,7 @@ export function ServiceOrderCreate() {
               )}
               {showCustomers && (
                 <Card className="absolute z-10 w-full mt-1 shadow-lg">
-                  <CardContent className="p-1">
+                  <CardContent className="max-h-[270px] overflow-y-auto p-1">
                     {customersQuery.isLoading ? (
                       <p className="p-2 text-sm text-muted-foreground">
                         Carregando clientes...

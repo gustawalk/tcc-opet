@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 const RECORD_COUNT: usize = 10_000;
 const PAGE_SIZE: u32 = 20;
+const GLOBAL_SEARCH_PAGE_SIZE: u32 = 5;
 const WARMUPS: usize = 3;
 const ITERATIONS: usize = 15;
 const CONNECTION_ITERATIONS: usize = 50;
@@ -350,6 +351,62 @@ fn explain_plan(conn: &Connection, sql: &str) -> Vec<String> {
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap()
+}
+
+fn global_search_batch(search: &str) -> [i64; 4] {
+    let customers = {
+        let conn = get_db().unwrap();
+        let items =
+            CustomerRepository::get_page_with_conn(&conn, GLOBAL_SEARCH_PAGE_SIZE, 0, search)
+                .unwrap();
+        let total = CustomerRepository::count_all_with_conn(&conn, search).unwrap();
+        black_box(json(&Page { items, total }));
+        total
+    };
+    let orders = {
+        let conn = get_db().unwrap();
+        let items = ServiceOrderRepository::get_page_with_conn(
+            &conn,
+            GLOBAL_SEARCH_PAGE_SIZE,
+            0,
+            search,
+            ServiceOrderFilters::default(),
+        )
+        .unwrap();
+        let total = ServiceOrderRepository::count_all_with_conn(
+            &conn,
+            search,
+            ServiceOrderFilters::default(),
+        )
+        .unwrap();
+        black_box(json(&Page { items, total }));
+        total
+    };
+    let inventory = {
+        let conn = get_db().unwrap();
+        let items = InventoryRepository::get_page_with_conn(
+            &conn,
+            GLOBAL_SEARCH_PAGE_SIZE,
+            0,
+            search,
+            None,
+        )
+        .unwrap();
+        let total = InventoryRepository::count_all_with_conn(&conn, search, None).unwrap();
+        black_box(json(&Page { items, total }));
+        total
+    };
+    let templates = {
+        let conn = get_db().unwrap();
+        let items =
+            ChecklistRepository::get_page_with_conn(&conn, GLOBAL_SEARCH_PAGE_SIZE, 0, search)
+                .unwrap();
+        let total = ChecklistRepository::count_all_with_conn(&conn, search).unwrap();
+        black_box(json(&Page { items, total }));
+        total
+    };
+
+    [customers, orders, inventory, templates]
 }
 
 #[test]
@@ -832,4 +889,42 @@ fn migration_index_benchmark() {
     );
     println!("returning customer plan: {}", returning.join(" | "));
     println!("template items plan: {}", template_items.join(" | "));
+}
+
+#[test]
+#[ignore = "performance benchmark; run explicitly with --release --ignored --nocapture"]
+fn global_search_benchmark() {
+    let _backend = setup_global_backend();
+    {
+        let mut conn = get_db().unwrap();
+        seed_benchmark_data(&mut conn);
+    }
+
+    let search = "00001";
+    let totals = global_search_batch(search);
+    assert!(
+        totals.iter().all(|total| *total > 0),
+        "the representative global-search term must match every result group"
+    );
+
+    let combined = measure(WARMUPS, ITERATIONS, || global_search_batch(search));
+
+    println!("\n# Global search benchmark");
+    println!(
+        "dataset: {RECORD_COUNT} primary records; {RECORD_COUNT} service orders; 30,000 template items"
+    );
+    println!(
+        "search: {search:?}; result limit per group: {GLOBAL_SEARCH_PAGE_SIZE}; warmups: {WARMUPS}; iterations: {ITERATIONS}"
+    );
+    println!(
+        "matches: customers={}, orders={}, inventory={}, templates={}",
+        totals[0], totals[1], totals[2], totals[3]
+    );
+    println!(
+        "combined global search: median {:.1} us; p95 {:.1} us; min {:.1} us; max {:.1} us",
+        micros(combined.median),
+        micros(combined.p95),
+        micros(combined.min),
+        micros(combined.max),
+    );
 }

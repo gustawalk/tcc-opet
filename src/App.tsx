@@ -11,6 +11,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { MainLayout } from "./layouts/MainLayout";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
+import { InventoryDrawerProvider } from "./components/shared/InventoryDrawerProvider";
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
@@ -291,6 +292,7 @@ function App() {
         {getDataClientMode() !== "client" && <AutomaticBackupProgress />}
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
+            <InventoryDrawerProvider>
             <MainLayout>
               <Suspense fallback={<RouteLoading />}>
                 <Routes>
@@ -306,6 +308,7 @@ function App() {
                 </Routes>
               </Suspense>
             </MainLayout>
+            </InventoryDrawerProvider>
           </CustomerDrawerProvider>
         </ServiceOrderDrawerProvider>
       </BrowserRouter>

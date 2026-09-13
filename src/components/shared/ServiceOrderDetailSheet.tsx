@@ -33,6 +33,7 @@ import {
 } from "@/lib/types";
 import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
+import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import {
   User,
   Smartphone,
@@ -355,6 +356,7 @@ export function ServiceOrderDetailSheet({
   onClose,
   onEdit,
 }: ServiceOrderDetailSheetProps) {
+  const { openCustomerHistory } = useServiceOrderDrawer();
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const {
     data: order,
@@ -518,9 +520,9 @@ export function ServiceOrderDetailSheet({
                 <p className="text-xs text-muted-foreground font-semibold uppercase">
                   Cliente
                 </p>
-                <p className="text-sm font-medium flex items-center gap-1.5">
+                <button type="button" className="flex items-center gap-1.5 text-left text-sm font-medium hover:underline" onClick={() => openCustomerHistory(order.customerId)}>
                   <User className="h-4 w-4" /> {order.customerName}
-                </p>
+                </button>
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">

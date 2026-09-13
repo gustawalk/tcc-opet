@@ -17,12 +17,18 @@ const ServiceOrderEditorSheet = lazy(() =>
     ({ ServiceOrderEditorSheet }) => ({ default: ServiceOrderEditorSheet }),
   ),
 );
+const CustomerHistorySheet = lazy(() =>
+  import("@/components/shared/CustomerHistorySheet").then(
+    ({ CustomerHistorySheet }) => ({ default: CustomerHistorySheet }),
+  ),
+);
 
 type ServiceOrderDrawerMode = "view" | "edit";
 
 interface ServiceOrderDrawerContextValue {
   openServiceOrder: (id: string, mode?: ServiceOrderDrawerMode) => void;
   closeServiceOrder: () => void;
+  openCustomerHistory: (id: string) => void;
 }
 
 const ServiceOrderDrawerContext =
@@ -38,12 +44,14 @@ export function ServiceOrderDrawerProvider({
     mode: ServiceOrderDrawerMode;
   } | null>(null);
   const closeServiceOrder = () => setDrawer(null);
+  const [customerId, setCustomerId] = useState<string | null>(null);
 
   return (
     <ServiceOrderDrawerContext.Provider
       value={{
         openServiceOrder: (id, mode = "view") => setDrawer({ id, mode }),
         closeServiceOrder,
+        openCustomerHistory: setCustomerId,
       }}
       >
         {children}
@@ -72,6 +80,15 @@ export function ServiceOrderDrawerProvider({
               }
             />
           )}
+        </Suspense>
+      )}
+      {customerId && (
+        <Suspense fallback={null}>
+          <CustomerHistorySheet
+            customerId={customerId}
+            open
+            onClose={() => setCustomerId(null)}
+          />
         </Suspense>
       )}
     </ServiceOrderDrawerContext.Provider>

@@ -350,7 +350,11 @@ export function Customers() {
                   ))
                 ) : data && data.items.length > 0 ? (
                   data.items.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewOS(customer)}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex flex-col">
                           {customer.name}
@@ -391,6 +395,7 @@ export function Customers() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
@@ -398,19 +403,28 @@ export function Customers() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                             <DropdownMenuItem
-                              onClick={() => handleViewOS(customer)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleViewOS(customer);
+                              }}
                             >
                               <FileText className="mr-2 h-4 w-4" /> Ver ordens
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleEditCustomer(customer)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleEditCustomer(customer);
+                              }}
                             >
                               <Edit className="mr-2 h-4 w-4" /> Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
-                              onClick={() => handleDeleteCustomer(customer.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteCustomer(customer.id);
+                              }}
                             >
                               <Trash2 className="mr-2 h-4 w-4" /> Excluir
                             </DropdownMenuItem>

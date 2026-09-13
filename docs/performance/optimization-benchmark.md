@@ -2,6 +2,8 @@
 
 The latest evidence for the versioned-migration performance work is recorded
 in [Versioned Migrations and Performance Index Benchmark](versioned-migrations-performance-benchmark.md).
+Global-search evidence is recorded separately in
+[Global Search Benchmark](global-search-benchmark.md).
 The results below are the historical baseline for the earlier connection and
 pagination package.
 

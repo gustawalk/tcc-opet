@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
+import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
+import { useInventoryDrawer } from "@/components/shared/InventoryDrawerProvider";
 import { dataCommand } from "@/lib/data-client";
 import type { ChecklistTemplate, Customer, InventoryItem, Page, ServiceOrder } from "@/lib/types";
 import { getThemePreference, setThemePreference, THEME_OPTIONS, type Theme } from "@/lib/theme";
@@ -37,6 +39,8 @@ export function GlobalSearch() {
   const navigate = useNavigate();
   const { toggleSidebar } = useSidebar();
   const { openServiceOrder } = useServiceOrderDrawer();
+  const { openCustomerHistory } = useCustomerDrawer();
+  const { openInventoryItem } = useInventoryDrawer();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -110,7 +114,10 @@ export function GlobalSearch() {
       setHistory(next); localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
     }
     handleOpenChange(false);
-    if (kind === "order" && item) openServiceOrder(item.id); else navigate(path);
+    if (kind === "order" && item) openServiceOrder(item.id);
+    else if (kind === "customer" && item) openCustomerHistory(item.id);
+    else if (kind === "inventory" && item) openInventoryItem(item.id);
+    else navigate(path);
   };
   const quickAction = (action: () => void) => { handleOpenChange(false); action(); };
   const handleOpenChange = (nextOpen: boolean) => {
@@ -139,12 +146,12 @@ export function GlobalSearch() {
       <Button
         variant="outline"
         size="sm"
-        className="hidden w-64 justify-start md:flex"
+        className="hidden w-96 justify-start md:flex"
         onClick={() => setOpen(true)}
       >
         <Search />
         Buscar
-        <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>
+        <kbd className="ml-auto text-[10px] text-muted-foreground">Ctrl K</kbd>
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

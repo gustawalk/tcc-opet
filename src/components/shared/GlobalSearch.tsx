@@ -146,7 +146,7 @@ export function GlobalSearch() {
       <Button
         variant="outline"
         size="sm"
-        className="hidden w-64 justify-start md:flex"
+        className="hidden w-80 justify-start md:flex"
         onClick={() => setOpen(true)}
       >
         <Search />

@@ -146,12 +146,12 @@ export function GlobalSearch() {
       <Button
         variant="outline"
         size="sm"
-        className="hidden w-80 justify-start md:flex"
+        className="hidden w-96 justify-start md:flex"
         onClick={() => setOpen(true)}
       >
         <Search />
         Buscar
-        <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>
+        <kbd className="ml-auto text-[10px] text-muted-foreground">Ctrl K</kbd>
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

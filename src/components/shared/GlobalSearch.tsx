@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClipboardList, Package, Search, Users, Wrench, type LucideIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,6 +22,8 @@ export function GlobalSearch() {
   const [groups, setGroups] = useState<ResultGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedOption, setSelectedOption] = useState(-1);
+  const [anchoredTop, setAnchoredTop] = useState<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => {
@@ -50,6 +52,16 @@ export function GlobalSearch() {
   useEffect(() => {
     setSelectedOption(-1);
   }, [open, term, groups]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (dialogRef.current) {
+        setAnchoredTop(window.innerHeight / 2 - dialogRef.current.offsetHeight / 2);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,7 +136,7 @@ export function GlobalSearch() {
   ].filter((action) => !term.trim() || action.label.toLocaleLowerCase().includes(term.trim().toLocaleLowerCase()));
   return <>
     <Button variant="outline" size="sm" className="hidden w-64 justify-start md:flex" onClick={() => setOpen(true)}><Search />Buscar <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd></Button>
-    <Dialog open={open} onOpenChange={handleOpenChange}><DialogContent className="top-1/2 max-w-xl -translate-y-1/2"><DialogHeader><DialogTitle>Busca global</DialogTitle></DialogHeader><Input autoFocus value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar clientes, OS, estoque ou modelos..." />
+    <Dialog open={open} onOpenChange={handleOpenChange}><DialogContent ref={dialogRef} className="top-0 max-w-xl translate-y-0" style={anchoredTop === null ? undefined : { top: anchoredTop }}><DialogHeader><DialogTitle>Busca global</DialogTitle></DialogHeader><Input autoFocus value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Buscar clientes, OS, estoque ou modelos..." />
       <div className="max-h-80 space-y-4 overflow-y-auto">{term.trim().length < 2 && history.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Itens recentes</h3>{history.map((item) => { const Icon = icons[item.kind]; return <button data-global-search-option key={`${item.kind}-${item.id}`} className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(item.path, item, item.kind)}><Icon className="h-4 w-4 shrink-0 text-muted-foreground" /><span><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></span></button>; })}</section>}{quickActions.length > 0 && <section><h3 className="text-xs font-semibold uppercase text-muted-foreground">Ações rápidas</h3>{quickActions.map((action) => <button data-global-search-option key={action.label} className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={action.run}>{action.label}</button>)}</section>}{term.trim().length < 2 ? null : loading ? <p className="text-sm text-muted-foreground">Buscando...</p> : groups.length === 0 && quickActions.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum resultado encontrado.</p> : groups.map((group) => { const Icon = group.icon; return <section key={group.label}><h3 className="flex items-center gap-1 text-xs font-semibold uppercase text-muted-foreground"><Icon className="h-3.5 w-3.5" />{group.label}</h3>{group.items.map((item) => <button data-global-search-option key={item.id} type="button" className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left outline-none hover:bg-muted focus:bg-muted focus:ring-1 focus:ring-inset focus:ring-ring" onClick={() => choose(group.path, item, group.kind)}><Icon className="h-4 w-4 shrink-0 text-muted-foreground" /><span><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.detail}</p></span></button>)}</section>; })}</div>
     </DialogContent></Dialog>
   </>;

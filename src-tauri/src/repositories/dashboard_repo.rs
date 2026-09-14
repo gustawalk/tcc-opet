@@ -75,6 +75,19 @@ pub struct DashboardData {
     pub inventory_alerts: Vec<InventoryAlert>,
     pub inventory_alert_summary: InventoryAlertSummary,
     pub status_counts: Vec<StatusCount>,
+    pub priority_orders: Vec<PriorityOrder>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriorityOrder {
+    pub id: String,
+    pub display_id: String,
+    pub customer_name: String,
+    pub equipment: String,
+    pub status: String,
+    pub predicted_finish_date: String,
+    pub overdue: bool,
 }
 
 pub struct DashboardRepository;
@@ -225,6 +238,30 @@ impl DashboardRepository {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        let mut stmt = conn.prepare(
+            "SELECT so.id, so.display_id, COALESCE(so.customer_name, c.name), so.equipment,
+                    so.status, so.predicted_finish_date, 1
+             FROM service_orders so
+             LEFT JOIN customers c ON c.id = so.customer_id
+             WHERE so.deleted_at IS NULL
+               AND so.status NOT IN ('Finalizada', 'Cancelada')
+               AND so.predicted_finish_date < date('now', 'localtime')
+             ORDER BY so.predicted_finish_date ASC, so.id ASC
+             LIMIT 8",
+        )?;
+        let priority_orders = stmt
+            .query_map([], |row| {
+                Ok(PriorityOrder {
+                    id: row.get(0)?,
+                    display_id: row.get(1)?,
+                    customer_name: row.get(2)?,
+                    equipment: row.get(3)?,
+                    status: row.get(4)?,
+                    predicted_finish_date: row.get(5)?,
+                    overdue: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(DashboardData {
             summary: FinancialSummary {
@@ -239,6 +276,7 @@ impl DashboardRepository {
             inventory_alerts,
             inventory_alert_summary,
             status_counts,
+            priority_orders,
         })
     }
 }

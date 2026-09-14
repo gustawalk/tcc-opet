@@ -61,6 +61,7 @@ export interface ServiceOrder {
   createdAt: string;
   updatedAt?: string;
   closedAt?: string | null;
+  predictedFinishDate?: string | null;
   displayId: string;
   discountBasisPoints: number;
 }
@@ -294,6 +295,17 @@ export interface DashboardData {
   inventoryAlerts: InventoryAlert[];
   inventoryAlertSummary: InventoryAlertSummary;
   statusCounts: StatusCount[];
+  priorityOrders: PriorityOrder[];
+}
+
+export interface PriorityOrder {
+  id: string;
+  displayId: string;
+  customerName: string;
+  equipment: string;
+  status: OSStatus;
+  predictedFinishDate: string;
+  overdue: boolean;
 }
 
 export interface FinancialBreakdown {

@@ -156,6 +156,17 @@ const getEventContent = (event: ServiceOrderEvent) => {
           ? `Desconto: ${Number(value("discountBasisPoints")) / 100}%`
           : undefined,
       };
+    case "predicted_finish_date_updated": {
+      const predictedFinishDate = value("predictedFinishDate");
+      return {
+        label: predictedFinishDate
+          ? "Previsão de conclusão atualizada"
+          : "Previsão de conclusão removida",
+        detail: predictedFinishDate
+          ? `Nova previsão: ${new Date(`${predictedFinishDate}T00:00:00`).toLocaleDateString("pt-BR")}.`
+          : undefined,
+      };
+    }
     case "status_changed":
       return {
         label: "Status alterado",
@@ -558,6 +569,19 @@ export function ServiceOrderDetailSheet({
                 <p className="text-sm font-medium flex items-center gap-1.5">
                   <Calendar className="h-4 w-4" />{" "}
                   {new Date(order.createdAt).toLocaleDateString("pt-BR")}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-semibold uppercase">
+                  Previsão de conclusão
+                </p>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />{" "}
+                  {order.predictedFinishDate
+                    ? new Date(
+                        `${order.predictedFinishDate}T00:00:00`,
+                      ).toLocaleDateString("pt-BR")
+                    : "Sem previsão"}
                 </p>
               </div>
               <div className="space-y-1">

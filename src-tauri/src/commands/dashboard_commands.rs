@@ -56,6 +56,7 @@ mod tests {
                 low_stock: 0,
             },
             status_counts: vec![],
+            priority_orders: vec![],
         };
 
         assert!(validate_dashboard_money_for_ipc(&data).is_err());

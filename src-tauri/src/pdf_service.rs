@@ -77,6 +77,12 @@ fn format_date(value: &str) -> String {
         .unwrap_or_else(|_| value.to_string())
 }
 
+fn format_business_date(value: &str) -> String {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map(|date| date.format("%d/%m/%Y").to_string())
+        .unwrap_or_else(|_| value.to_string())
+}
+
 fn load_customer(conn: &Connection, customer_id: &str) -> Result<PdfCustomer, AppError> {
     conn.query_row(
         "SELECT name, phone, email, address FROM customers WHERE id = ?1",
@@ -135,6 +141,14 @@ fn build_html_with_conn(conn: &Connection, service_order_id: &str) -> Result<Str
             .closed_at
             .as_deref()
             .map(format_date)
+            .unwrap_or_default(),
+    );
+    context.insert(
+        "predicted_finish_date",
+        &order
+            .predicted_finish_date
+            .as_deref()
+            .map(format_business_date)
             .unwrap_or_default(),
     );
     context.insert(
@@ -519,6 +533,7 @@ mod tests {
             "iPhone 14".to_string(),
             "Tela quebrada".to_string(),
         );
+        order.predicted_finish_date = Some("2026-10-15".to_string());
         ServiceOrderRepository::create_with_conn(&conn, &mut order).unwrap();
         let part = InventoryItem::new(
             "Tela OLED".to_string(),
@@ -542,6 +557,7 @@ mod tests {
         assert!(html.contains("OS-000001"));
         assert!(html.contains("R$ 200,00"));
         assert!(html.contains("Assinatura do cliente"));
+        assert!(html.contains("Previsão de conclusão: 15/10/2026"));
     }
 
     #[test]

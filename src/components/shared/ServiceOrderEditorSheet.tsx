@@ -29,6 +29,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
+import { DatePicker } from "@/components/shared/DatePicker";
 import {
   ServiceOrderItemLine,
   ServiceOrderItemsEditor,
@@ -90,6 +91,7 @@ export function ServiceOrderEditorSheet({
   const [editStatus, setEditStatus] = useState<OSStatus>("Orçamento");
   const [editDescription, setEditDescription] = useState("");
   const [discountInput, setDiscountInput] = useState("0");
+  const [predictedFinishDate, setPredictedFinishDate] = useState("");
   const [editErrors, setEditErrors] = useState<ValidationErrors>({});
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -160,6 +162,7 @@ export function ServiceOrderEditorSheet({
       String(order.discountBasisPoints / 100).replace(".", ","),
     );
     setEditErrors({});
+    setPredictedFinishDate(order.predictedFinishDate ?? "");
   }, [order, open]);
 
   const invalidateOrder = () =>
@@ -347,6 +350,7 @@ export function ServiceOrderEditorSheet({
           status: editStatus,
           restoreStock: editStatus === "Cancelada",
           checklist,
+          predictedFinishDate: predictedFinishDate || null,
         },
       });
       await invalidateOrder();
@@ -473,6 +477,27 @@ export function ServiceOrderEditorSheet({
                   <p className="text-xs text-muted-foreground">
                     Transições inválidas serão recusadas.
                   </p>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <Label htmlFor="edit-predicted-finish-date">
+                    Previsão de conclusão
+                  </Label>
+                  {["Finalizada", "Cancelada"].includes(order.status) ? (
+                    <p className="text-sm font-medium">
+                      {predictedFinishDate
+                        ? new Date(
+                            `${predictedFinishDate}T00:00:00`,
+                          ).toLocaleDateString("pt-BR")
+                        : "Sem previsão"}
+                    </p>
+                  ) : (
+                    <DatePicker
+                      id="edit-predicted-finish-date"
+                      value={predictedFinishDate}
+                      onChange={setPredictedFinishDate}
+                    />
+                  )}
                 </div>
                 <Separator />
                 <div>

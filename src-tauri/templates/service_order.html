@@ -63,6 +63,7 @@
       {% if imei %}<p>IMEI / Serial: {{ imei }}</p>{% endif %}
       <p>Responsável: {{ technician }}</p>
       <p>Abertura: {{ created_at }}</p>
+      {% if predicted_finish_date %}<p>Previsão de conclusão: {{ predicted_finish_date }}</p>{% endif %}
       {% if closed_at %}<p>Encerramento: {{ closed_at }}</p>{% endif %}
     </section>
   </div>

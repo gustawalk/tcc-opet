@@ -11,6 +11,37 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.5.0",
+    date: "13/09/2026",
+    title: "Busca global e migrações mais seguras",
+    sections: [
+      {
+        title: "Busca global e navegação",
+        items: [
+          "Nova busca global para localizar clientes, funcionários, itens de estoque e ordens de serviço em um único atalho.",
+          "A busca mantém ações recentes, navegação por teclado e identificação visual por tipo de resultado.",
+          "Resultados abrem diretamente os painéis de detalhes correspondentes, sem obrigar o usuário a navegar manualmente até cada tela.",
+          "O atalho de busca foi ampliado e ajustado para melhor leitura e acesso rápido.",
+        ],
+      },
+      {
+        title: "Ordens de serviço e atendimento",
+        items: [
+          "O cadastro de ordem agora aceita dados mínimos do cliente quando informações como e-mail e endereço ainda não estiverem disponíveis.",
+          "Melhorias no formulário de criação deixam o fluxo mais flexível e evitam sugestões de cliente fora de contexto.",
+        ],
+      },
+      {
+        title: "Migrações e desempenho",
+        items: [
+          "O banco agora usa migrações versionadas, com validação de integridade e compatibilidade com instalações anteriores.",
+          "Antes de migrações em bancos existentes, o aplicativo cria um backup de recuperação.",
+          "Consultas do relatório financeiro e a paginação de itens de checklist receberam índices para manter o desempenho em bases maiores.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.4.0",
     date: "11/09/2026",
     title: "Buscas sob demanda e novo ícone",

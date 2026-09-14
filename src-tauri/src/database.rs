@@ -1572,19 +1572,19 @@ mod tests {
             .unwrap();
         let indexes: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template')",
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_service_orders_customer_created', 'idx_template_items_template', 'idx_service_orders_predicted_finish')",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, PERFORMANCE_INDEX_SCHEMA_VERSION);
-        assert_eq!(indexes, 2);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(indexes, 3);
 
         run_migrations(&conn).unwrap();
         let rerun_version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(rerun_version, PERFORMANCE_INDEX_SCHEMA_VERSION);
+        assert_eq!(rerun_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]

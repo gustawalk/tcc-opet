@@ -1406,6 +1406,8 @@ mod tests {
                 created_date_to: Some("2026-01-31"),
                 finalized_date_from: Some("2026-02-01"),
                 finalized_date_to: Some("2026-02-28"),
+                predicted_finish_date_from: Some("2026-03-01"),
+                predicted_finish_date_to: Some("2026-03-31"),
             },
         );
 
@@ -1416,6 +1418,8 @@ mod tests {
         assert!(clause.contains("so.created_date <= date(?)"));
         assert!(clause.contains("so.finalized_date >= date(?)"));
         assert!(clause.contains("so.finalized_date <= date(?)"));
+        assert!(clause.contains("so.predicted_finish_date >= date(?)"));
+        assert!(clause.contains("so.predicted_finish_date <= date(?)"));
         assert_eq!(
             parameters,
             vec![
@@ -1431,6 +1435,8 @@ mod tests {
                 "2026-01-31",
                 "2026-02-01",
                 "2026-02-28",
+                "2026-03-01",
+                "2026-03-31",
             ]
         );
     }
@@ -1769,6 +1775,7 @@ mod tests {
                 label: "Item não checado".to_string(),
                 checked: false,
             }],
+            None,
         )
         .unwrap();
 
@@ -1810,6 +1817,7 @@ mod tests {
                 label: "Teste final".to_string(),
                 checked: true,
             }],
+            None,
         )
         .unwrap();
 

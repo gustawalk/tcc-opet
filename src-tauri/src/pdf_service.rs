@@ -557,7 +557,10 @@ mod tests {
         assert!(html.contains("OS-000001"));
         assert!(html.contains("R$ 200,00"));
         assert!(html.contains("Assinatura do cliente"));
-        assert!(html.contains("Previsão de conclusão: 15/10/2026"));
+        assert!(
+            html.contains("Previsão de conclusão: 15&#x2F;10&#x2F;2026"),
+            "generated HTML: {html}"
+        );
     }
 
     #[test]

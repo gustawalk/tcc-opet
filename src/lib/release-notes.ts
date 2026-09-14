@@ -32,6 +32,14 @@ export const releaseNotes: ReleaseNote[] = [
         ],
       },
       {
+        title: "Previsão de conclusão",
+        items: [
+          "O responsável pode informar uma data prevista de conclusão na ordem de serviço.",
+          "Ordens abertas com previsão vencida aparecem em uma área de prioridade no painel, com acesso direto aos detalhes.",
+          "A previsão também é exibida no detalhamento e nos PDFs da ordem de serviço.",
+        ],
+      },
+      {
         title: "Migrações e desempenho",
         items: [
           "O banco agora usa migrações versionadas, com validação de integridade e compatibilidade com instalações anteriores.",

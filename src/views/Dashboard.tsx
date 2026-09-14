@@ -137,6 +137,7 @@ export function Dashboard() {
 
   const { summary, recentOrders, inventoryAlerts, inventoryAlertSummary, statusCounts } = data;
   const prioritizedInventoryAlerts = prioritizeInventoryAlerts(inventoryAlerts);
+  const priorityOrders = data.priorityOrders;
 
   const orderedStatusCount = [...statusCounts].sort(
     (a, b) => (statusCountsOrder[a.status] ?? Number.MAX_SAFE_INTEGER) - (statusCountsOrder[b.status] ?? Number.MAX_SAFE_INTEGER),
@@ -200,7 +201,8 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
-        <Card className="col-span-4">
+        <div className="col-span-4 flex flex-col gap-6">
+          <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Ordens Recentes</CardTitle>
@@ -281,7 +283,53 @@ export function Dashboard() {
               </TableBody>
             </Table>
           </CardContent>
-        </Card>
+          </Card>
+
+        {priorityOrders.length > 0 && (
+          <Card className="border-amber-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                Prioridade de atendimento
+              </CardTitle>
+              <CardDescription>
+                Ordens abertas cuja previsão de conclusão já venceu.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>OS</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="hidden md:table-cell">Equipamento</TableHead>
+                    <TableHead>Previsão</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {priorityOrders.map((order) => (
+                    <TableRow
+                      key={order.id}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => openServiceOrder(order.id)}
+                    >
+                      <TableCell className="font-medium">{order.displayId}</TableCell>
+                      <TableCell>{order.customerName}</TableCell>
+                      <TableCell className="hidden md:table-cell">{order.equipment}</TableCell>
+                      <TableCell className={order.overdue ? "font-bold text-destructive" : "font-medium"}>
+                        {new Date(`${order.predictedFinishDate}T00:00:00`).toLocaleDateString("pt-BR")}
+                        {order.overdue && <Badge variant="destructive" className="ml-2">Atrasada</Badge>}
+                      </TableCell>
+                      <TableCell><Badge variant="outline">{order.status}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+        </div>
 
         <div className="col-span-3 flex flex-col gap-6">
           <Card>

@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { useDebounce } from "@/hooks/use-debounce";
 import { ChecklistTemplateSheet } from "@/components/shared/ChecklistTemplateSheet";
 import { EmployeeCreateSheet } from "@/components/shared/EmployeeCreateSheet";
@@ -125,6 +126,7 @@ export function ServiceOrderCreate() {
     imei: "",
     description: "",
     techId: "",
+    predictedFinishDate: "",
   });
   const debouncedCustomerSearch = useDebounce(
     customerSearch,
@@ -332,6 +334,7 @@ export function ServiceOrderCreate() {
           })),
           checklistItems: checklistItems.map((item) => ({ label: item.label, checked: item.checked })),
           attachmentToken: pendingAttachments?.token ?? null,
+          predictedFinishDate: formData.predictedFinishDate || null,
         },
       });
       if (pendingAttachments?.files) {
@@ -599,6 +602,21 @@ export function ServiceOrderCreate() {
               createLabel="Criar funcionário"
               onCreate={() => setIsEmployeeSheetOpen(true)}
             />
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="predicted-finish-date">
+                Previsão de conclusão
+              </Label>
+              <DatePicker
+                id="predicted-finish-date"
+                value={formData.predictedFinishDate}
+                onChange={(value) =>
+                  setFormData((data) => ({
+                    ...data,
+                    predictedFinishDate: value,
+                  }))
+                }
+              />
+            </div>
           </CardContent>
         </Card>
         <div className="space-y-6">

@@ -109,6 +109,7 @@ fn complete_service_order_lifecycle_keeps_stock_dashboard_and_reports_consistent
                 },
             ],
             attachment_token: None,
+            predicted_finish_date: None,
         },
     )
     .unwrap();
@@ -259,6 +260,7 @@ fn failed_full_creation_rolls_back_customer_update_stock_and_order() {
                 checked: false,
             }],
             attachment_token: None,
+            predicted_finish_date: None,
         },
     );
 
@@ -312,6 +314,7 @@ fn failed_attachment_batch_rolls_back_database_and_created_files() {
             }],
             checklist_items: vec![],
             attachment_token: Some(token.clone()),
+            predicted_finish_date: None,
         },
     );
 
@@ -358,6 +361,7 @@ fn successful_attachment_batch_is_readable_and_consumes_its_token() {
             parts: vec![],
             checklist_items: vec![],
             attachment_token: Some(token.clone()),
+            predicted_finish_date: None,
         },
     )
     .unwrap();
@@ -597,6 +601,7 @@ fn encrypted_backup_round_trip_restores_commands_and_attachments() {
             parts: vec![],
             checklist_items: vec![],
             attachment_token: Some(token),
+            predicted_finish_date: None,
         },
     )
     .unwrap();

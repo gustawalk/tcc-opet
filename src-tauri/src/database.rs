@@ -36,7 +36,8 @@ const DATABASE_FILE_NAME: &str = "database.db";
 const DEFAULT_LAN_PORT: u16 = 8743;
 const BASELINE_SCHEMA_VERSION: i64 = 1;
 const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
-const CURRENT_SCHEMA_VERSION: i64 = PERFORMANCE_INDEX_SCHEMA_VERSION;
+const PREDICTED_FINISH_SCHEMA_VERSION: i64 = 3;
+const CURRENT_SCHEMA_VERSION: i64 = PREDICTED_FINISH_SCHEMA_VERSION;
 
 #[cfg(test)]
 static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
@@ -618,10 +619,31 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if version == BASELINE_SCHEMA_VERSION {
         apply_performance_index_migration(conn)?;
+        version = PERFORMANCE_INDEX_SCHEMA_VERSION;
+    }
+    if version == PERFORMANCE_INDEX_SCHEMA_VERSION {
+        apply_predicted_finish_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
     validate_migrated_database(conn)?;
     Ok(())
+}
+
+fn apply_predicted_finish_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        add_column_if_missing(conn, "service_orders", "predicted_finish_date", "TEXT")?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_service_orders_predicted_finish
+            ON service_orders(deleted_at, status, predicted_finish_date);",
+        )?;
+        conn.pragma_update(None, "user_version", PREDICTED_FINISH_SCHEMA_VERSION)?;
+        conn.execute_batch("COMMIT")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 fn validate_migrated_database(conn: &Connection) -> Result<()> {
@@ -743,6 +765,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             closed_at TEXT,
+            predicted_finish_date TEXT,
             display_id TEXT NOT NULL DEFAULT '',
             discount_percent REAL NOT NULL DEFAULT 0.0,
             discount_basis_points INTEGER NOT NULL DEFAULT 0 CHECK (discount_basis_points BETWEEN 0 AND 10000),

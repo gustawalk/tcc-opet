@@ -37,6 +37,8 @@ pub(crate) struct ServiceOrderFilters<'a> {
     pub created_date_to: Option<&'a str>,
     pub finalized_date_from: Option<&'a str>,
     pub finalized_date_to: Option<&'a str>,
+    pub predicted_finish_date_from: Option<&'a str>,
+    pub predicted_finish_date_to: Option<&'a str>,
 }
 
 struct QueryFilterBuilder {
@@ -106,6 +108,11 @@ fn build_service_order_filters(
     builder.date_to("so.created_date", filters.created_date_to);
     builder.date_from("so.finalized_date", filters.finalized_date_from);
     builder.date_to("so.finalized_date", filters.finalized_date_to);
+    builder.date_from(
+        "so.predicted_finish_date",
+        filters.predicted_finish_date_from,
+    );
+    builder.date_to("so.predicted_finish_date", filters.predicted_finish_date_to);
     builder.finish()
 }
 
@@ -518,8 +525,8 @@ impl ServiceOrderRepository {
         order.display_id = Self::next_display_id(conn)?;
 
         conn.execute(
-            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, display_id, discount_basis_points, created_date, finalized_date)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, date(?10, 'localtime'), CASE WHEN ?8 = 'Finalizada' THEN date(COALESCE(?12, ?10), 'localtime') END)",
+            "INSERT INTO service_orders (id, customer_id, customer_name, user_id, equipment, imei, description, status, total_price_cents, created_at, updated_at, closed_at, display_id, discount_basis_points, predicted_finish_date, created_date, finalized_date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, date(?10, 'localtime'), CASE WHEN ?8 = 'Finalizada' THEN date(COALESCE(?12, ?10), 'localtime') END)",
             params![
                 order.id,
                 order.customer_id,
@@ -534,7 +541,8 @@ impl ServiceOrderRepository {
                 order.updated_at,
                 order.closed_at,
                 order.display_id,
-                order.discount_basis_points
+                order.discount_basis_points,
+                order.predicted_finish_date
             ],
         )?;
         let event = ServiceOrderEvent::new(
@@ -553,7 +561,7 @@ impl ServiceOrderRepository {
 
     pub(crate) fn get_by_id_with_conn(conn: &Connection, id: &str) -> Result<Option<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name, so.predicted_finish_date
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -576,6 +584,7 @@ impl ServiceOrderRepository {
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
                 discount_basis_points: row.get(13)?,
+                predicted_finish_date: row.get(15)?,
             })
         })?;
 
@@ -590,7 +599,7 @@ impl ServiceOrderRepository {
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name, so.predicted_finish_date
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -614,6 +623,7 @@ impl ServiceOrderRepository {
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
                 discount_basis_points: row.get(13)?,
+                predicted_finish_date: row.get(15)?,
             })
         })?;
 
@@ -633,7 +643,7 @@ impl ServiceOrderRepository {
     ) -> Result<Vec<ServiceOrder>> {
         let (clause, patterns) = build_service_order_filters(search, filters);
         let sql = format!(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name, so.predicted_finish_date
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -665,6 +675,7 @@ impl ServiceOrderRepository {
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
                 discount_basis_points: row.get(13)?,
+                predicted_finish_date: row.get(15)?,
             })
         })?;
         let mut page = Vec::new();
@@ -699,7 +710,7 @@ impl ServiceOrderRepository {
         customer_id: &str,
     ) -> Result<Vec<ServiceOrder>> {
         let mut stmt = conn.prepare(
-            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name
+            "SELECT so.id, so.customer_id, COALESCE(so.customer_name, c.name) as customer_name, so.user_id, so.equipment, so.imei, so.description, so.status, so.total_price_cents, so.created_at, so.updated_at, so.closed_at, so.display_id, so.discount_basis_points, users.name as user_name, so.predicted_finish_date
              FROM service_orders so
              LEFT JOIN customers c ON so.customer_id = c.id
              LEFT JOIN users ON so.user_id = users.id
@@ -722,6 +733,7 @@ impl ServiceOrderRepository {
                 closed_at: row.get(11)?,
                 display_id: row.get(12)?,
                 discount_basis_points: row.get(13)?,
+                predicted_finish_date: row.get(15)?,
             })
         })?;
 
@@ -776,6 +788,7 @@ impl ServiceOrderRepository {
         next_status: &str,
         restore_stock: bool,
         checklist: Vec<ChecklistItem>,
+        predicted_finish_date: Option<String>,
     ) -> std::result::Result<(), AppError> {
         let conn = get_db()?;
         Self::save_edit_with_conn(
@@ -786,6 +799,7 @@ impl ServiceOrderRepository {
             next_status,
             restore_stock,
             checklist,
+            predicted_finish_date,
         )
     }
 
@@ -798,6 +812,7 @@ impl ServiceOrderRepository {
         next_status: &str,
         restore_stock: bool,
         checklist: Vec<ChecklistItem>,
+        predicted_finish_date: Option<String>,
     ) -> std::result::Result<(), AppError> {
         if !(0..=10_000).contains(&discount_basis_points) {
             return Err(business_error(
@@ -832,12 +847,48 @@ impl ServiceOrderRepository {
                 restore_stock,
             )?;
         }
+        if matches!(current_status.as_str(), "Finalizada" | "Cancelada")
+            && predicted_finish_date.is_some()
+        {
+            return Err(business_error(
+                "Predicted finish date cannot be changed on a closed order.",
+                "Não é possível alterar a previsão de uma ordem encerrada.",
+            ));
+        }
+        let opened: String = transaction.query_row(
+            "SELECT created_at FROM service_orders WHERE id = ?1",
+            params![service_order_id],
+            |row| row.get(0),
+        )?;
+        if let Some(value) = predicted_finish_date.as_deref() {
+            let predicted = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+                business_error(
+                    "Invalid predicted finish date.",
+                    "Informe uma previsão de conclusão válida.",
+                )
+            })?;
+            let created = chrono::DateTime::parse_from_rfc3339(&opened)
+                .map_err(|_| {
+                    business_error(
+                        "Invalid order opening date.",
+                        "Não foi possível validar a data de abertura.",
+                    )
+                })?
+                .date_naive();
+            if predicted < created {
+                return Err(business_error(
+                    "Predicted finish date precedes opening date.",
+                    "A previsão não pode ser anterior à abertura da ordem.",
+                ));
+            }
+        }
 
         Self::update_edit_in_transaction(
             &transaction,
             service_order_id,
             description,
             discount_basis_points,
+            predicted_finish_date,
         )?;
         transaction.commit()?;
         Ok(())
@@ -848,17 +899,36 @@ impl ServiceOrderRepository {
         service_order_id: &str,
         description: &str,
         discount_basis_points: i64,
+        predicted_finish_date: Option<String>,
     ) -> Result<()> {
+        let (previous_description, previous_discount, previous_prediction): (
+            String,
+            i64,
+            Option<String>,
+        ) = transaction.query_row(
+            "SELECT description, discount_basis_points, predicted_finish_date
+             FROM service_orders WHERE id = ?1 AND deleted_at IS NULL",
+            params![service_order_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        let description_changed = previous_description != description;
+        let discount_changed = previous_discount != discount_basis_points;
+        let prediction_changed = previous_prediction != predicted_finish_date;
+        if !description_changed && !discount_changed && !prediction_changed {
+            return Ok(());
+        }
         let updated = transaction.execute(
             "UPDATE service_orders
              SET description = ?1,
                   discount_basis_points = ?2,
-                  total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?3),
-                 updated_at = ?4
-             WHERE id = ?3 AND deleted_at IS NULL",
+                  predicted_finish_date = ?3,
+                  total_price_cents = (SELECT COALESCE(SUM(quantity * unit_price_cents), 0) FROM service_order_parts WHERE service_order_id = ?4),
+                 updated_at = ?5
+                 WHERE id = ?4 AND deleted_at IS NULL",
             params![
                 description,
                 discount_basis_points,
+                predicted_finish_date,
                 service_order_id,
                 Utc::now().to_rfc3339(),
             ],
@@ -866,12 +936,30 @@ impl ServiceOrderRepository {
         if updated == 0 {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
-        let event = ServiceOrderEvent::new(
-            service_order_id.to_string(),
-            "updated".to_string(),
-            serde_json::json!({ "discountBasisPoints": discount_basis_points }).to_string(),
-        );
-        ServiceOrderEventRepository::create_with_conn(transaction, &event)?;
+        if description_changed || discount_changed {
+            let event = ServiceOrderEvent::new(
+                service_order_id.to_string(),
+                "updated".to_string(),
+                serde_json::json!({
+                    "descriptionChanged": description_changed,
+                    "discountBasisPoints": discount_changed.then_some(discount_basis_points),
+                })
+                .to_string(),
+            );
+            ServiceOrderEventRepository::create_with_conn(transaction, &event)?;
+        }
+        if prediction_changed {
+            let event = ServiceOrderEvent::new(
+                service_order_id.to_string(),
+                "predicted_finish_date_updated".to_string(),
+                serde_json::json!({
+                    "previousPredictedFinishDate": previous_prediction,
+                    "predictedFinishDate": predicted_finish_date,
+                })
+                .to_string(),
+            );
+            ServiceOrderEventRepository::create_with_conn(transaction, &event)?;
+        }
         Ok(())
     }
 

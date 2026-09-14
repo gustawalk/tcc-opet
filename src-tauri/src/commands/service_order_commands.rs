@@ -12,6 +12,7 @@ use crate::repositories::service_order_event_repo::ServiceOrderEventRepository;
 use crate::repositories::service_order_repo::{
     ServiceOrderFilters, ServiceOrderPart, ServiceOrderRepository,
 };
+use chrono::NaiveDate;
 use serde::Deserialize;
 use std::path::PathBuf;
 use tauri::command;
@@ -51,6 +52,8 @@ pub struct SaveServiceOrderEditRequest {
     status: String,
     restore_stock: bool,
     checklist: Vec<ChecklistItem>,
+    #[serde(default)]
+    predicted_finish_date: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -68,6 +71,8 @@ pub struct CreateFullServiceOrderRequest {
     #[serde(default)]
     pub checklist_items: Vec<ChecklistItemInput>,
     pub attachment_token: Option<String>,
+    #[serde(default)]
+    pub predicted_finish_date: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -118,6 +123,33 @@ fn validate_discount_basis_points(discount_basis_points: i64) -> Result<(), AppE
         return Err(crate::error::business_error(
             "Discount percentage must be between 0 and 100.",
             "O percentual de desconto deve estar entre 0 e 100.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_predicted_finish_date(value: Option<&str>, created_at: &str) -> Result<(), AppError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let predicted = NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+        crate::error::business_error(
+            "Invalid predicted finish date.",
+            "Informe uma previsão de conclusão válida.",
+        )
+    })?;
+    let opened = chrono::DateTime::parse_from_rfc3339(created_at)
+        .map_err(|_| {
+            crate::error::business_error(
+                "Invalid order opening date.",
+                "Não foi possível validar a data de abertura.",
+            )
+        })?
+        .date_naive();
+    if predicted < opened {
+        return Err(crate::error::business_error(
+            "Predicted finish date precedes opening date.",
+            "A previsão não pode ser anterior à abertura da ordem.",
         ));
     }
     Ok(())
@@ -217,6 +249,8 @@ pub(crate) fn create_full_service_order_with_conn(
     order.user_id = request.user_id.clone();
     order.imei = request.imei.clone();
     order.discount_basis_points = discount_basis_points;
+    order.predicted_finish_date = request.predicted_finish_date.clone();
+    validate_predicted_finish_date(order.predicted_finish_date.as_deref(), &order.created_at)?;
     ServiceOrderRepository::create_with_conn(&tx, &mut order)?;
     let order_id = order.id.clone();
 
@@ -409,6 +443,8 @@ pub fn get_service_orders_page(
         created_date_to: created_date_to.as_deref(),
         finalized_date_from: finalized_date_from.as_deref(),
         finalized_date_to: finalized_date_to.as_deref(),
+        predicted_finish_date_from: None,
+        predicted_finish_date_to: None,
     };
     let items = ServiceOrderRepository::get_page_with_conn(&conn, limit, offset, &search, filters)?;
     let total = ServiceOrderRepository::count_all_with_conn(&conn, &search, filters)?;
@@ -449,6 +485,7 @@ pub fn save_service_order_edit(request: SaveServiceOrderEditRequest) -> Result<(
         &request.status,
         request.restore_stock,
         request.checklist,
+        request.predicted_finish_date,
     )
 }
 
@@ -596,6 +633,7 @@ mod tests {
             parts: vec![],
             checklist_items: vec![],
             attachment_token: None,
+            predicted_finish_date: None,
         };
 
         assert!(create_full_service_order_with_conn(&conn, request).is_err());
@@ -646,6 +684,7 @@ mod tests {
                 },
             ],
             attachment_token: None,
+            predicted_finish_date: None,
         };
 
         let order_id = create_full_service_order_with_conn(&conn, request).unwrap();
@@ -718,6 +757,7 @@ mod tests {
             ],
             checklist_items: vec![],
             attachment_token: None,
+            predicted_finish_date: None,
         };
 
         let result = create_full_service_order_with_conn(&conn, request);
@@ -776,6 +816,7 @@ mod tests {
             }],
             checklist_items: vec![],
             attachment_token: None,
+            predicted_finish_date: None,
         };
 
         create_full_service_order_with_conn(&conn, request).unwrap();

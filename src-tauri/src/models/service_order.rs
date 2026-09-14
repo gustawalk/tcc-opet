@@ -18,6 +18,7 @@ pub struct ServiceOrder {
     pub created_at: String,
     pub updated_at: Option<String>,
     pub closed_at: Option<String>,
+    pub predicted_finish_date: Option<String>,
     pub display_id: String,
     pub discount_basis_points: i64,
 }
@@ -38,6 +39,7 @@ impl ServiceOrder {
             created_at: Utc::now().to_rfc3339(),
             updated_at: None,
             closed_at: None,
+            predicted_finish_date: None,
             display_id: String::new(),
             discount_basis_points: 0,
         }

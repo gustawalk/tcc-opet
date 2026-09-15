@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as errors from "@/lib/errors";
 import { formatDatabasePath, Settings } from "@/views/Settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -288,6 +289,7 @@ describe("Settings LAN host and client", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(errors, "copyToClipboard").mockResolvedValue(true);
     localStorage.clear();
   });
 
@@ -298,12 +300,55 @@ describe("Settings LAN host and client", () => {
     expect(await screen.findByText("Servidor LAN")).toBeInTheDocument();
     expect(screen.getByText("Ativo")).toBeInTheDocument();
     expect(screen.getByText("https://192.168.1.10:8743", { exact: false })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copiar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar endereço do servidor" })).toBeInTheDocument();
     expect(screen.getByText("123456")).toBeInTheDocument();
     expect(screen.getByText("blake3:abc123")).toBeInTheDocument();
     expect(screen.getByText(/Código válido até/)).toBeInTheDocument();
     expect(screen.getByLabelText("Porta local")).toHaveValue(8743);
     expect(screen.getByText("Balcão 2")).toBeInTheDocument();
+  });
+
+  it("uses one button contract to copy each host pairing value", async () => {
+    const user = userEvent.setup();
+    installModeMock("host");
+    renderSettings();
+
+    const address = await screen.findByRole("button", {
+      name: "Copiar endereço do servidor",
+    });
+    const pairingCode = screen.getByRole("button", {
+      name: "Copiar código de pareamento",
+    });
+    const fingerprint = screen.getByRole("button", {
+      name: "Copiar impressão digital",
+    });
+
+    for (const button of [address, pairingCode, fingerprint]) {
+      expect(button).toHaveClass(
+        "h-7",
+        "shrink-0",
+        "gap-1",
+        "px-2",
+        "text-xs",
+        "hover:bg-accent",
+        "hover:text-accent-foreground",
+      );
+      expect(button).toHaveTextContent("Copiar");
+      expect(button.querySelector("svg.lucide-copy")).toBeInTheDocument();
+    }
+
+    await user.click(address);
+    await user.click(pairingCode);
+    await user.click(fingerprint);
+
+    await waitFor(() => {
+      expect(errors.copyToClipboard).toHaveBeenNthCalledWith(1, "https://192.168.1.10:8743");
+      expect(errors.copyToClipboard).toHaveBeenNthCalledWith(2, "123456");
+      expect(errors.copyToClipboard).toHaveBeenNthCalledWith(3, "blake3:abc123");
+    });
+    expect(toast.success).toHaveBeenNthCalledWith(1, "Endereço copiado.");
+    expect(toast.success).toHaveBeenNthCalledWith(2, "Código copiado.");
+    expect(toast.success).toHaveBeenNthCalledWith(3, "Impressão digital copiada.");
   });
 
   it("confirms and revokes a paired device", async () => {

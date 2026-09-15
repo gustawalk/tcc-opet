@@ -83,6 +83,31 @@ const splitVerificationCode = (value: string) => {
   return { pairingCode, fingerprint: fingerprint ?? "" };
 };
 
+function SettingsCopyButton({
+  ariaLabel,
+  text,
+  successMessage,
+}: {
+  ariaLabel: string;
+  text: string;
+  successMessage: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 shrink-0 gap-1 px-2 text-xs"
+      aria-label={ariaLabel}
+      onClick={async () => {
+        if (await copyToClipboard(text)) toastSuccess(successMessage);
+      }}
+    >
+      <Copy className="h-3.5 w-3.5" /> Copiar
+    </Button>
+  );
+}
+
 const fetchSettings = async (): Promise<Settings> => {
   return await dataCommand<Settings>("get_settings");
 };
@@ -897,19 +922,11 @@ export function Settings() {
                     <p className="min-w-0 truncate">
                       Endereço: <code>{`https://${hostStatus.address}`}</code>
                     </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 shrink-0 gap-1 px-2 text-xs"
-                      onClick={async () => {
-                        if (await copyToClipboard(`https://${hostStatus.address}`)) {
-                          toastSuccess("Endereço copiado.");
-                        }
-                      }}
-                    >
-                      <Copy className="h-3.5 w-3.5" /> Copiar
-                    </Button>
+                    <SettingsCopyButton
+                      ariaLabel="Copiar endereço do servidor"
+                      text={`https://${hostStatus.address}`}
+                      successMessage="Endereço copiado."
+                    />
                   </div>
                 )}
                 {hostStatus?.verificationCode && (
@@ -932,18 +949,11 @@ export function Settings() {
                           <div className="space-y-2">
                             <div className="flex items-center justify-between gap-2">
                               <Label>Código de pareamento</Label>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                aria-label="Copiar código de pareamento"
-                                onClick={async () => {
-                                  if (await copyToClipboard(pairingCode)) toastSuccess("Código copiado.");
-                                }}
-                              >
-                                <Copy className="h-3.5 w-3.5" /> Copiar
-                              </Button>
+                              <SettingsCopyButton
+                                ariaLabel="Copiar código de pareamento"
+                                text={pairingCode}
+                                successMessage="Código copiado."
+                              />
                             </div>
                             <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-4 py-3">
                               <code className="text-3xl font-bold tracking-[0.2em] text-foreground">
@@ -955,19 +965,11 @@ export function Settings() {
                             <div className="space-y-2 border-t pt-3">
                               <div className="flex items-center justify-between gap-2">
                                 <Label>Impressão digital de segurança</Label>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 gap-1 px-2 text-xs"
-                                  aria-label="Copiar impressão digital"
-                                  title="Copiar impressão digital"
-                                  onClick={async () => {
-                                    if (await copyToClipboard(fingerprint)) toastSuccess("Impressão digital copiada.");
-                                  }}
-                                >
-                                  <Copy className="h-3.5 w-3.5" /> Copiar
-                                </Button>
+                                <SettingsCopyButton
+                                  ariaLabel="Copiar impressão digital"
+                                  text={fingerprint}
+                                  successMessage="Impressão digital copiada."
+                                />
                               </div>
                               <code className="block break-all rounded-md bg-background p-2 text-[11px] text-muted-foreground">
                                 {fingerprint}

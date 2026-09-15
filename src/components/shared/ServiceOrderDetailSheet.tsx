@@ -34,7 +34,7 @@ import {
 import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
-import { PdfAttachmentPreview } from "@/components/shared/PdfAttachmentPreview";
+import { PdfAttachmentPreviewDialog } from "@/components/shared/PdfAttachmentPreviewDialog";
 import {
   User,
   Smartphone,
@@ -229,7 +229,8 @@ function AttachmentItem({
   attachment: ServiceOrderAttachment;
   onDelete?: (attachment: ServiceOrderAttachment) => void;
 }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const isImage = attachment.mimeType.startsWith("image/");
   const isPdf = attachment.mimeType === "application/pdf";
   const isPreviewable = isImage || isPdf;
@@ -237,7 +238,7 @@ function AttachmentItem({
     queryKey: ["service-order-attachment-preview", attachment.id],
     queryFn: () =>
       dataCommand<string>("read_service_order_attachment", { id: attachment.id }),
-    enabled: previewOpen && isPreviewable,
+    enabled: (imagePreviewOpen || pdfPreviewOpen) && isPreviewable,
     staleTime: isPdf ? 60_000 : 0,
   });
 
@@ -289,40 +290,44 @@ function AttachmentItem({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setPreviewOpen((open) => !open)}
+            onClick={() => {
+              if (isPdf) setPdfPreviewOpen(true);
+              else setImagePreviewOpen((open) => !open);
+            }}
           >
-            {previewOpen
+            {imagePreviewOpen
               ? "Ocultar visualização"
               : isPdf
                 ? "Visualizar PDF"
                 : "Visualizar imagem"}
           </Button>
-          {previewOpen && previewQuery.isLoading && (
+          {imagePreviewOpen && previewQuery.isLoading && (
             <p className="text-xs text-muted-foreground">
-              {isPdf ? "Carregando PDF..." : "Carregando imagem..."}
+              Carregando imagem...
             </p>
           )}
-          {previewOpen && previewQuery.isError && (
+          {imagePreviewOpen && previewQuery.isError && (
             <p className="text-xs text-destructive">
-              {isPdf
-                ? "Não foi possível carregar o PDF."
-                : "Não foi possível carregar a imagem."}
+              Não foi possível carregar a imagem.
             </p>
           )}
-          {previewOpen && isImage && previewQuery.data && (
+          {imagePreviewOpen && isImage && previewQuery.data && (
             <img
               src={previewQuery.data}
               alt={attachment.fileName}
               className="max-h-64 w-full rounded-md border object-contain"
             />
           )}
-          {previewOpen && isPdf && previewQuery.data && (
-            <PdfAttachmentPreview
-              dataUrl={previewQuery.data}
-              fileName={attachment.fileName}
-            />
-          )}
         </div>
+      )}
+      {isPdf && (
+        <PdfAttachmentPreviewDialog
+          open={pdfPreviewOpen}
+          dataUrl={previewQuery.data}
+          error={previewQuery.isError}
+          fileName={attachment.fileName}
+          onClose={() => setPdfPreviewOpen(false)}
+        />
       )}
       <div className="flex gap-2">
         <Button

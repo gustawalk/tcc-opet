@@ -202,3 +202,30 @@ The sensor ran only in disposable `.sensor-v051`. Its worktree was removed. Real
 ## Validation: OpetS v0.5.1 - PASS ✅
 
 All prior gaps are resolved. PDF attachment preview, image-preview preservation, Settings copy-button contract, PDF.js canvas rendering/navigation, and renderer failure feedback have direct assertions. The three historical mutations that matter to the changed renderer path are now killed. Automated interactive UAT remains skipped because no desktop user interaction was conducted.
+
+## Iteration 4: Full-Screen Attachment Dialog Revision
+
+**Working diff reviewed**: full-screen dialog adjustment in the current working tree, based on `862f988`.
+
+| Revised criterion | Spec-defined outcome | `file:line` + assertion | Result |
+| --- | --- | --- | --- |
+| PDFVIEW-02: PDF data renders in a full-screen dialog matching generated-PDF layout | Attachment reader data URL is passed to the canvas renderer inside the full-screen dialog | `src/components/shared/PdfAttachmentPreviewDialog.test.tsx:12-29` - dialog has `h-[calc(100dvh-2rem)]`, title/file name, and exact data URL reaches the renderer; `src/components/shared/ServiceOrderDetailSheet.test.tsx:121-132` asserts activation, loading, data command, and rendered value | ✅ PASS |
+| PDFVIEW-03 and PDFVIEW-04: loading and request failure appear inside the dialog | Exact `Carregando PDF...` and `Não foi possível carregar o PDF.` are shown by the dialog | `src/components/shared/PdfAttachmentPreviewDialog.test.tsx:31-41` - asserts both exact dialog states; `src/components/shared/ServiceOrderDetailSheet.test.tsx:138-155` asserts failed read and available download | ✅ PASS |
+| PDFVIEW-05: closing hides the dialog and preserves attachment-card control | Closing the dialog removes its preview while `Visualizar PDF` remains the card action | `src/components/shared/ServiceOrderDetailSheet.test.tsx:121-135` - closes through `Fechar PDF` and asserts preview absent; the control is established at `:121-124` | ✅ PASS |
+
+### Focused Gate
+
+- `yarn test src/components/shared/PdfAttachmentPreviewDialog.test.tsx src/components/shared/ServiceOrderDetailSheet.test.tsx src/components/shared/PdfAttachmentPreview.test.tsx` → 9 passed, 0 failed, 0 skipped.
+- `yarn typecheck` → passed.
+
+### Discrimination Sensor
+
+| Mutation | File:line | Description | Command | Killed? |
+| --- | --- | --- | --- | --- |
+| 1 | `src/components/shared/PdfAttachmentPreviewDialog.tsx:26` | Replaced full-screen height with `h-96` | `yarn vitest run --config .sensor-dialog/sensor.config.ts src/components/shared/PdfAttachmentPreviewDialog.test.tsx` | ✅ Killed: full-screen class assertion failed |
+
+The mutation ran only in disposable `.sensor-dialog`, populated from the revised dialog source and removed after the run. Real-tree status before and after contained the same five user work items: modified spec, modified attachment sheet and its test, plus the two new dialog files.
+
+## Validation: OpetS v0.5.1 Full-Screen Dialog Revision - PASS ✅
+
+The attachment PDF now uses the same full-screen dimensions as the generated-PDF dialog, retains the existing encrypted local/LAN read path, shows loading and request failures in the dialog, and closes without changing image-preview behavior. Interactive desktop UAT remains skipped because no user interaction was conducted.

@@ -31,8 +31,8 @@ spacing, accessible labels, and success feedback.
 
 | Assumption / decision | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| PDF placement | Expand the PDF in the same attachment card used for image preview, rather than opening a new dialog. | It follows the requested existing image-viewer interaction and keeps the change patch-sized. | y |
-| PDF rendering | Render the existing authenticated PDF data URL with PDF.js on a canvas inside the attachment card, with page navigation. | The platform WebView's built-in PDF plugin displayed a blank document; PDF.js provides a consistent in-app renderer without changing the encrypted attachment path. | y |
+| PDF placement | Open an attached PDF in the same full-screen dialog treatment used for generated PDFs. | The inline renderer is not usable for reading documents; the full-screen dialog gives the attachment the same reading space as PDF generation. | y |
+| PDF rendering | Render the existing authenticated PDF data URL with PDF.js on a canvas in the full-screen dialog, with page navigation. | The platform WebView's built-in PDF plugin displayed a blank document; PDF.js provides a consistent in-app renderer without changing the encrypted attachment path. | y |
 | Settings-copy standard | Extract one local reusable Settings copy button with ghost/small styling, copy icon, visible **Copiar** label, specific accessible name, and action-specific success toast. | This removes the three current implementation differences while retaining Portuguese UI language and distinct feedback. | y |
 
 **Open questions:** none - all resolved or logged above.
@@ -52,15 +52,15 @@ missing counterpart to the existing image preview.
 **Acceptance Criteria**:
 
 1. WHEN a service-order detail sheet shows an attachment whose `mimeType` is `application/pdf`, THEN the system SHALL show a **Visualizar PDF** control in that attachment card. <!-- event-driven -->
-2. WHEN the user activates **Visualizar PDF**, THEN the system SHALL request that attachment through the existing `read_service_order_attachment` data command and render the returned PDF data URL inline on a canvas in the card. <!-- event-driven -->
-3. WHILE the PDF request is pending, THEN the system SHALL show **Carregando PDF...** and SHALL not render a stale document. <!-- state-driven -->
-4. IF the PDF request fails, THEN the system SHALL show **Não foi possível carregar o PDF.** and SHALL keep the existing **Baixar** action available. <!-- unwanted-behavior -->
-5. WHEN the user activates the PDF control while the PDF is visible, THEN the system SHALL hide the PDF and label the control **Ocultar visualização**. <!-- event-driven -->
+2. WHEN the user activates **Visualizar PDF**, THEN the system SHALL request that attachment through the existing `read_service_order_attachment` data command and render the returned PDF data URL on a canvas in a full-screen dialog matching the generated-PDF preview layout. <!-- event-driven -->
+3. WHILE the PDF request is pending, THEN the system SHALL show **Carregando PDF...** in that dialog and SHALL not render a stale document. <!-- state-driven -->
+4. IF the PDF request fails, THEN the system SHALL show **Não foi possível carregar o PDF.** in that dialog and SHALL keep the existing **Baixar** action available. <!-- unwanted-behavior -->
+5. WHEN the user closes the dialog, THEN the system SHALL hide the PDF and retain the **Visualizar PDF** control in the attachment card. <!-- event-driven -->
 6. The system SHALL keep image preview behavior unchanged and SHALL continue to use the existing encrypted attachment read path for both local and LAN-client access. <!-- ubiquitous -->
 
 **Independent Test**: Render the detail sheet with a PDF attachment, activate
-the preview, assert the data command and embedded document source, then assert
-loading, error, and hide states independently.
+the preview, assert the data command and full-screen dialog renderer, then
+assert loading, error, and close states independently.
 
 ### P1: Consistent Settings copy controls
 
@@ -89,7 +89,7 @@ respective feedback.
   SHALL not offer an inline preview and SHALL retain export/delete behavior.
 - IF clipboard permission is unavailable, THEN the system SHALL not show a
   success toast.
-- WHEN a PDF viewer is collapsed after a successful load, THEN the system SHALL
+- WHEN a PDF viewer is closed after a successful load, THEN the system SHALL
   not refetch the same attachment until it is requested again after its cached
   data becomes stale or the component is remounted.
 
@@ -112,9 +112,9 @@ respective feedback.
 
 ## Success Criteria
 
-- [x] A PDF attachment can be opened and closed inline in the service-order
-  detail sheet in local and LAN-client modes, with a clear loading and failure
-  state.
+- [x] A PDF attachment opens in a full-screen dialog matching generated-PDF
+  preview dimensions in local and LAN-client modes, with a clear loading and
+  failure state.
 - [x] The three Host Settings copy controls have one UI contract and copy the
   correct values with distinguishable Portuguese success feedback.
 - [x] v0.5.1 version metadata and release notes describe only these delivered

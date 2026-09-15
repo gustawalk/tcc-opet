@@ -11,14 +11,25 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({
   useServiceOrderDrawer: () => ({ openCustomerHistory: vi.fn() }),
 }));
-vi.mock("@/components/shared/PdfAttachmentPreview", () => ({
-  PdfAttachmentPreview: ({
+vi.mock("@/components/shared/PdfAttachmentPreviewDialog", () => ({
+  PdfAttachmentPreviewDialog: ({
+    open,
     dataUrl,
     fileName,
+    error,
+    onClose,
   }: {
+    open: boolean;
     dataUrl: string;
     fileName: string;
-  }) => <div title={`Visualização de ${fileName}`} data-url={dataUrl} />,
+    error: boolean;
+    onClose: () => void;
+  }) => open ? (
+    <div role="dialog" aria-label="Visualização do PDF">
+      {error ? <p>Não foi possível carregar o PDF.</p> : dataUrl ? <div title={`Visualização de ${fileName}`} data-url={dataUrl} /> : <p>Carregando PDF...</p>}
+      <button type="button" onClick={onClose}>Fechar PDF</button>
+    </div>
+  ) : null,
 }));
 
 const mockedInvoke = vi.mocked(invoke);
@@ -88,7 +99,7 @@ describe("ServiceOrderDetailSheet attachments", () => {
     configureDataClient("local");
   });
 
-  it("loads, displays, and hides an attached PDF inline", async () => {
+  it("loads, displays, and closes an attached PDF in its dialog", async () => {
     const user = userEvent.setup();
     let resolvePdf: ((value: string) => void) | undefined;
     mockedInvoke.mockImplementation((command) => {
@@ -120,7 +131,7 @@ describe("ServiceOrderDetailSheet attachments", () => {
       id: pdfAttachment.id,
     });
 
-    await user.click(screen.getByRole("button", { name: "Ocultar visualização" }));
+    await user.click(screen.getByRole("button", { name: "Fechar PDF" }));
     expect(screen.queryByTitle("Visualização de laudo.pdf")).not.toBeInTheDocument();
   });
 

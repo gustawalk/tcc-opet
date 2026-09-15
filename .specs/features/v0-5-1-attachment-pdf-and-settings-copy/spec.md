@@ -114,10 +114,10 @@ respective feedback.
 
 ## Success Criteria
 
-- [ ] A PDF attachment can be opened and closed inline in the service-order
+- [x] A PDF attachment can be opened and closed inline in the service-order
   detail sheet in local and LAN-client modes, with a clear loading and failure
   state.
-- [ ] The three Host Settings copy controls have one UI contract and copy the
+- [x] The three Host Settings copy controls have one UI contract and copy the
   correct values with distinguishable Portuguese success feedback.
-- [ ] v0.5.1 version metadata and release notes describe only these delivered
+- [x] v0.5.1 version metadata and release notes describe only these delivered
   improvements.

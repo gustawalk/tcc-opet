@@ -11,6 +11,26 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.5.1",
+    date: "14/09/2026",
+    title: "Visualização de PDFs anexados e cópia LAN padronizada",
+    sections: [
+      {
+        title: "Anexos de ordens de serviço",
+        items: [
+          "PDFs anexados agora podem ser visualizados diretamente no detalhamento da ordem de serviço, sem exportação prévia.",
+          "A visualização mantém o download disponível e apresenta mensagens claras ao carregar ou quando o PDF não puder ser aberto.",
+        ],
+      },
+      {
+        title: "Configurações LAN",
+        items: [
+          "Os botões para copiar endereço do servidor, código de pareamento e impressão digital agora têm o mesmo visual, rótulo e feedback de confirmação.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.5.0",
     date: "13/09/2026",
     title: "Busca global e migrações mais seguras",

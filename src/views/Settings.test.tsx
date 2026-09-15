@@ -324,8 +324,17 @@ describe("Settings LAN host and client", () => {
     });
 
     for (const button of [address, pairingCode, fingerprint]) {
-      expect(button).toHaveClass("h-7", "shrink-0", "gap-1", "px-2", "text-xs");
+      expect(button).toHaveClass(
+        "h-7",
+        "shrink-0",
+        "gap-1",
+        "px-2",
+        "text-xs",
+        "hover:bg-accent",
+        "hover:text-accent-foreground",
+      );
       expect(button).toHaveTextContent("Copiar");
+      expect(button.querySelector("svg.lucide-copy")).toBeInTheDocument();
     }
 
     await user.click(address);

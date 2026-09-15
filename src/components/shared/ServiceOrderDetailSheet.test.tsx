@@ -11,6 +11,15 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({
   useServiceOrderDrawer: () => ({ openCustomerHistory: vi.fn() }),
 }));
+vi.mock("@/components/shared/PdfAttachmentPreview", () => ({
+  PdfAttachmentPreview: ({
+    dataUrl,
+    fileName,
+  }: {
+    dataUrl: string;
+    fileName: string;
+  }) => <div title={`Visualização de ${fileName}`} data-url={dataUrl} />,
+}));
 
 const mockedInvoke = vi.mocked(invoke);
 const pdfAttachment = {
@@ -21,6 +30,12 @@ const pdfAttachment = {
   mimeType: "application/pdf",
   sizeBytes: 512,
   createdAt: "2026-09-14T12:00:00Z",
+};
+const imageAttachment = {
+  ...pdfAttachment,
+  id: "attachment-image",
+  fileName: "entrada.png",
+  mimeType: "image/png",
 };
 
 function renderDetail() {
@@ -100,7 +115,7 @@ describe("ServiceOrderDetailSheet attachments", () => {
     expect(screen.getByText("Carregando PDF...")).toBeInTheDocument();
     resolvePdf?.("data:application/pdf;base64,JVBERi0=");
     const viewer = await screen.findByTitle("Visualização de laudo.pdf");
-    expect(viewer).toHaveAttribute("src", "data:application/pdf;base64,JVBERi0=");
+    expect(viewer).toHaveAttribute("data-url", "data:application/pdf;base64,JVBERi0=");
     expect(mockedInvoke).toHaveBeenCalledWith("read_service_order_attachment", {
       id: pdfAttachment.id,
     });
@@ -135,6 +150,31 @@ describe("ServiceOrderDetailSheet attachments", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("get_service_order_attachments", { serviceOrderId: "order-1" }));
   });
 
+  it("keeps the existing image preview data URL unchanged", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_service_order") {
+        return Promise.resolve({
+          id: "order-1", customerId: "customer-1", equipment: "Notebook", description: "Não liga", status: "Orçamento", totalPrice: 0, createdAt: "2026-09-14T12:00:00Z", displayId: "OS-000001", discountBasisPoints: 0,
+        });
+      }
+      if (command === "get_service_order_attachments") return Promise.resolve([imageAttachment]);
+      if (command === "read_service_order_attachment") {
+        expect(args).toEqual({ id: imageAttachment.id });
+        return Promise.resolve("data:image/png;base64,iVBORw0KGgo=");
+      }
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Visualizar imagem" }));
+
+    expect(await screen.findByAltText("entrada.png")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,iVBORw0KGgo=",
+    );
+  });
+
   it("uses the LAN data command when a client previews an attached PDF", async () => {
     const user = userEvent.setup();
     renderDetail();
@@ -160,7 +200,7 @@ describe("ServiceOrderDetailSheet attachments", () => {
       });
     });
     expect(await screen.findByTitle("Visualização de laudo.pdf")).toHaveAttribute(
-      "src",
+      "data-url",
       "data:application/pdf;base64,JVBERi0=",
     );
   });

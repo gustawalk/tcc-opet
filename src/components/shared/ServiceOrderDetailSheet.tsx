@@ -34,6 +34,7 @@ import {
 import { applyDiscount, formatCurrency } from "@/lib/formatters";
 import { toastError, toastSuccess } from "@/lib/errors";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
+import { PdfAttachmentPreview } from "@/components/shared/PdfAttachmentPreview";
 import {
   User,
   Smartphone,
@@ -316,11 +317,9 @@ function AttachmentItem({
             />
           )}
           {previewOpen && isPdf && previewQuery.data && (
-            <iframe
-              title={`Visualização de ${attachment.fileName}`}
-              src={previewQuery.data}
-              sandbox="allow-downloads"
-              className="h-96 w-full rounded-md border bg-white"
+            <PdfAttachmentPreview
+              dataUrl={previewQuery.data}
+              fileName={attachment.fileName}
             />
           )}
         </div>

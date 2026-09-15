@@ -21,7 +21,6 @@ spacing, accessible labels, and success feedback.
 | Feature | Reason |
 | --- | --- |
 | Editing, annotating, or printing attached PDFs | This release only adds viewing; export remains the existing way to use the file elsewhere. |
-| A new PDF rendering dependency or server-side conversion | The attachment reader already provides a verified data URL and the desktop WebView renders the document. |
 | Changing which attachment formats are accepted, their 10 MB limit, encryption, storage, or backups | Those are established storage/security contracts. |
 | Standardizing copy controls outside Settings | The request is limited to the Settings page. |
 | New settings, database migrations, or LAN endpoints | Neither behavior needs persisted state or a new remote contract. |
@@ -33,8 +32,7 @@ spacing, accessible labels, and success feedback.
 | Assumption / decision | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
 | PDF placement | Expand the PDF in the same attachment card used for image preview, rather than opening a new dialog. | It follows the requested existing image-viewer interaction and keeps the change patch-sized. | y |
-| PDF rendering | Use the browser/WebView's built-in PDF viewer in an iframe sourced from the existing authenticated data URL; permit that frame source in the Tauri CSP. | No plaintext file or additional backend/API is necessary; the same decrypt-and-validate path is used in local and LAN-client modes. | y |
-| Unsupported WebView behavior | Keep the existing **Baixar** action available; do not introduce a PDF.js fallback in v0.5.1. | A renderer fallback would add a dependency and a separate rendering surface beyond the requested parity feature. | y |
+| PDF rendering | Render the existing authenticated PDF data URL with PDF.js on a canvas inside the attachment card, with page navigation. | The platform WebView's built-in PDF plugin displayed a blank document; PDF.js provides a consistent in-app renderer without changing the encrypted attachment path. | y |
 | Settings-copy standard | Extract one local reusable Settings copy button with ghost/small styling, copy icon, visible **Copiar** label, specific accessible name, and action-specific success toast. | This removes the three current implementation differences while retaining Portuguese UI language and distinct feedback. | y |
 
 **Open questions:** none - all resolved or logged above.
@@ -54,7 +52,7 @@ missing counterpart to the existing image preview.
 **Acceptance Criteria**:
 
 1. WHEN a service-order detail sheet shows an attachment whose `mimeType` is `application/pdf`, THEN the system SHALL show a **Visualizar PDF** control in that attachment card. <!-- event-driven -->
-2. WHEN the user activates **Visualizar PDF**, THEN the system SHALL request that attachment through the existing `read_service_order_attachment` data command and render the returned PDF data URL inline in the card. <!-- event-driven -->
+2. WHEN the user activates **Visualizar PDF**, THEN the system SHALL request that attachment through the existing `read_service_order_attachment` data command and render the returned PDF data URL inline on a canvas in the card. <!-- event-driven -->
 3. WHILE the PDF request is pending, THEN the system SHALL show **Carregando PDF...** and SHALL not render a stale document. <!-- state-driven -->
 4. IF the PDF request fails, THEN the system SHALL show **Não foi possível carregar o PDF.** and SHALL keep the existing **Baixar** action available. <!-- unwanted-behavior -->
 5. WHEN the user activates the PDF control while the PDF is visible, THEN the system SHALL hide the PDF and label the control **Ocultar visualização**. <!-- event-driven -->

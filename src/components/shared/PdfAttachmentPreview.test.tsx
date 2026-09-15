@@ -61,4 +61,20 @@ describe("PdfAttachmentPreview", () => {
     expect(await screen.findByLabelText("Página 2 de laudo.pdf")).toBeVisible();
     expect(screen.getByRole("button", { name: "Próxima página" })).toBeDisabled();
   });
+
+  it("shows a clear error when PDF.js cannot render the document", async () => {
+    getDocumentMock.mockReturnValue({
+      promise: Promise.reject(new Error("PDF inválido")),
+      destroy: vi.fn(),
+    });
+    render(
+      <PdfAttachmentPreview
+        dataUrl="data:application/pdf;base64,JVBERi0="
+        fileName="laudo.pdf"
+      />,
+    );
+
+    expect(await screen.findByText("Não foi possível renderizar o PDF.")).toBeVisible();
+    expect(screen.queryByLabelText("Página 1 de laudo.pdf")).not.toBeInTheDocument();
+  });
 });

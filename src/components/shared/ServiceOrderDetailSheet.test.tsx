@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
+import { configureDataClient } from "@/lib/data-client";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
@@ -67,7 +68,10 @@ describe("ServiceOrderDetailSheet attachments", () => {
     });
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    configureDataClient("local");
+  });
 
   it("loads, displays, and hides an attached PDF inline", async () => {
     const user = userEvent.setup();
@@ -129,5 +133,35 @@ describe("ServiceOrderDetailSheet attachments", () => {
     await screen.findByRole("button", { name: "Visualizar PDF" });
     expect(screen.queryByRole("button", { name: "Visualizar imagem" })).not.toBeInTheDocument();
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("get_service_order_attachments", { serviceOrderId: "order-1" }));
+  });
+
+  it("uses the LAN data command when a client previews an attached PDF", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("button", { name: "Visualizar PDF" });
+    configureDataClient("client");
+    mockedInvoke.mockImplementation((command, args) => {
+      if (
+        command === "lan_remote_command" &&
+        (args as { operation?: string }).operation === "read_service_order_attachment"
+      ) {
+        return Promise.resolve("data:application/pdf;base64,JVBERi0=");
+      }
+      return Promise.resolve([]);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Visualizar PDF" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("lan_remote_command", {
+        operation: "read_service_order_attachment",
+        payload: { id: pdfAttachment.id },
+        idempotencyKey: null,
+      });
+    });
+    expect(await screen.findByTitle("Visualização de laudo.pdf")).toHaveAttribute(
+      "src",
+      "data:application/pdf;base64,JVBERi0=",
+    );
   });
 });

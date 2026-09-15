@@ -230,11 +230,14 @@ function AttachmentItem({
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const isImage = attachment.mimeType.startsWith("image/");
+  const isPdf = attachment.mimeType === "application/pdf";
+  const isPreviewable = isImage || isPdf;
   const previewQuery = useQuery({
     queryKey: ["service-order-attachment-preview", attachment.id],
     queryFn: () =>
       dataCommand<string>("read_service_order_attachment", { id: attachment.id }),
-    enabled: previewOpen && isImage,
+    enabled: previewOpen && isPreviewable,
+    staleTime: isPdf ? 60_000 : 0,
   });
 
   const handleExport = async () => {
@@ -280,30 +283,44 @@ function AttachmentItem({
           </p>
         </div>
       </div>
-      {isImage && (
+      {isPreviewable && (
         <div className="space-y-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setPreviewOpen((open) => !open)}
           >
-            {previewOpen ? "Ocultar visualização" : "Visualizar imagem"}
+            {previewOpen
+              ? "Ocultar visualização"
+              : isPdf
+                ? "Visualizar PDF"
+                : "Visualizar imagem"}
           </Button>
           {previewOpen && previewQuery.isLoading && (
             <p className="text-xs text-muted-foreground">
-              Carregando imagem...
+              {isPdf ? "Carregando PDF..." : "Carregando imagem..."}
             </p>
           )}
           {previewOpen && previewQuery.isError && (
             <p className="text-xs text-destructive">
-              Não foi possível carregar a imagem.
+              {isPdf
+                ? "Não foi possível carregar o PDF."
+                : "Não foi possível carregar a imagem."}
             </p>
           )}
-          {previewOpen && previewQuery.data && (
+          {previewOpen && isImage && previewQuery.data && (
             <img
               src={previewQuery.data}
               alt={attachment.fileName}
               className="max-h-64 w-full rounded-md border object-contain"
+            />
+          )}
+          {previewOpen && isPdf && previewQuery.data && (
+            <iframe
+              title={`Visualização de ${attachment.fileName}`}
+              src={previewQuery.data}
+              sandbox="allow-downloads"
+              className="h-96 w-full rounded-md border bg-white"
             />
           )}
         </div>

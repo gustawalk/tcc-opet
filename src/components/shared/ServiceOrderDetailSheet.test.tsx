@@ -1,0 +1,133 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
+vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({
+  useServiceOrderDrawer: () => ({ openCustomerHistory: vi.fn() }),
+}));
+
+const mockedInvoke = vi.mocked(invoke);
+const pdfAttachment = {
+  id: "attachment-pdf",
+  serviceOrderId: "order-1",
+  fileName: "laudo.pdf",
+  storageName: "attachment-pdf",
+  mimeType: "application/pdf",
+  sizeBytes: 512,
+  createdAt: "2026-09-14T12:00:00Z",
+};
+
+function renderDetail() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ServiceOrderDetailSheet orderId="order-1" open onClose={() => undefined} />
+    </QueryClientProvider>,
+  );
+}
+
+describe("ServiceOrderDetailSheet attachments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_service_order") {
+        return Promise.resolve({
+          id: "order-1",
+          customerId: "customer-1",
+          customerName: "Cliente Teste",
+          equipment: "Notebook",
+          description: "Não liga",
+          status: "Orçamento",
+          totalPrice: 0,
+          createdAt: "2026-09-14T12:00:00Z",
+          displayId: "OS-000001",
+          discountBasisPoints: 0,
+        });
+      }
+      if (
+        command === "get_service_order_parts" ||
+        command === "get_service_order_checklist" ||
+        command === "get_service_order_events"
+      ) {
+        return Promise.resolve([]);
+      }
+      if (command === "get_service_order_attachments") return Promise.resolve([pdfAttachment]);
+      if (command === "read_service_order_attachment") {
+        expect(args).toEqual({ id: pdfAttachment.id });
+        return Promise.resolve("data:application/pdf;base64,JVBERi0=");
+      }
+      return Promise.resolve(null);
+    });
+  });
+
+  afterEach(cleanup);
+
+  it("loads, displays, and hides an attached PDF inline", async () => {
+    const user = userEvent.setup();
+    let resolvePdf: ((value: string) => void) | undefined;
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_service_order") {
+        return Promise.resolve({
+          id: "order-1", customerId: "customer-1", equipment: "Notebook", description: "Não liga", status: "Orçamento", totalPrice: 0, createdAt: "2026-09-14T12:00:00Z", displayId: "OS-000001", discountBasisPoints: 0,
+        });
+      }
+      if (command === "get_service_order_attachments") return Promise.resolve([pdfAttachment]);
+      if (command === "read_service_order_attachment") {
+        return new Promise((resolve) => {
+          resolvePdf = resolve;
+        });
+      }
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    const previewButton = await screen.findByRole("button", {
+      name: "Visualizar PDF",
+    });
+    await user.click(previewButton);
+
+    expect(screen.getByText("Carregando PDF...")).toBeInTheDocument();
+    resolvePdf?.("data:application/pdf;base64,JVBERi0=");
+    const viewer = await screen.findByTitle("Visualização de laudo.pdf");
+    expect(viewer).toHaveAttribute("src", "data:application/pdf;base64,JVBERi0=");
+    expect(mockedInvoke).toHaveBeenCalledWith("read_service_order_attachment", {
+      id: pdfAttachment.id,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Ocultar visualização" }));
+    expect(screen.queryByTitle("Visualização de laudo.pdf")).not.toBeInTheDocument();
+  });
+
+  it("shows the specified error and retains download when PDF loading fails", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_service_order") {
+        return Promise.resolve({
+          id: "order-1", customerId: "customer-1", equipment: "Notebook", description: "Não liga", status: "Orçamento", totalPrice: 0, createdAt: "2026-09-14T12:00:00Z", displayId: "OS-000001", discountBasisPoints: 0,
+        });
+      }
+      if (command === "get_service_order_attachments") return Promise.resolve([pdfAttachment]);
+      if (command === "read_service_order_attachment") return Promise.reject(new Error("Falha"));
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Visualizar PDF" }));
+    expect(await screen.findByText("Não foi possível carregar o PDF.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Baixar" })).toBeEnabled();
+  });
+
+  it("does not offer an image preview label for PDF attachments", async () => {
+    renderDetail();
+    await screen.findByRole("button", { name: "Visualizar PDF" });
+    expect(screen.queryByRole("button", { name: "Visualizar imagem" })).not.toBeInTheDocument();
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("get_service_order_attachments", { serviceOrderId: "order-1" }));
+  });
+});

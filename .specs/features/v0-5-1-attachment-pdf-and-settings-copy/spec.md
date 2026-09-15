@@ -105,10 +105,10 @@ respective feedback.
 | PDFVIEW-04 | P1: View an attached PDF | Implement | Verified |
 | PDFVIEW-05 | P1: View an attached PDF | Implement | Verified |
 | PDFVIEW-06 | P1: View an attached PDF | Implement | Verified |
-| SETCOPY-01 | P1: Consistent Settings copy controls | Implement | Pending |
-| SETCOPY-02 | P1: Consistent Settings copy controls | Implement | Pending |
-| SETCOPY-03 | P1: Consistent Settings copy controls | Implement | Pending |
-| SETCOPY-04 | P1: Consistent Settings copy controls | Implement | Pending |
+| SETCOPY-01 | P1: Consistent Settings copy controls | Implement | Verified |
+| SETCOPY-02 | P1: Consistent Settings copy controls | Implement | Verified |
+| SETCOPY-03 | P1: Consistent Settings copy controls | Implement | Verified |
+| SETCOPY-04 | P1: Consistent Settings copy controls | Implement | Verified |
 
 **Coverage:** 10 total, 10 mapped to implementation, 0 unmapped.
 

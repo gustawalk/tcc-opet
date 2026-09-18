@@ -101,7 +101,7 @@ export function GlobalSearch() {
       ]).then(([customers, orders, inventory, templates]) => setGroups(([
         { label: "Clientes", path: "/customers", kind: "customer", icon: Users, items: customers.items.map((item) => ({ id: item.id, title: item.name, detail: item.phone || item.email })) },
         { label: "Ordens de serviço", path: "/os", kind: "order", icon: Wrench, items: orders.items.map((item) => ({ id: item.id, title: item.customerName ?? "Cliente", detail: `${item.displayId} · ${item.status}` })) },
-        { label: "Estoque", path: "/inventory", kind: "inventory", icon: Package, items: inventory.items.map((item) => ({ id: item.id, title: item.name, detail: `${item.type === "part" ? "Peça" : "Serviço"} · Estoque: ${item.currentQuantity}` })) },
+        { label: "Estoque", path: "/inventory", kind: "inventory", icon: Package, items: inventory.items.map((item) => ({ id: item.id, title: item.name, detail: `${item.type === "part" ? "Peça" : item.type === "service" ? "Serviço" : "Item"}${item.tracksStock ? ` · Estoque: ${item.currentQuantity}` : ""}` })) },
         { label: "Modelos", path: "/templates", kind: "template", icon: ClipboardList, items: templates.items.map((item) => ({ id: item.id, title: item.title, detail: "Modelo de checklist" })) },
       ].filter((group) => group.items.length > 0)) as ResultGroup[])).catch(() => setGroups([])).finally(() => setLoading(false));
     }, 300);

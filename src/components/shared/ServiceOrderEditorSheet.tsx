@@ -149,7 +149,7 @@ export function ServiceOrderEditorSheet({
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     maxQuantity:
-      item.itemType === "part"
+      item.stockTracked
         ? item.currentQuantity + item.quantity
         : undefined,
   }));
@@ -191,7 +191,7 @@ export function ServiceOrderEditorSheet({
     if (
       !orderId ||
       itemActionId ||
-      (item.type === "part" && item.currentQuantity <= 0)
+      (item.tracksStock && item.currentQuantity <= 0)
     )
       return;
     const existingItem = items.find((part) => part.inventoryItemId === item.id);

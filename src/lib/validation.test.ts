@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   editServiceOrderSchema,
   inventoryItemSchema,
+  customerSchema,
   newCustomerSchema,
   quantitySchema,
 } from "@/lib/validation";
@@ -69,5 +70,10 @@ describe("numeric validation", () => {
         address: "Rua",
       }).success,
     ).toBe(false);
+  });
+
+  it("allows a customer without email or address while keeping phone required", () => {
+    expect(customerSchema.safeParse({ name: "Maria Silva", phone: "(41) 99999-1111", email: "", address: "" }).success).toBe(true);
+    expect(customerSchema.safeParse({ name: "Maria Silva", phone: "", email: "", address: "" }).success).toBe(false);
   });
 });

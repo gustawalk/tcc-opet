@@ -49,9 +49,9 @@ export const userSchema = z.object({
 
 export const customerSchema = z.object({
   name: z.string().min(2, "Nome deve ter ao menos 2 caracteres"),
-  email: z.string().email("E-mail inválido"),
+  email: z.string().refine((val) => !val || z.string().email().safeParse(val).success, "E-mail inválido"),
   phone: z.string().refine((val) => val.replace(/\D/g, "").length >= 10, "Telefone deve ter ao menos 10 dígitos"),
-  address: z.string().min(5, "Endereço deve ter ao menos 5 caracteres"),
+  address: z.string().refine((val) => !val || val.length >= 5, "Endereço deve ter ao menos 5 caracteres"),
 });
 
 export const inventoryItemSchema = z.object({

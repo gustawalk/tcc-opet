@@ -49,19 +49,21 @@ impl InventoryRepository {
 
     pub(crate) fn create_with_conn(conn: &Connection, item: &InventoryItem) -> Result<()> {
         conn.execute(
-            "INSERT INTO inventory_items (id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, created_at, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO inventory_items (id, name, description, type, tracks_stock, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, photo_data_url, created_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 item.id,
                 item.name,
                 item.description,
                 item.r#type,
+                item.tracks_stock,
                 item.min_quantity,
                 item.current_quantity,
                 item.cost_price,
                 item.average_cost,
                 item.sale_price,
                 item.supplier_name,
+                item.photo_data_url,
                 item.created_at,
                 item.deleted_at
             ],
@@ -79,7 +81,7 @@ impl InventoryRepository {
         id: &str,
     ) -> Result<Option<InventoryItem>> {
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, created_at, updated_at, deleted_at
+            "SELECT id, name, description, type, tracks_stock, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, photo_data_url, created_at, updated_at, deleted_at
              FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL"
         )?;
         let mut rows = stmt.query_map(params![id], |row: &rusqlite::Row| {
@@ -88,15 +90,17 @@ impl InventoryRepository {
                 name: row.get(1)?,
                 description: row.get(2)?,
                 r#type: row.get(3)?,
-                min_quantity: row.get(4)?,
-                current_quantity: row.get(5)?,
-                cost_price: row.get(6)?,
-                average_cost: row.get(7)?,
-                sale_price: row.get(8)?,
-                supplier_name: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
-                deleted_at: row.get(12)?,
+                tracks_stock: row.get(4)?,
+                min_quantity: row.get(5)?,
+                current_quantity: row.get(6)?,
+                cost_price: row.get(7)?,
+                average_cost: row.get(8)?,
+                sale_price: row.get(9)?,
+                supplier_name: row.get(10)?,
+                photo_data_url: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                deleted_at: row.get(14)?,
             })
         })?;
 
@@ -125,7 +129,7 @@ impl InventoryRepository {
             patterns.push(item_type.to_string());
         }
         let sql = format!(
-            "SELECT id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, created_at, updated_at, deleted_at
+            "SELECT id, name, description, type, tracks_stock, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, photo_data_url, created_at, updated_at, deleted_at
              FROM inventory_items WHERE deleted_at IS NULL{clause}
              ORDER BY created_at DESC, id DESC
              LIMIT ? OFFSET ?"
@@ -143,15 +147,17 @@ impl InventoryRepository {
                 name: row.get(1)?,
                 description: row.get(2)?,
                 r#type: row.get(3)?,
-                min_quantity: row.get(4)?,
-                current_quantity: row.get(5)?,
-                cost_price: row.get(6)?,
-                average_cost: row.get(7)?,
-                sale_price: row.get(8)?,
-                supplier_name: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
-                deleted_at: row.get(12)?,
+                tracks_stock: row.get(4)?,
+                min_quantity: row.get(5)?,
+                current_quantity: row.get(6)?,
+                cost_price: row.get(7)?,
+                average_cost: row.get(8)?,
+                sale_price: row.get(9)?,
+                supplier_name: row.get(10)?,
+                photo_data_url: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                deleted_at: row.get(14)?,
             })
         })?;
         let mut items = Vec::new();
@@ -181,7 +187,7 @@ impl InventoryRepository {
 
     pub(crate) fn get_all_with_conn(conn: &Connection) -> Result<Vec<InventoryItem>> {
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, type, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, created_at, updated_at, deleted_at
+            "SELECT id, name, description, type, tracks_stock, min_quantity, current_quantity, cost_price_cents, average_cost_cents, sale_price_cents, supplier_name, photo_data_url, created_at, updated_at, deleted_at
              FROM inventory_items WHERE deleted_at IS NULL"
         )?;
         let rows = stmt.query_map(params![], |row: &rusqlite::Row| {
@@ -190,15 +196,17 @@ impl InventoryRepository {
                 name: row.get(1)?,
                 description: row.get(2)?,
                 r#type: row.get(3)?,
-                min_quantity: row.get(4)?,
-                current_quantity: row.get(5)?,
-                cost_price: row.get(6)?,
-                average_cost: row.get(7)?,
-                sale_price: row.get(8)?,
-                supplier_name: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
-                deleted_at: row.get(12)?,
+                tracks_stock: row.get(4)?,
+                min_quantity: row.get(5)?,
+                current_quantity: row.get(6)?,
+                cost_price: row.get(7)?,
+                average_cost: row.get(8)?,
+                sale_price: row.get(9)?,
+                supplier_name: row.get(10)?,
+                photo_data_url: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                deleted_at: row.get(14)?,
             })
         })?;
 
@@ -217,16 +225,18 @@ impl InventoryRepository {
     pub(crate) fn update_with_conn(conn: &Connection, item: &InventoryItem) -> Result<()> {
         let updated = conn.execute(
             "UPDATE inventory_items 
-             SET name = ?1, description = ?2, type = ?3, min_quantity = ?4, cost_price_cents = ?5, sale_price_cents = ?6, supplier_name = ?7, updated_at = ?8
-              WHERE id = ?9 AND deleted_at IS NULL",
+             SET name = ?1, description = ?2, type = ?3, tracks_stock = ?4, min_quantity = ?5, cost_price_cents = ?6, sale_price_cents = ?7, supplier_name = ?8, photo_data_url = ?9, updated_at = ?10
+              WHERE id = ?11 AND deleted_at IS NULL",
             params![
                 item.name,
                 item.description,
                 item.r#type,
+                item.tracks_stock,
                 item.min_quantity,
                 item.cost_price,
                 item.sale_price,
                 item.supplier_name,
+                item.photo_data_url,
                 Utc::now().to_rfc3339(),
                 item.id
             ],
@@ -269,7 +279,7 @@ impl InventoryRepository {
 
         let transaction = conn.unchecked_transaction()?;
         let current_quantity: i32 = transaction.query_row(
-            "SELECT current_quantity FROM inventory_items WHERE id = ?1 AND type = 'part' AND deleted_at IS NULL",
+            "SELECT current_quantity FROM inventory_items WHERE id = ?1 AND tracks_stock = 1 AND deleted_at IS NULL",
             params![item_id],
             |row| row.get(0),
         )?;
@@ -280,7 +290,7 @@ impl InventoryRepository {
         let updated = transaction.execute(
             "UPDATE inventory_items
              SET current_quantity = current_quantity - ?1, updated_at = ?2
-             WHERE id = ?3 AND type = 'part' AND deleted_at IS NULL AND current_quantity >= ?1",
+             WHERE id = ?3 AND tracks_stock = 1 AND deleted_at IS NULL AND current_quantity >= ?1",
             params![quantity, Utc::now().to_rfc3339(), item_id],
         )?;
         if updated == 0 {
@@ -327,7 +337,7 @@ impl InventoryRepository {
 
         let transaction = conn.unchecked_transaction()?;
         let (current_quantity, cost_price, average_cost): (i32, i64, i64) = transaction.query_row(
-            "SELECT current_quantity, cost_price_cents, average_cost_cents FROM inventory_items WHERE id = ?1 AND type = 'part' AND deleted_at IS NULL",
+            "SELECT current_quantity, cost_price_cents, average_cost_cents FROM inventory_items WHERE id = ?1 AND tracks_stock = 1 AND deleted_at IS NULL",
             params![item_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
         let effective_cost = unit_cost.unwrap_or(cost_price);
@@ -344,7 +354,7 @@ impl InventoryRepository {
         let updated = transaction.execute(
             "UPDATE inventory_items
               SET current_quantity = current_quantity + ?1, average_cost_cents = ?2, updated_at = ?3
-              WHERE id = ?4 AND type = 'part' AND deleted_at IS NULL",
+              WHERE id = ?4 AND tracks_stock = 1 AND deleted_at IS NULL",
             params![quantity, new_average, Utc::now().to_rfc3339(), item_id],
         )?;
         if updated == 0 {
@@ -418,7 +428,7 @@ impl InventoryRepository {
         let mut inactive_stmt = conn.prepare(
             "SELECT i.id, i.name, i.current_quantity, MAX(m.created_at)
              FROM inventory_items i LEFT JOIN inventory_movements m ON m.inventory_item_id = i.id
-             WHERE i.type = 'part' AND i.deleted_at IS NULL
+             WHERE i.tracks_stock = 1 AND i.deleted_at IS NULL
              GROUP BY i.id HAVING COALESCE(MAX(m.created_at), i.created_at) < ?1
              ORDER BY COALESCE(MAX(m.created_at), i.created_at) ASC",
         )?;
@@ -435,7 +445,7 @@ impl InventoryRepository {
 
         let mut value_stmt = conn.prepare(
             "SELECT current_quantity * CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END
-             FROM inventory_items WHERE type = 'part' AND current_quantity > 0 AND deleted_at IS NULL
+             FROM inventory_items WHERE tracks_stock = 1 AND current_quantity > 0 AND deleted_at IS NULL
              ORDER BY current_quantity * CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END DESC",
         )?;
         let values = value_stmt
@@ -484,7 +494,7 @@ impl InventoryRepository {
                 COALESCE(SUM(CASE WHEN current_quantity > 0 AND current_quantity <= min_quantity THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN current_quantity = 0 THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(current_quantity * CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END), 0)
-             FROM inventory_items WHERE type = 'part' AND deleted_at IS NULL",
+             FROM inventory_items WHERE tracks_stock = 1 AND deleted_at IS NULL",
             [],
             |row| {
                 Ok(InventorySummary {
@@ -643,6 +653,30 @@ mod tests {
     }
 
     #[test]
+    fn stock_control_mode_allows_generic_items_and_rejects_catalog_items() {
+        let conn = setup_db();
+        let mut tracked = sample_item();
+        tracked.r#type = "item".to_string();
+        tracked.tracks_stock = true;
+        InventoryRepository::create_with_conn(&conn, &tracked).unwrap();
+        InventoryRepository::add_stock_with_details_with_conn(&conn, &tracked.id, 1, None, None)
+            .unwrap();
+
+        let mut catalog = sample_item();
+        catalog.r#type = "item".to_string();
+        catalog.tracks_stock = false;
+        InventoryRepository::create_with_conn(&conn, &catalog).unwrap();
+        assert!(InventoryRepository::add_stock_with_details_with_conn(
+            &conn,
+            &catalog.id,
+            1,
+            None,
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn insights_exclude_deleted_services_and_classify_active_stock_by_value() {
         let conn = setup_db();
         for (id, name, quantity, average_cost) in [
@@ -651,12 +685,12 @@ mod tests {
             ("c", "C", 1, 1_000),
         ] {
             conn.execute(
-                "INSERT INTO inventory_items (id, name, type, current_quantity, cost_price_cents, average_cost_cents, created_at) VALUES (?1, ?2, 'part', ?3, 100, ?4, datetime('now', '-100 days'))",
+                "INSERT INTO inventory_items (id, name, type, tracks_stock, current_quantity, cost_price_cents, average_cost_cents, created_at) VALUES (?1, ?2, 'part', 1, ?3, 100, ?4, datetime('now', '-100 days'))",
                 params![id, name, quantity, average_cost],
             ).unwrap();
         }
         conn.execute("INSERT INTO inventory_items (id, name, type, current_quantity, cost_price_cents, created_at, deleted_at) VALUES ('service', 'Servico', 'service', 99, 9900, datetime('now', '-100 days'), NULL)", []).unwrap();
-        conn.execute("INSERT INTO inventory_items (id, name, type, current_quantity, cost_price_cents, created_at, deleted_at) VALUES ('deleted', 'Excluida', 'part', 99, 9900, datetime('now', '-100 days'), datetime('now'))", []).unwrap();
+        conn.execute("INSERT INTO inventory_items (id, name, type, tracks_stock, current_quantity, cost_price_cents, created_at, deleted_at) VALUES ('deleted', 'Excluida', 'part', 1, 99, 9900, datetime('now', '-100 days'), datetime('now'))", []).unwrap();
 
         let insights = InventoryRepository::get_insights_with_conn(&conn, 90).unwrap();
 

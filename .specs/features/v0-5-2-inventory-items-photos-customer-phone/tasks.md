@@ -1,7 +1,7 @@
 # Inventory Items, Photos, and Customer Phone Tasks
 
 **Design**: `.specs/features/v0-5-2-inventory-items-photos-customer-phone/design.md`
-**Status**: In Progress
+**Status**: Complete
 
 ## Test Coverage Matrix
 
@@ -60,6 +60,8 @@ T1 → T2 → T3 → T4 → T5 → T6
 
 ### T2: Enforce generic-item stock policy
 
+**Status**: Complete
+
 **What**: Apply stock policy to inventory commands, repository mapping, and service-order lifecycle.
 **Where**: `src-tauri/src/commands/inventory_commands.rs`, `src-tauri/src/repositories/{inventory_repo,service_order_repo}.rs`, `src-tauri/src/commands/service_order_commands.rs`
 **Depends on**: T1
@@ -67,13 +69,15 @@ T1 → T2 → T3 → T4 → T5 → T6
 **Requirement**: ITEM-03, ITEM-04, ITEM-05, ITEM-06
 **Tools**: MCP NONE; Skill codenavi
 **Done when**:
-- [ ] Stock-controlled items follow restock/removal and service-order deduction/restoration.
-- [ ] Catalog-only items remain unlimited and reject direct stock movements.
-- [ ] Existing parts/services retain their semantics.
+- [x] Stock-controlled items follow restock/removal and service-order deduction/restoration.
+- [x] Catalog-only items remain unlimited and reject direct stock movements.
+- [x] Existing parts/services retain their semantics.
 **Tests**: Rust unit/integration
 **Gate**: Full
 
 ### T3: Extend local and LAN inventory contracts
+
+**Status**: Complete
 
 **What**: Carry generic item mode and photo data through Tauri and LAN product operations.
 **Where**: `src-tauri/src/{lan_api,tauri_ipc_tests}.rs` and command registration/facade files as required
@@ -82,13 +86,15 @@ T1 → T2 → T3 → T4 → T5 → T6
 **Requirement**: ITEM-06, PHOTO-03, CUST-04
 **Tools**: MCP NONE; Skill codenavi
 **Done when**:
-- [ ] Local and LAN create/page/update payloads retain exact type, mode, and photo values.
-- [ ] Invalid item modes and invalid photo data receive friendly validation errors.
-- [ ] Customer LAN requests preserve required-phone and optional email/address behavior.
+- [x] Local and LAN create/page/update payloads retain exact type, mode, and photo values.
+- [x] Invalid item modes and invalid photo data receive friendly validation errors.
+- [x] Customer LAN requests preserve required-phone and optional email/address behavior.
 **Tests**: Rust integration
 **Gate**: Build
 
 ### T4: Add item mode and photo editing to the inventory sheet
+
+**Status**: Complete
 
 **What**: Add generic item creation, stock-mode choice, image selection/validation, replacement, and removal.
 **Where**: `src/components/shared/InventoryItemSheet.tsx`, `src/components/shared/InventoryItemSheet.test.tsx`, `src/lib/{types,validation}.ts`
@@ -97,13 +103,15 @@ T1 → T2 → T3 → T4 → T5 → T6
 **Requirement**: ITEM-01, ITEM-02, PHOTO-01, PHOTO-02
 **Tools**: MCP NONE; Skill codenavi
 **Done when**:
-- [ ] Sheet sends explicit item stock mode and photo value for create/update.
-- [ ] Invalid/oversized image is rejected without replacing a prior image.
-- [ ] The user can remove a previously selected image.
+- [x] Sheet sends explicit item stock mode and photo value for create/update.
+- [x] Invalid/oversized image is rejected without replacing a prior image.
+- [x] The user can remove a previously selected image.
 **Tests**: Vitest component
 **Gate**: Quick
 
 ### T5: Render item listing, thumbnails, and service-order selection
+
+**Status**: Complete
 
 **What**: Add item pagination/listing thumbnail states and stock-aware service-order selection labels.
 **Where**: `src/views/{Inventory,ServiceOrderCreate}.tsx`, `src/components/shared/{ServiceOrderItemsEditor,ServiceOrderEditorSheet,GlobalSearch,InventoryDrawerProvider}.tsx` and co-located tests
@@ -112,13 +120,15 @@ T1 → T2 → T3 → T4 → T5 → T6
 **Requirement**: ITEM-01, ITEM-03, ITEM-04, ITEM-05, ITEM-06, PHOTO-04, PHOTO-05, PHOTO-06
 **Tools**: MCP NONE; Skill codenavi
 **Done when**:
-- [ ] A third paginated listing renders generic items with image thumbnail or placeholder.
-- [ ] Stock action controls and order availability follow `tracksStock`.
-- [ ] Query keys, reset, clamp, and invalidation cover the new listing.
+- [x] A third paginated listing renders generic items with image thumbnail or placeholder.
+- [x] Stock action controls and order availability follow `tracksStock`.
+- [x] Query keys, reset, clamp, and invalidation cover the new listing.
 **Tests**: Vitest component
 **Gate**: Build
 
 ### T6: Preserve phone-only customer requirement
+
+**Status**: Complete
 
 **What**: Align customer validation and all frontend entry points around required phone and optional email/address.
 **Where**: `src/lib/validation.ts`, `src/views/Customers.tsx`, `src/views/ServiceOrderCreate.tsx`, related tests
@@ -127,9 +137,9 @@ T1 → T2 → T3 → T4 → T5 → T6
 **Requirement**: CUST-01, CUST-02, CUST-03, CUST-04
 **Tools**: MCP NONE; Skill codenavi
 **Done when**:
-- [ ] Name/phone remain mandatory with the existing digit requirement.
-- [ ] Blank email/address save in every customer entry point.
-- [ ] Non-empty invalid optional values block save with the existing Portuguese errors.
+- [x] Name/phone remain mandatory with the existing digit requirement.
+- [x] Blank email/address save in every customer entry point.
+- [x] Non-empty invalid optional values block save with the existing Portuguese errors.
 **Tests**: Vitest component
 **Gate**: Build
 

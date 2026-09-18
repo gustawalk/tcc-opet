@@ -38,7 +38,8 @@ const BASELINE_SCHEMA_VERSION: i64 = 1;
 const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
 const PREDICTED_FINISH_SCHEMA_VERSION: i64 = 3;
 const INVENTORY_ITEM_SCHEMA_VERSION: i64 = 4;
-const CURRENT_SCHEMA_VERSION: i64 = INVENTORY_ITEM_SCHEMA_VERSION;
+const SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION: i64 = 5;
+const CURRENT_SCHEMA_VERSION: i64 = SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION;
 
 #[cfg(test)]
 static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
@@ -628,10 +629,43 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if version == PREDICTED_FINISH_SCHEMA_VERSION {
         apply_inventory_item_migration(conn)?;
+        version = INVENTORY_ITEM_SCHEMA_VERSION;
+    }
+    if version == INVENTORY_ITEM_SCHEMA_VERSION {
+        apply_service_order_item_stock_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
     validate_migrated_database(conn)?;
     Ok(())
+}
+
+fn apply_service_order_item_stock_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        add_column_if_missing(
+            conn,
+            "service_order_parts",
+            "stock_tracked",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        conn.execute_batch(
+            "UPDATE service_order_parts
+             SET stock_tracked = COALESCE((
+                SELECT tracks_stock FROM inventory_items
+                WHERE inventory_items.id = service_order_parts.inventory_item_id
+             ), item_type = 'part');",
+        )?;
+        conn.pragma_update(
+            None,
+            "user_version",
+            SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION,
+        )?;
+        conn.execute_batch("COMMIT")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 fn apply_inventory_item_migration(conn: &Connection) -> Result<()> {
@@ -861,6 +895,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             inventory_item_id TEXT NOT NULL,
             inventory_item_name TEXT NOT NULL DEFAULT '',
             item_type TEXT NOT NULL DEFAULT '',
+            stock_tracked BOOLEAN NOT NULL DEFAULT 0,
             quantity INTEGER NOT NULL,
             unit_cost REAL NOT NULL DEFAULT 0.0,
             unit_price REAL NOT NULL DEFAULT 0.0,
@@ -1674,7 +1709,10 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
 
-        assert_eq!(modes, vec![("part".to_string(), 1), ("service".to_string(), 0)]);
+        assert_eq!(
+            modes,
+            vec![("part".to_string(), 1), ("service".to_string(), 0)]
+        );
         assert_eq!(version, INVENTORY_ITEM_SCHEMA_VERSION);
     }
 

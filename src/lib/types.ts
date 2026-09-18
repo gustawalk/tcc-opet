@@ -35,7 +35,9 @@ export interface InventoryItem {
   id: string;
   name: string;
   description: string;
-  type: "part" | "service";
+  type: "part" | "service" | "item";
+  tracksStock: boolean;
+  photoDataUrl?: string | null;
   minQuantity: number;
   currentQuantity: number;
   costPrice: number;
@@ -209,7 +211,8 @@ export interface ServiceOrderPart {
   serviceOrderId: string;
   inventoryItemId: string;
   inventoryItemName: string;
-  itemType: "part" | "service";
+  itemType: "part" | "service" | "item";
+  stockTracked: boolean;
   currentQuantity: number;
   quantity: number;
   unitCost: number;

@@ -262,15 +262,16 @@ pub(crate) fn create_full_service_order_with_conn(
             ));
         }
 
-        let (item_name, item_type, current_qty, unit_cost, unit_price): (
+        let (item_name, item_type, tracks_stock, current_qty, unit_cost, unit_price): (
             String,
             String,
+            bool,
             i32,
             i64,
             i64,
         ) = tx
             .query_row(
-                "SELECT name, type, current_quantity,
+                "SELECT name, type, tracks_stock, current_quantity,
                         CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END,
                         sale_price_cents
                  FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
@@ -282,6 +283,7 @@ pub(crate) fn create_full_service_order_with_conn(
                         row.get(2)?,
                         row.get(3)?,
                         row.get(4)?,
+                        row.get(5)?,
                     ))
                 },
             )
@@ -292,7 +294,7 @@ pub(crate) fn create_full_service_order_with_conn(
                 other => AppError::from(other),
             })?;
 
-        if item_type == "part" && current_qty < part.quantity {
+        if tracks_stock && current_qty < part.quantity {
             return Err(crate::error::business_error(
                 "Insufficient stock for this service order.",
                 "Estoque insuficiente para esta ordem de serviço.",
@@ -300,21 +302,22 @@ pub(crate) fn create_full_service_order_with_conn(
         }
 
         tx.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost_cents, unit_price_cents, stock_restored)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, stock_tracked, quantity, unit_cost_cents, unit_price_cents, stock_restored)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
             rusqlite::params![
                 uuid::Uuid::new_v4().to_string(),
                 order_id,
                 part.inventory_item_id,
                 item_name,
                 item_type,
+                tracks_stock,
                 part.quantity,
                 unit_cost,
                 unit_price,
             ],
         )?;
 
-        if item_type == "part" {
+        if tracks_stock {
             let updated = tx.execute(
                 "UPDATE inventory_items
                  SET current_quantity = current_quantity - ?1, updated_at = ?2
@@ -558,7 +561,7 @@ pub fn add_part_to_service_order(
 
     let item = InventoryRepository::get_by_id(&inventory_item_id)?
         .ok_or_else(|| crate::error::not_found("Inventory item", "Item de inventário"))?;
-    if item.r#type == "part" && item.current_quantity < quantity {
+    if item.tracks_stock && item.current_quantity < quantity {
         return Err(crate::error::business_error(
             "Insufficient stock for this service order.",
             "Estoque insuficiente para esta ordem de serviço.",

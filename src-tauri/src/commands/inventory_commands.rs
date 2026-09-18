@@ -5,7 +5,54 @@ use crate::page::Page;
 use crate::repositories::inventory_repo::{
     InventoryInsights, InventoryRepository, InventorySummary,
 };
+use base64::Engine;
 use tauri::command;
+
+const MAX_INVENTORY_PHOTO_SIZE_BYTES: usize = 1024 * 1024;
+
+fn validate_photo_data_url(photo_data_url: Option<String>) -> Result<Option<String>, AppError> {
+    let Some(photo_data_url) = photo_data_url.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let encoded = photo_data_url
+        .strip_prefix("data:")
+        .and_then(|value| value.split_once(";base64,"))
+        .filter(|(mime, _)| matches!(*mime, "image/png" | "image/jpeg" | "image/webp"))
+        .map(|(_, encoded)| encoded)
+        .ok_or_else(|| {
+            crate::error::business_error(
+                "Inventory photo must be a PNG, JPEG, or WEBP data URL.",
+                "A foto do item deve ser uma imagem PNG, JPEG ou WEBP válida.",
+            )
+        })?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| {
+            crate::error::business_error(
+                "Inventory photo has invalid base64 data.",
+                "A foto do item possui dados inválidos.",
+            )
+        })?;
+    if bytes.len() > MAX_INVENTORY_PHOTO_SIZE_BYTES {
+        return Err(crate::error::business_error(
+            "Inventory photo exceeds the 1 MB limit.",
+            "A foto do item excede o limite de 1 MB.",
+        ));
+    }
+    let mime = infer::get(&bytes)
+        .map(|kind| kind.mime_type())
+        .filter(|mime| matches!(*mime, "image/png" | "image/jpeg" | "image/webp"))
+        .ok_or_else(|| {
+            crate::error::business_error(
+                "Inventory photo contents are not a supported image.",
+                "O conteúdo da foto não é uma imagem aceita.",
+            )
+        })?;
+    Ok(Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )))
+}
 
 fn require_existing_inventory_item(item: Option<InventoryItem>) -> Result<InventoryItem, AppError> {
     item.ok_or_else(|| crate::error::not_found("Inventory item", "Item de inventário"))
@@ -18,10 +65,10 @@ fn validate_inventory_values(
     cost_price: i64,
     sale_price: i64,
 ) -> Result<(), AppError> {
-    if !matches!(item_type, "part" | "service") {
+    if !matches!(item_type, "part" | "service" | "item") {
         return Err(crate::error::business_error(
-            "Inventory item type must be part or service.",
-            "O tipo do item deve ser peça ou serviço.",
+            "Inventory item type must be part, service, or item.",
+            "O tipo do item deve ser peça, serviço ou item.",
         ));
     }
     if min_quantity < 0 || current_quantity < 0 || cost_price < 0 || sale_price < 0 {
@@ -42,10 +89,10 @@ fn validate_stock_change(id: &str, quantity: i32, removing: bool) -> Result<(), 
     }
 
     let item = require_existing_inventory_item(InventoryRepository::get_by_id(id)?)?;
-    if item.r#type != "part" {
+    if !item.tracks_stock {
         return Err(crate::error::business_error(
-            "Only parts can have stock movements.",
-            "Apenas peças podem ter movimentações de estoque.",
+            "Only stock-controlled items can have stock movements.",
+            "Apenas itens com estoque controlado podem ter movimentações.",
         ));
     }
     if removing && item.current_quantity < quantity {
@@ -68,6 +115,8 @@ pub fn create_inventory_item(
     cost_price: i64,
     sale_price: i64,
     supplier_name: Option<String>,
+    tracks_stock: Option<bool>,
+    photo_data_url: Option<String>,
 ) -> Result<InventoryItem, AppError> {
     validate_inventory_values(
         &r#type,
@@ -86,6 +135,13 @@ pub fn create_inventory_item(
         sale_price,
     );
     item.supplier_name = supplier_name.filter(|name| !name.trim().is_empty());
+    item.tracks_stock = match item.r#type.as_str() {
+        "part" => true,
+        "service" => false,
+        "item" => tracks_stock.unwrap_or(false),
+        _ => unreachable!("validated inventory type"),
+    };
+    item.photo_data_url = validate_photo_data_url(photo_data_url)?;
     InventoryRepository::create(&item)?;
     Ok(item)
 }
@@ -117,10 +173,10 @@ pub fn get_inventory_items_page(
         .filter(|value| !value.trim().is_empty())
         .map(|value| value.to_lowercase());
     if let Some(value) = &item_type {
-        if !matches!(value.as_str(), "part" | "service") {
+        if !matches!(value.as_str(), "part" | "service" | "item") {
             return Err(crate::error::business_error(
-                "Inventory item type must be part or service.",
-                "O tipo do item deve ser peça ou serviço.",
+                "Inventory item type must be part, service, or item.",
+                "O tipo do item deve ser peça, serviço ou item.",
             ));
         }
     }
@@ -147,6 +203,8 @@ pub fn update_inventory_item(
     cost_price: i64,
     sale_price: i64,
     supplier_name: Option<String>,
+    tracks_stock: Option<bool>,
+    photo_data_url: Option<String>,
 ) -> Result<(), AppError> {
     validate_inventory_values(
         &r#type,
@@ -164,6 +222,13 @@ pub fn update_inventory_item(
     item.cost_price = cost_price;
     item.sale_price = sale_price;
     item.supplier_name = supplier_name.filter(|name| !name.trim().is_empty());
+    item.tracks_stock = match item.r#type.as_str() {
+        "part" => true,
+        "service" => false,
+        "item" => tracks_stock.unwrap_or(false),
+        _ => unreachable!("validated inventory type"),
+    };
+    item.photo_data_url = validate_photo_data_url(photo_data_url)?;
 
     Ok(InventoryRepository::update(&item)?)
 }
@@ -227,6 +292,23 @@ pub fn get_inventory_summary() -> Result<InventorySummary, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_and_normalizes_supported_inventory_photo() {
+        let photo = validate_photo_data_url(Some("data:image/png;base64,iVBORw0KGgo=".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(photo, "data:image/png;base64,iVBORw0KGgo=");
+    }
+
+    #[test]
+    fn normalizes_inventory_photo_mime_from_its_contents() {
+        let photo =
+            validate_photo_data_url(Some("data:image/jpeg;base64,iVBORw0KGgo=".to_string()))
+                .unwrap()
+                .unwrap();
+        assert_eq!(photo, "data:image/png;base64,iVBORw0KGgo=");
+    }
 
     #[test]
     fn require_existing_inventory_item_returns_not_found_error() {

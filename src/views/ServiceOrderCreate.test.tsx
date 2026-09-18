@@ -168,6 +168,23 @@ describe("ServiceOrderCreate", () => {
     ));
   });
 
+  it("submits an order without equipment or problem description", async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    const customerInput = await screen.findByLabelText("Nome do Cliente");
+
+    await user.type(customerInput, "Cliente");
+    await user.click(await screen.findByRole("button", { name: /Cliente Existente/ }));
+    await user.click(screen.getByRole("button", { name: "Criar ordem" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith(
+      "create_full_service_order",
+      expect.objectContaining({
+        request: expect.objectContaining({ equipment: "", description: "" }),
+      }),
+    ));
+  });
+
   it("keeps typed customer text when focus leaves the lookup panel", async () => {
     const user = userEvent.setup();
     renderCreate();

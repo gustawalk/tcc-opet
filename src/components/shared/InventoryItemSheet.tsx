@@ -33,8 +33,7 @@ import {
 import { isUnchangedDuplicate } from "@/lib/inventory-duplicate";
 
 type InventoryItemFormData = Pick<
-  InventoryItem,
-  "name" | "description" | "type"
+  InventoryItem, "name" | "description" | "type" | "tracksStock" | "photoDataUrl"
 > & {
   supplierName: string;
   minQuantity: string;
@@ -67,6 +66,8 @@ const createInitialFormData = (
   name: "",
   description: "",
   type,
+  tracksStock: type === "part",
+  photoDataUrl: null,
   minQuantity: String(type === "part" ? 5 : 0),
   costPrice: formatCurrencyInputValue(0),
   salePrice: formatCurrencyInputValue(0),
@@ -108,6 +109,8 @@ export function InventoryItemSheet({
             name: item.name,
             description: item.description,
             type: item.type,
+            tracksStock: item.tracksStock,
+            photoDataUrl: item.photoDataUrl ?? null,
             minQuantity: String(item.minQuantity),
             costPrice: formatCurrencyInputValue(item.costPrice),
             salePrice: formatCurrencyInputValue(item.salePrice),
@@ -119,6 +122,8 @@ export function InventoryItemSheet({
               name: duplicateItem.name,
               description: duplicateItem.description,
               type: duplicateItem.type,
+              tracksStock: duplicateItem.tracksStock,
+              photoDataUrl: duplicateItem.photoDataUrl ?? null,
               minQuantity: String(duplicateItem.minQuantity),
               costPrice: formatCurrencyInputValue(duplicateItem.costPrice),
               salePrice: formatCurrencyInputValue(duplicateItem.salePrice),
@@ -136,10 +141,12 @@ export function InventoryItemSheet({
         description: data.description,
         type: data.type,
         minQuantity: data.minQuantity,
-        currentQuantity: data.type === "part" ? data.initialQuantity : 999,
+        currentQuantity: data.tracksStock ? data.initialQuantity : 0,
         costPrice: data.costPrice,
         salePrice: data.salePrice,
         supplierName: data.supplierName,
+        tracksStock: data.tracksStock,
+        photoDataUrl: data.photoDataUrl,
       }),
   });
   const updateMutation = useMutation({
@@ -160,6 +167,17 @@ export function InventoryItemSheet({
   ) => {
     setFormData((current) => ({ ...current, [field]: value }));
     setErrors((current) => clearFieldError(current, field));
+  };
+
+  const handlePhotoChange = (file: File | undefined) => {
+    if (!file) return;
+    if (!/image\/(png|jpeg|webp)/.test(file.type) || file.size > 1024 * 1024) {
+      toastError("Use uma imagem PNG, JPEG ou WEBP de até 1 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => updateField("photoDataUrl", typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
   };
 
   const closeDuplicateConfirmation = () => {
@@ -226,27 +244,25 @@ export function InventoryItemSheet({
         <SheetHeader>
           <SheetTitle>
             {isEditing ? "Editar" : isDuplicating ? "Duplicar" : "Novo"}{" "}
-            {formData.type === "part" ? "Item no Estoque" : "Serviço"}
+            {formData.type === "part" ? "Item no Estoque" : formData.type === "service" ? "Serviço" : "Item"}
           </SheetTitle>
           <SheetDescription>
             {formData.type === "part"
               ? "Cadastre peças e insumos para gerenciar seu estoque."
-              : "Cadastre serviços e mão de obra para suas ordens de serviço."}
+              : formData.type === "service" ? "Cadastre serviços e mão de obra para suas ordens de serviço." : "Cadastre qualquer item para usar nas ordens de serviço."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="grid gap-4 py-6">
           <div className="grid gap-2">
             <Label htmlFor="inventory-item-name">
-              Nome do {formData.type === "part" ? "Produto" : "Serviço"}
+              Nome do {formData.type === "part" ? "Produto" : formData.type === "service" ? "Serviço" : "Item"}
             </Label>
             <Input
               id="inventory-item-name"
               value={formData.name}
               placeholder={
-                formData.type === "part"
-                  ? "Ex: Tela iPhone 11"
-                  : "Ex: Mão de obra para drone"
+                formData.type === "part" ? "Ex: Tela iPhone 11" : formData.type === "service" ? "Ex: Mão de obra para drone" : "Ex: Acessório ou equipamento"
               }
               onChange={(event) => updateField("name", event.target.value)}
             />
@@ -276,7 +292,21 @@ export function InventoryItemSheet({
 
           <Separator />
 
-          {formData.type === "part" && (
+          <div className="grid gap-2">
+            <Label htmlFor="inventory-item-photo">Foto (opcional)</Label>
+            <Input id="inventory-item-photo" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => handlePhotoChange(event.target.files?.[0])} />
+            {formData.photoDataUrl && <div className="flex items-center gap-2"><img src={formData.photoDataUrl} alt="Prévia da foto" className="h-12 w-12 rounded object-cover" /><Button type="button" size="sm" variant="ghost" onClick={() => updateField("photoDataUrl", null)}>Remover foto</Button></div>}
+            <p className="text-xs text-muted-foreground">PNG, JPEG ou WEBP de até 1 MB.</p>
+          </div>
+
+          {formData.type === "item" && (
+            <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+              <input type="checkbox" checked={formData.tracksStock} onChange={(event) => updateField("tracksStock", event.target.checked)} />
+              Controlar estoque deste item
+            </label>
+          )}
+
+          {formData.tracksStock && (
             <div className="grid gap-2">
               <Label htmlFor="inventory-item-min">Quantidade mínima (alerta)</Label>
               <div className="relative">
@@ -296,7 +326,7 @@ export function InventoryItemSheet({
             </div>
           )}
 
-          {formData.type === "part" && !item && (
+          {formData.tracksStock && !item && (
             <div className="grid gap-2">
               <Label htmlFor="inventory-item-initial-quantity">
                 Quantidade inicial em estoque (opcional)
@@ -322,7 +352,7 @@ export function InventoryItemSheet({
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="inventory-item-cost">
-                {formData.type === "part" ? "Preço de custo" : "Custo estimado"}
+                {formData.tracksStock ? "Preço de custo" : "Custo estimado"}
               </Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

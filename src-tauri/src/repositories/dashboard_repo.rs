@@ -192,7 +192,7 @@ impl DashboardRepository {
                 COALESCE(SUM(CASE WHEN current_quantity = 0 THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN current_quantity > 0 THEN 1 ELSE 0 END), 0)
               FROM inventory_items
-              WHERE type = 'part'
+              WHERE tracks_stock = 1
                 AND current_quantity <= min_quantity
                 AND deleted_at IS NULL",
         )?;
@@ -206,7 +206,7 @@ impl DashboardRepository {
         let mut stmt = conn.prepare(
             "SELECT id, name, current_quantity, min_quantity
               FROM inventory_items
-              WHERE type = 'part'
+              WHERE tracks_stock = 1
                 AND current_quantity <= min_quantity
                 AND deleted_at IS NULL
               ORDER BY

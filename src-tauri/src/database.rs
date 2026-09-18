@@ -37,7 +37,9 @@ const DEFAULT_LAN_PORT: u16 = 8743;
 const BASELINE_SCHEMA_VERSION: i64 = 1;
 const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
 const PREDICTED_FINISH_SCHEMA_VERSION: i64 = 3;
-const CURRENT_SCHEMA_VERSION: i64 = PREDICTED_FINISH_SCHEMA_VERSION;
+const INVENTORY_ITEM_SCHEMA_VERSION: i64 = 4;
+const SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION: i64 = 5;
+const CURRENT_SCHEMA_VERSION: i64 = SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION;
 
 #[cfg(test)]
 static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
@@ -623,10 +625,96 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if version == PERFORMANCE_INDEX_SCHEMA_VERSION {
         apply_predicted_finish_migration(conn)?;
+        version = PREDICTED_FINISH_SCHEMA_VERSION;
+    }
+    if version == PREDICTED_FINISH_SCHEMA_VERSION {
+        apply_inventory_item_migration(conn)?;
+        version = INVENTORY_ITEM_SCHEMA_VERSION;
+    }
+    if version == INVENTORY_ITEM_SCHEMA_VERSION {
+        apply_service_order_item_stock_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
     validate_migrated_database(conn)?;
     Ok(())
+}
+
+fn apply_service_order_item_stock_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        add_column_if_missing(
+            conn,
+            "service_order_parts",
+            "stock_tracked",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        conn.execute_batch(
+            "UPDATE service_order_parts
+             SET stock_tracked = COALESCE((
+                SELECT tracks_stock FROM inventory_items
+                WHERE inventory_items.id = service_order_parts.inventory_item_id
+             ), item_type = 'part');",
+        )?;
+        conn.pragma_update(
+            None,
+            "user_version",
+            SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION,
+        )?;
+        conn.execute_batch("COMMIT")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
+fn apply_inventory_item_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE")?;
+    let result = (|| {
+        conn.execute_batch(
+            "CREATE TABLE inventory_items_v4 (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                type TEXT NOT NULL CHECK (type IN ('part', 'service', 'item')),
+                tracks_stock INTEGER NOT NULL DEFAULT 0 CHECK (tracks_stock IN (0, 1)),
+                min_quantity INTEGER NOT NULL DEFAULT 0,
+                current_quantity INTEGER NOT NULL DEFAULT 0,
+                cost_price REAL NOT NULL DEFAULT 0.0,
+                average_cost REAL NOT NULL DEFAULT 0.0,
+                sale_price REAL NOT NULL DEFAULT 0.0,
+                cost_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_price_cents >= 0),
+                average_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (average_cost_cents >= 0),
+                sale_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (sale_price_cents >= 0),
+                supplier_name TEXT,
+                photo_data_url TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            INSERT INTO inventory_items_v4 (
+                id, name, description, type, tracks_stock, min_quantity,
+                current_quantity, cost_price, average_cost, sale_price,
+                cost_price_cents, average_cost_cents, sale_price_cents,
+                supplier_name, photo_data_url, created_at, updated_at, deleted_at
+            )
+            SELECT id, name, description, type,
+                CASE WHEN type = 'part' THEN 1 ELSE 0 END,
+                min_quantity, current_quantity, cost_price, average_cost,
+                sale_price, cost_price_cents, average_cost_cents,
+                sale_price_cents, supplier_name, NULL, created_at, updated_at,
+                deleted_at
+            FROM inventory_items;
+            DROP TABLE inventory_items;
+            ALTER TABLE inventory_items_v4 RENAME TO inventory_items;",
+        )?;
+        conn.pragma_update(None, "user_version", INVENTORY_ITEM_SCHEMA_VERSION)?;
+        conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK; PRAGMA foreign_keys = ON");
+    }
+    result
 }
 
 fn apply_predicted_finish_migration(conn: &Connection) -> Result<()> {
@@ -735,7 +823,8 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT DEFAULT '',
-            type TEXT NOT NULL CHECK (type IN ('part', 'service')),
+            type TEXT NOT NULL CHECK (type IN ('part', 'service', 'item')),
+            tracks_stock INTEGER NOT NULL DEFAULT 0 CHECK (tracks_stock IN (0, 1)),
             min_quantity INTEGER NOT NULL DEFAULT 0,
             current_quantity INTEGER NOT NULL DEFAULT 0,
             cost_price REAL NOT NULL DEFAULT 0.0,
@@ -745,6 +834,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             average_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK (average_cost_cents >= 0),
             sale_price_cents INTEGER NOT NULL DEFAULT 0 CHECK (sale_price_cents >= 0),
             supplier_name TEXT,
+            photo_data_url TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT,
             deleted_at TEXT
@@ -805,6 +895,7 @@ pub(crate) fn run_schema_migrations(conn: &Connection) -> Result<()> {
             inventory_item_id TEXT NOT NULL,
             inventory_item_name TEXT NOT NULL DEFAULT '',
             item_type TEXT NOT NULL DEFAULT '',
+            stock_tracked BOOLEAN NOT NULL DEFAULT 0,
             quantity INTEGER NOT NULL,
             unit_cost REAL NOT NULL DEFAULT 0.0,
             unit_price REAL NOT NULL DEFAULT 0.0,
@@ -1556,6 +1647,73 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        conn.execute(
+            "INSERT INTO inventory_items (
+                id, name, description, type, tracks_stock, min_quantity,
+                current_quantity, cost_price_cents, average_cost_cents,
+                sale_price_cents, photo_data_url
+            ) VALUES ('item-1', 'Item genérico', '', 'item', 1, 1, 2, 0, 0, 0, NULL)",
+            [],
+        )
+        .unwrap();
+        let item: (String, i64, Option<String>) = conn
+            .query_row(
+                "SELECT type, tracks_stock, photo_data_url FROM inventory_items WHERE id = 'item-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(item, ("item".to_string(), 1, None));
+    }
+
+    #[test]
+    fn inventory_item_migration_preserves_existing_stock_modes() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE inventory_items (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                type TEXT NOT NULL CHECK (type IN ('part', 'service')),
+                min_quantity INTEGER NOT NULL DEFAULT 0,
+                current_quantity INTEGER NOT NULL DEFAULT 0,
+                cost_price REAL NOT NULL DEFAULT 0.0,
+                average_cost REAL NOT NULL DEFAULT 0.0,
+                sale_price REAL NOT NULL DEFAULT 0.0,
+                cost_price_cents INTEGER NOT NULL DEFAULT 0,
+                average_cost_cents INTEGER NOT NULL DEFAULT 0,
+                sale_price_cents INTEGER NOT NULL DEFAULT 0,
+                supplier_name TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            INSERT INTO inventory_items (id, name, type) VALUES
+                ('part-1', 'Peça existente', 'part'),
+                ('service-1', 'Serviço existente', 'service');
+            PRAGMA user_version = 3;",
+        )
+        .unwrap();
+
+        apply_inventory_item_migration(&conn).unwrap();
+
+        let modes: Vec<(String, i64)> = conn
+            .prepare("SELECT type, tracks_stock FROM inventory_items ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(
+            modes,
+            vec![("part".to_string(), 1), ("service".to_string(), 0)]
+        );
+        assert_eq!(version, INVENTORY_ITEM_SCHEMA_VERSION);
     }
 
     #[test]

@@ -222,7 +222,7 @@ export function ServiceOrderCreate() {
     setLines((current) =>
       current.some((line) => line.inventoryItemId === item.id)
         ? current.filter((line) => line.inventoryItemId !== item.id)
-        : item.type === "part" && item.currentQuantity <= 0
+        : item.tracksStock && item.currentQuantity <= 0
           ? current
           : [
               ...current,
@@ -234,7 +234,7 @@ export function ServiceOrderCreate() {
                 quantity: 1,
                 unitPrice: item.salePrice,
                 maxQuantity:
-                  item.type === "part" ? item.currentQuantity : undefined,
+                  item.tracksStock ? item.currentQuantity : undefined,
               },
             ],
     );

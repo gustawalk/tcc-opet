@@ -19,6 +19,8 @@ fn create_part(name: &str, stock: i32, cost: i64, price: i64) -> String {
         cost,
         price,
         Some("Fornecedor E2E".to_string()),
+        None,
+        None,
     )
     .unwrap();
     inventory_commands::restock_inventory_item(
@@ -40,6 +42,8 @@ fn create_service(name: &str, price: i64) -> String {
         0,
         0,
         price,
+        None,
+        None,
         None,
     )
     .unwrap()

@@ -8,6 +8,8 @@ export type DuplicateInventoryPayload = Pick<
   | "minQuantity"
   | "costPrice"
   | "salePrice"
+  | "tracksStock"
+  | "photoDataUrl"
 > & {
   supplierName: string;
   initialQuantity: number;
@@ -21,6 +23,8 @@ export function isUnchangedDuplicate(
     data.name.trim() === original.name.trim() &&
     data.description.trim() === original.description.trim() &&
     data.type === original.type &&
+    data.tracksStock === original.tracksStock &&
+    data.photoDataUrl === (original.photoDataUrl ?? null) &&
     data.supplierName.trim() === (original.supplierName ?? "").trim() &&
     data.minQuantity === original.minQuantity &&
     data.initialQuantity === 0 &&

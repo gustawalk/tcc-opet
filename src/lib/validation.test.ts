@@ -50,6 +50,12 @@ describe("numeric validation", () => {
         discountBasisPoints: "100,1",
       }).success,
     ).toBe(false);
+    expect(
+      editServiceOrderSchema.safeParse({
+        description: "",
+        discountBasisPoints: "0",
+      }).success,
+    ).toBe(true);
   });
 
   it("allows a new service-order customer without email or address", () => {

@@ -82,7 +82,7 @@ export const newCustomerSchema = z.object({
 });
 
 export const editServiceOrderSchema = z.object({
-  description: z.string().min(5, "Descrição deve ter ao menos 5 caracteres"),
+  description: z.string(),
   discountBasisPoints: percentageValue.optional(),
 });
 

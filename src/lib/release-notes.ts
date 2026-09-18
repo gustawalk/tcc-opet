@@ -11,6 +11,34 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.5.2",
+    date: "18/09/2026",
+    title: "Itens de estoque, fotos e ações rápidas globais",
+    sections: [
+      {
+        title: "Estoque e indicadores",
+        items: [
+          "O estoque agora permite cadastrar itens genéricos, além de peças e serviços, com controle de estoque escolhido durante o cadastro.",
+          "Itens podem receber uma foto, exibida na listagem e ampliada ao clicar, e itens controlados passam a compor os indicadores e métricas de estoque.",
+        ],
+      },
+      {
+        title: "Ordens de serviço e clientes",
+        items: [
+          "Equipamento, descrição do problema e relato ou notas técnicas agora são opcionais nas ordens de serviço.",
+          "O telefone continua obrigatório no cadastro de cliente, enquanto e-mail e endereço permanecem opcionais.",
+        ],
+      },
+      {
+        title: "Ações rápidas e navegação",
+        items: [
+          "A busca global ganhou ações para criar item, serviço, peça, cliente e checklist rapidamente.",
+          "A criação de itens, serviços e peças, além da visualização de checklists, abre em painéis globais sem interromper a tela atual.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.5.1",
     date: "14/09/2026",
     title: "Visualização de PDFs anexados e cópia LAN padronizada",

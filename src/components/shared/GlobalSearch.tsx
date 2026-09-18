@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClipboardList, Package, Search, Users, Wrench, type LucideIcon } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useInventoryDrawer } from "@/components/shared/InventoryDrawerProvider";
+import { useChecklistTemplateDrawer } from "@/components/shared/ChecklistTemplateDrawerProvider";
+import { useInventoryItemCreate } from "@/components/shared/InventoryItemCreateProvider";
 import { dataCommand } from "@/lib/data-client";
 import type { ChecklistTemplate, Customer, InventoryItem, Page, ServiceOrder } from "@/lib/types";
 import { getThemePreference, setThemePreference, THEME_OPTIONS, type Theme } from "@/lib/theme";
 import { getFontScalePreference, setFontScalePreference, FONT_SCALE_OPTIONS, type FontScale } from "@/lib/font-scale";
 
 type SearchKind = "customer" | "inventory" | "order" | "template";
-type ResultGroup = { label: string; path: string; kind: SearchKind; icon: LucideIcon; items: { id: string; title: string; detail: string }[] };
+type SearchResultItem = { id: string; title: string; detail: string; template?: ChecklistTemplate };
+type ResultGroup = { label: string; path: string; kind: SearchKind; icon: LucideIcon; items: SearchResultItem[] };
 type SearchHistoryItem = { id: string; title: string; detail: string; path: string; kind: SearchKind };
 const HISTORY_KEY = "opets-global-search-history";
 
@@ -41,6 +44,8 @@ export function GlobalSearch() {
   const { openServiceOrder } = useServiceOrderDrawer();
   const { openCustomerHistory } = useCustomerDrawer();
   const { openInventoryItem } = useInventoryDrawer();
+  const { openChecklistTemplate } = useChecklistTemplateDrawer();
+  const { openInventoryItemCreate } = useInventoryItemCreate();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -101,14 +106,14 @@ export function GlobalSearch() {
       ]).then(([customers, orders, inventory, templates]) => setGroups(([
         { label: "Clientes", path: "/customers", kind: "customer", icon: Users, items: customers.items.map((item) => ({ id: item.id, title: item.name, detail: item.phone || item.email })) },
         { label: "Ordens de serviço", path: "/os", kind: "order", icon: Wrench, items: orders.items.map((item) => ({ id: item.id, title: item.customerName ?? "Cliente", detail: `${item.displayId} · ${item.status}` })) },
-        { label: "Estoque", path: "/inventory", kind: "inventory", icon: Package, items: inventory.items.map((item) => ({ id: item.id, title: item.name, detail: `${item.type === "part" ? "Peça" : "Serviço"} · Estoque: ${item.currentQuantity}` })) },
-        { label: "Modelos", path: "/templates", kind: "template", icon: ClipboardList, items: templates.items.map((item) => ({ id: item.id, title: item.title, detail: "Modelo de checklist" })) },
+        { label: "Estoque", path: "/inventory", kind: "inventory", icon: Package, items: inventory.items.map((item) => ({ id: item.id, title: item.name, detail: `${item.type === "part" ? "Peça" : item.type === "service" ? "Serviço" : "Item"}${item.tracksStock ? ` · Estoque: ${item.currentQuantity}` : ""}` })) },
+        { label: "Modelos", path: "/templates", kind: "template", icon: ClipboardList, items: templates.items.map((item) => ({ id: item.id, title: item.title, detail: "Modelo de checklist", template: item })) },
       ].filter((group) => group.items.length > 0)) as ResultGroup[])).catch(() => setGroups([])).finally(() => setLoading(false));
     }, 300);
     return () => window.clearTimeout(timer);
   }, [term]);
 
-  const choose = (path: string, item?: { id: string; title: string; detail: string }, kind: SearchKind = "customer") => {
+  const choose = (path: string, item?: SearchResultItem, kind: SearchKind = "customer") => {
     if (item) {
       const next = [{ ...item, path, kind }, ...history.filter((entry) => entry.id !== item.id || entry.kind !== kind)].slice(0, 3);
       setHistory(next); localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
@@ -117,6 +122,7 @@ export function GlobalSearch() {
     if (kind === "order" && item) openServiceOrder(item.id);
     else if (kind === "customer" && item) openCustomerHistory(item.id);
     else if (kind === "inventory" && item) openInventoryItem(item.id);
+    else if (kind === "template" && item?.template) openChecklistTemplate(item.template);
     else navigate(path);
   };
   const quickAction = (action: () => void) => { handleOpenChange(false); action(); };
@@ -137,6 +143,11 @@ export function GlobalSearch() {
   const icons: Record<SearchKind, LucideIcon> = { customer: Users, inventory: Package, order: Wrench, template: ClipboardList };
   const quickActions = [
     { label: "Nova ordem de serviço", run: () => quickAction(() => navigate("/os/new")) },
+    { label: "Novo item", run: () => quickAction(() => openInventoryItemCreate("item")) },
+    { label: "Novo serviço", run: () => quickAction(() => openInventoryItemCreate("service")) },
+    { label: "Nova peça", run: () => quickAction(() => openInventoryItemCreate("part")) },
+    { label: "Novo cliente", run: () => quickAction(() => navigate("/customers?new=1")) },
+    { label: "Novo checklist", run: () => quickAction(() => navigate("/templates?new=1")) },
     { label: "Alternar menu lateral", run: () => quickAction(toggleSidebar) },
     { label: `Alterar tema — ${THEME_OPTIONS.find((option) => option.value === theme)?.label}`, run: () => quickAction(cycleTheme) },
     { label: `Alterar tamanho da fonte — ${FONT_SCALE_OPTIONS.find((option) => option.value === fontScale)?.label}`, run: () => quickAction(cycleFontScale) },
@@ -162,6 +173,9 @@ export function GlobalSearch() {
         >
           <DialogHeader>
             <DialogTitle>Busca global</DialogTitle>
+            <DialogDescription className="sr-only">
+              Encontre registros e execute ações rápidas.
+            </DialogDescription>
           </DialogHeader>
 
           <Input

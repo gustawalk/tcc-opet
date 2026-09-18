@@ -20,6 +20,7 @@ pub struct ServiceOrderPart {
     pub inventory_item_id: String,
     pub inventory_item_name: String,
     pub item_type: String,
+    pub stock_tracked: bool,
     pub current_quantity: i32,
     pub quantity: i32,
     pub unit_cost: i64,
@@ -127,7 +128,7 @@ impl ServiceOrderRepository {
         service_order_id: &str,
     ) -> Result<Vec<ServiceOrderPart>> {
         let mut stmt = conn.prepare(
-            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, COALESCE(ii.current_quantity, 0), sop.quantity, sop.unit_cost_cents, sop.unit_price_cents
+            "SELECT sop.id, sop.service_order_id, sop.inventory_item_id, sop.inventory_item_name, sop.item_type, sop.stock_tracked, COALESCE(ii.current_quantity, 0), sop.quantity, sop.unit_cost_cents, sop.unit_price_cents
              FROM service_order_parts sop
              LEFT JOIN inventory_items ii ON sop.inventory_item_id = ii.id
              WHERE sop.service_order_id = ?1"
@@ -140,10 +141,11 @@ impl ServiceOrderRepository {
                 inventory_item_id: row.get(2)?,
                 inventory_item_name: row.get(3)?,
                 item_type: row.get(4)?,
-                current_quantity: row.get(5)?,
-                quantity: row.get(6)?,
-                unit_cost: row.get(7)?,
-                unit_price: row.get(8)?,
+                stock_tracked: row.get(5)?,
+                current_quantity: row.get(6)?,
+                quantity: row.get(7)?,
+                unit_cost: row.get(8)?,
+                unit_price: row.get(9)?,
             })
         })?;
 
@@ -187,10 +189,10 @@ impl ServiceOrderRepository {
             return Err(rusqlite::Error::InvalidQuery);
         }
 
-        let (item_name, item_type, current_quantity, unit_cost, unit_price) = {
+        let (item_name, item_type, tracks_stock, current_quantity, unit_cost, unit_price) = {
             // Check the active catalog item and snapshot its prices for this OS.
             let mut stmt = transaction.prepare(
-                "SELECT name, type, current_quantity,
+                "SELECT name, type, tracks_stock, current_quantity,
                             CASE WHEN average_cost_cents > 0 THEN average_cost_cents ELSE cost_price_cents END,
                             sale_price_cents
                      FROM inventory_items WHERE id = ?1 AND deleted_at IS NULL",
@@ -199,9 +201,10 @@ impl ServiceOrderRepository {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i32>(2)?,
-                    row.get::<_, i64>(3)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, i32>(3)?,
                     row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
                 ))
             })?;
 
@@ -216,20 +219,21 @@ impl ServiceOrderRepository {
             return Err(rusqlite::Error::InvalidQuery);
         }
 
-        if item_type == "part" && current_quantity < quantity {
+        if tracks_stock && current_quantity < quantity {
             return Err(rusqlite::Error::InvalidQuery);
         }
 
         // 2. Record the part usage
         transaction.execute(
-            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, quantity, unit_cost_cents, unit_price_cents, stock_restored)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+            "INSERT INTO service_order_parts (id, service_order_id, inventory_item_id, inventory_item_name, item_type, stock_tracked, quantity, unit_cost_cents, unit_price_cents, stock_restored)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
             params![
                 Uuid::new_v4().to_string(),
                 service_order_id,
                 inventory_item_id,
                 item_name,
                 item_type,
+                tracks_stock,
                 quantity,
                 unit_cost,
                 unit_price
@@ -237,7 +241,7 @@ impl ServiceOrderRepository {
         )?;
 
         // Services are billable catalog entries but do not consume physical stock.
-        if item_type == "part" {
+        if tracks_stock {
             let updated = transaction.execute(
                 "UPDATE inventory_items
                  SET current_quantity = current_quantity - ?1, updated_at = ?2
@@ -296,9 +300,9 @@ impl ServiceOrderRepository {
     ) -> Result<()> {
         let transaction = conn.transaction()?;
 
-        let (os_id, inventory_item_id, quantity, item_type, status) = {
+        let (os_id, inventory_item_id, quantity, item_type, tracks_stock, status) = {
             let mut stmt = transaction.prepare(
-                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.item_type, so.status
+                "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.item_type, sop.stock_tracked, so.status
                  FROM service_order_parts sop
                  JOIN service_orders so ON sop.service_order_id = so.id
                  WHERE sop.id = ?1"
@@ -309,7 +313,8 @@ impl ServiceOrderRepository {
                     row.get::<_, String>(1)?,
                     row.get::<_, i32>(2)?,
                     row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, bool>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             })?
         };
@@ -318,7 +323,7 @@ impl ServiceOrderRepository {
             return Err(rusqlite::Error::InvalidQuery);
         }
 
-        if item_type == "part" {
+        if tracks_stock {
             transaction.execute(
                 "UPDATE inventory_items
                  SET current_quantity = current_quantity + ?1, updated_at = ?2
@@ -392,12 +397,13 @@ impl ServiceOrderRepository {
             previous_quantity,
             unit_cost,
             item_type,
+            stock_tracked,
             stock,
             status,
-        ): (String, String, i32, i64, String, i32, String) = transaction
+        ): (String, String, i32, i64, String, bool, i32, String) = transaction
             .query_row(
                 "SELECT sop.service_order_id, sop.inventory_item_id, sop.quantity, sop.unit_cost_cents,
-                         sop.item_type, ii.current_quantity, so.status
+                         sop.item_type, sop.stock_tracked, ii.current_quantity, so.status
                  FROM service_order_parts sop
                  JOIN inventory_items ii ON ii.id = sop.inventory_item_id
                  JOIN service_orders so ON so.id = sop.service_order_id
@@ -412,6 +418,7 @@ impl ServiceOrderRepository {
                         row.get(4)?,
                         row.get(5)?,
                         row.get(6)?,
+                        row.get(7)?,
                     ))
                 },
             )
@@ -435,7 +442,7 @@ impl ServiceOrderRepository {
             return Ok(());
         }
 
-        if item_type == "part" {
+        if stock_tracked {
             if quantity_difference > stock {
                 return Err(business_error(
                     "Insufficient stock for this service order.",
@@ -1054,7 +1061,7 @@ impl ServiceOrderRepository {
                 "SELECT sop.inventory_item_id, sop.quantity
                   FROM service_order_parts sop
                   WHERE sop.service_order_id = ?1
-                    AND sop.item_type = 'part'
+                    AND sop.stock_tracked = 1
                     AND sop.stock_restored = 0",
             )?;
             let part_rows = stmt
@@ -1092,7 +1099,7 @@ impl ServiceOrderRepository {
                 }
                 transaction.execute(
                     "UPDATE service_order_parts SET stock_restored = 1
-                     WHERE service_order_id = ?1 AND item_type = 'part' AND stock_restored = 0",
+                     WHERE service_order_id = ?1 AND stock_tracked = 1 AND stock_restored = 0",
                     params![service_order_id],
                 )?;
             }
@@ -1102,7 +1109,7 @@ impl ServiceOrderRepository {
             let mut stmt = transaction.prepare(
                 "SELECT sop.inventory_item_id, SUM(sop.quantity)
                  FROM service_order_parts sop
-                 WHERE sop.service_order_id = ?1 AND sop.item_type = 'part' AND sop.stock_restored = 1
+                 WHERE sop.service_order_id = ?1 AND sop.stock_tracked = 1 AND sop.stock_restored = 1
                  GROUP BY sop.inventory_item_id",
             )?;
             let parts_to_consume = stmt
@@ -1152,7 +1159,7 @@ impl ServiceOrderRepository {
             }
             transaction.execute(
                 "UPDATE service_order_parts SET stock_restored = 0
-                 WHERE service_order_id = ?1 AND item_type = 'part' AND stock_restored = 1",
+                 WHERE service_order_id = ?1 AND stock_tracked = 1 AND stock_restored = 1",
                 params![service_order_id],
             )?;
         }

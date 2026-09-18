@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataCommand } from "@/lib/data-client";
 import {
@@ -66,6 +67,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { Copyable } from "@/components/shared/Copyable";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
+import { InventoryPhotoPreview } from "@/components/shared/InventoryPhotoPreview";
 import {
   currencyInputToNumber,
   formatCurrencyInput,
@@ -79,7 +81,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const SEARCH_DEBOUNCE_MS = 300;
 
 const fetchInventoryPage = (args: {
-  itemType: "part" | "service";
+  itemType: "part" | "service" | "item";
   limit: number;
   offset: number;
   search: string;
@@ -96,14 +98,18 @@ const deleteInventoryItem = async (id: string) => {
 };
 
 export function Inventory() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const partsListRef = useRef<HTMLDivElement>(null);
   const servicesListRef = useRef<HTMLDivElement>(null);
+  const itemsListRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
   const [partsPage, setPartsPage] = useState(1);
   const [partsPageSize, setPartsPageSize] = useState(20);
   const [servicesPage, setServicesPage] = useState(1);
   const [servicesPageSize, setServicesPageSize] = useState(20);
+  const [itemsPage, setItemsPage] = useState(1);
+  const [itemsPageSize, setItemsPageSize] = useState(20);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [duplicateItem, setDuplicateItem] = useState<InventoryItem | null>(null);
@@ -129,6 +135,16 @@ export function Inventory() {
 
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const type = searchParams.get("new");
+    if (type !== "part" && type !== "service" && type !== "item") return;
+    setSelectedItem(null);
+    setDuplicateItem(null);
+    setCreateType(type);
+    setIsSheetOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const partsQuery = useQuery({
     queryKey: ["inventoryItemsPage", "part", partsPage, partsPageSize, search],
     queryFn: () =>
@@ -152,6 +168,11 @@ export function Inventory() {
       }),
     placeholderData: (previousData) => previousData,
   });
+  const itemsQuery = useQuery({
+    queryKey: ["inventoryItemsPage", "item", itemsPage, itemsPageSize, search],
+    queryFn: () => fetchInventoryPage({ itemType: "item", limit: itemsPageSize, offset: (itemsPage - 1) * itemsPageSize, search }),
+    placeholderData: (previousData) => previousData,
+  });
 
   const partsTotal = partsQuery.data?.total ?? 0;
   const partsTotalPages = Math.max(1, Math.ceil(partsTotal / partsPageSize));
@@ -160,11 +181,14 @@ export function Inventory() {
     1,
     Math.ceil(servicesTotal / servicesPageSize),
   );
+  const itemsTotal = itemsQuery.data?.total ?? 0;
+  const itemsTotalPages = Math.max(1, Math.ceil(itemsTotal / itemsPageSize));
 
   useEffect(() => {
     setPartsPage(1);
     setServicesPage(1);
-  }, [search, partsPageSize, servicesPageSize]);
+    setItemsPage(1);
+  }, [search, partsPageSize, servicesPageSize, itemsPageSize]);
 
   useEffect(() => {
     if (partsQuery.data && partsPage > partsTotalPages) setPartsPage(partsTotalPages);
@@ -175,6 +199,9 @@ export function Inventory() {
       setServicesPage(servicesTotalPages);
     }
   }, [servicesQuery.data, servicesTotalPages, servicesPage]);
+  useEffect(() => {
+    if (itemsQuery.data && itemsPage > itemsTotalPages) setItemsPage(itemsTotalPages);
+  }, [itemsQuery.data, itemsPage, itemsTotalPages]);
 
   const { data: summary, isLoading: isSummaryLoading } = useQuery({
     queryKey: ["inventorySummary"],
@@ -238,7 +265,7 @@ export function Inventory() {
       }),
   });
 
-  const handleAddItem = (type: "part" | "service" = "part") => {
+  const handleAddItem = (type: InventoryItem["type"] = "part") => {
     setSelectedItem(null);
     setDuplicateItem(null);
     setCreateType(type);
@@ -319,6 +346,9 @@ export function Inventory() {
           </Button>
           <Button onClick={() => handleAddItem("service")} variant="secondary" className="gap-2">
             <Plus className="h-4 w-4" /> Novo Serviço
+          </Button>
+          <Button onClick={() => handleAddItem("item")} variant="outline" className="gap-2">
+            <Plus className="h-4 w-4" /> Novo item
           </Button>
         </div>
       </div>
@@ -431,11 +461,13 @@ export function Inventory() {
                     partsQuery.data.items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
+                          <div className="flex items-start gap-3">
+                            {item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{item.name}</span>
                             <span className="text-xs text-muted-foreground line-clamp-1">{item.description}</span>
                             {item.supplierName && <span className="text-xs text-muted-foreground">Fornecedor: {item.supplierName}</span>}
-                          </div>
+                          </div></div>
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex flex-col items-center gap-1">
@@ -547,10 +579,12 @@ export function Inventory() {
                     servicesQuery.data.items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
+                          <div className="flex items-start gap-3">
+                            {item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{item.name}</span>
                             <span className="text-xs text-muted-foreground line-clamp-1">{item.description}</span>
-                          </div>
+                          </div></div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right font-medium text-muted-foreground">
                           {formatCurrency(item.costPrice)}
@@ -609,6 +643,22 @@ export function Inventory() {
                 />
               </CardFooter>
             </Card>
+
+        <Card ref={itemsListRef} className="scroll-mt-20">
+          <CardHeader><CardTitle>Itens</CardTitle><CardDescription>Itens livres, com ou sem controle de estoque.</CardDescription></CardHeader>
+          <CardContent><div className="rounded-md border"><Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Modo</TableHead><TableHead className="text-right">Preço de Venda</TableHead><TableHead className="w-[100px] text-right">Ações</TableHead></TableRow></TableHeader><TableBody>
+            {itemsQuery.isLoading ? <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Carregando itens...</TableCell></TableRow> : itemsQuery.data?.items.length ? itemsQuery.data.items.map((item) => <TableRow key={item.id}>
+              <TableCell><div className="flex items-center gap-3">{item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}<div><p className="font-medium">{item.name}</p><p className="line-clamp-1 text-xs text-muted-foreground">{item.description}</p></div></div></TableCell>
+              <TableCell><Badge variant="outline">{item.tracksStock ? `Estoque: ${item.currentQuantity}` : "Sem estoque"}</Badge></TableCell>
+              <TableCell className="text-right font-bold text-primary">{formatCurrency(item.salePrice)}</TableCell>
+              <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+                {item.tracksStock && <><DropdownMenuItem onClick={() => { setRestockItem(item); setRestockQuantity("1"); }}><PackagePlus className="mr-2 h-4 w-4" /> Adicionar ao estoque</DropdownMenuItem><DropdownMenuItem onClick={() => { setRemoveItem(item); setRemoveQuantity("1"); }} disabled={item.currentQuantity < 1}><Package className="mr-2 h-4 w-4" /> Retirar do estoque</DropdownMenuItem><DropdownMenuItem onClick={() => { setHistoryItem(item); setIsHistoryOpen(true); }}><History className="mr-2 h-4 w-4" /> Histórico</DropdownMenuItem></>}
+                <DropdownMenuItem onClick={() => handleEditItem(item)}><Edit className="mr-2 h-4 w-4" /> Editar</DropdownMenuItem><DropdownMenuItem onClick={() => handleDuplicateItem(item)}><Copy className="mr-2 h-4 w-4" /> Duplicar</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteItem(item.id)}><Trash2 className="mr-2 h-4 w-4" /> Excluir</DropdownMenuItem>
+              </DropdownMenuContent></DropdownMenu></TableCell>
+            </TableRow>) : <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Nenhum item encontrado.</TableCell></TableRow>}
+          </TableBody></Table></div></CardContent>
+          <CardFooter className="border-t px-6 py-4"><Pagination className="w-full" totalItems={itemsTotal} page={itemsPage} pageSize={itemsPageSize} onPageChange={setItemsPage} onPageSizeChange={setItemsPageSize} pageSizeOptions={PAGE_SIZE_OPTIONS} scrollTargetRef={itemsListRef} /></CardFooter>
+        </Card>
           </div>
 
       {/* Restock Dialog */}

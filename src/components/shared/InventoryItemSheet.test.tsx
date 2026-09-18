@@ -13,6 +13,7 @@ const item: InventoryItem = {
   name: "Tela OLED",
   description: "Tela de reposição",
   type: "part",
+  tracksStock: true,
   minQuantity: 2,
   currentQuantity: 7,
   costPrice: 8000,

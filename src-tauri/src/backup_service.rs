@@ -1368,7 +1368,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
         assert_eq!(customer_name, "Cliente legado");
         assert_eq!(integrity, "ok");
         assert_eq!(foreign_key_violations, 0);

@@ -366,10 +366,10 @@ fn query_allocated_line_breakdowns(
             let revenue = base
                 .checked_add(i64::from(index < remaining))
                 .ok_or(rusqlite::Error::InvalidQuery)?;
-            let type_label = if line.item_type == "part" {
-                "Peças"
-            } else {
-                "Serviços"
+            let type_label = match line.item_type.as_str() {
+                "part" => "Peças",
+                "service" => "Serviços",
+                _ => "Itens",
             };
             add_line_aggregate(
                 by_type.entry(type_label.to_string()).or_default(),

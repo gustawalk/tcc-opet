@@ -204,7 +204,7 @@ export function ServiceOrderItemsEditor({
                   <div className="max-h-48 overflow-auto">
                     {filteredItems.map((item) => {
                     const unavailable =
-                      item.type === "part" && item.currentQuantity <= 0;
+                      item.tracksStock && item.currentQuantity <= 0;
                     const isSelected = lines.some(
                       (line) => line.inventoryItemId === item.id,
                     );
@@ -224,9 +224,9 @@ export function ServiceOrderItemsEditor({
                         <span className="min-w-0 flex-1">
                           <TruncatedItemName name={item.name} />
                           <span className="text-xs text-muted-foreground">
-                            {item.type === "part"
-                              ? `Peça | Estoque: ${item.currentQuantity}`
-                              : "Serviço"}
+                            {item.tracksStock
+                              ? `${item.type === "item" ? "Item" : "Peça"} | Estoque: ${item.currentQuantity}`
+                              : item.type === "item" ? "Item" : "Serviço"}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
@@ -294,7 +294,7 @@ export function ServiceOrderItemsEditor({
                         side="top"
                       />
                       <Badge variant="outline" className="text-[10px]">
-                        {line.itemType === "part" ? "Peça" : "Serviço"}
+                        {line.itemType === "part" ? "Peça" : line.itemType === "service" ? "Serviço" : "Item"}
                       </Badge>
                     </div>
                     <p className="text-xs text-primary">

@@ -491,6 +491,8 @@ fn dispatch_catalog_command(
                 input.cost_price,
                 input.sale_price,
                 input.supplier_name,
+                input.tracks_stock,
+                input.photo_data_url,
             )?)
         }
         "get_inventory_item" => encode(facade::get_inventory_item(decode::<IdInput>(payload)?.id)?),
@@ -523,6 +525,8 @@ fn dispatch_catalog_command(
                 input.cost_price,
                 input.sale_price,
                 input.supplier_name,
+                input.tracks_stock,
+                input.photo_data_url,
             )?)
         }
         "delete_inventory_item" => encode(facade::delete_inventory_item(
@@ -778,6 +782,10 @@ struct InventoryInput {
     cost_price: i64,
     sale_price: i64,
     supplier_name: Option<String>,
+    #[serde(rename = "tracksStock")]
+    tracks_stock: Option<bool>,
+    #[serde(rename = "photoDataUrl")]
+    photo_data_url: Option<String>,
 }
 
 #[derive(Deserialize)]

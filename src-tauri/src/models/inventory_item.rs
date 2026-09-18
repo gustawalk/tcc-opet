@@ -9,12 +9,14 @@ pub struct InventoryItem {
     pub name: String,
     pub description: String,
     pub r#type: String, // 'part' or 'service'
+    pub tracks_stock: bool,
     pub min_quantity: i32,
     pub current_quantity: i32,
     pub cost_price: i64,
     pub average_cost: i64,
     pub sale_price: i64,
     pub supplier_name: Option<String>,
+    pub photo_data_url: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub deleted_at: Option<String>,
@@ -30,17 +32,20 @@ impl InventoryItem {
         cost_price: i64,
         sale_price: i64,
     ) -> Self {
+        let tracks_stock = r#type == "part";
         Self {
             id: Uuid::new_v4().to_string(),
             name,
             description,
             r#type,
+            tracks_stock,
             min_quantity,
             current_quantity,
             cost_price,
             average_cost: cost_price,
             sale_price,
             supplier_name: None,
+            photo_data_url: None,
             created_at: Some(Utc::now().to_rfc3339()),
             updated_at: None,
             deleted_at: None,
@@ -66,6 +71,7 @@ mod tests {
 
         assert!(Uuid::parse_str(&item.id).is_ok());
         assert_eq!(item.r#type, "part");
+        assert!(item.tracks_stock);
         assert_eq!(item.min_quantity, 2);
         assert_eq!(item.current_quantity, 10);
         assert_eq!(item.cost_price, 5_000);

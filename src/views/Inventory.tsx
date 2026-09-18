@@ -66,6 +66,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { Copyable } from "@/components/shared/Copyable";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { InventoryItemSheet } from "@/components/shared/InventoryItemSheet";
+import { InventoryPhotoPreview } from "@/components/shared/InventoryPhotoPreview";
 import {
   currencyInputToNumber,
   formatCurrencyInput,
@@ -449,7 +450,7 @@ export function Inventory() {
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="flex items-start gap-3">
-                            {item.photoDataUrl ? <img src={item.photoDataUrl} alt="" className="h-10 w-10 rounded object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
+                            {item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{item.name}</span>
                             <span className="text-xs text-muted-foreground line-clamp-1">{item.description}</span>
@@ -567,7 +568,7 @@ export function Inventory() {
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="flex items-start gap-3">
-                            {item.photoDataUrl ? <img src={item.photoDataUrl} alt="" className="h-10 w-10 rounded object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
+                            {item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{item.name}</span>
                             <span className="text-xs text-muted-foreground line-clamp-1">{item.description}</span>
@@ -635,7 +636,7 @@ export function Inventory() {
           <CardHeader><CardTitle>Itens</CardTitle><CardDescription>Itens livres, com ou sem controle de estoque.</CardDescription></CardHeader>
           <CardContent><div className="rounded-md border"><Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Modo</TableHead><TableHead className="text-right">Preço de Venda</TableHead><TableHead className="w-[100px] text-right">Ações</TableHead></TableRow></TableHeader><TableBody>
             {itemsQuery.isLoading ? <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Carregando itens...</TableCell></TableRow> : itemsQuery.data?.items.length ? itemsQuery.data.items.map((item) => <TableRow key={item.id}>
-              <TableCell><div className="flex items-center gap-3">{item.photoDataUrl ? <img src={item.photoDataUrl} alt="" className="h-10 w-10 rounded object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}<div><p className="font-medium">{item.name}</p><p className="line-clamp-1 text-xs text-muted-foreground">{item.description}</p></div></div></TableCell>
+              <TableCell><div className="flex items-center gap-3">{item.photoDataUrl ? <InventoryPhotoPreview photoDataUrl={item.photoDataUrl} itemName={item.name} /> : <div className="flex h-10 w-10 items-center justify-center rounded bg-muted"><Package className="h-4 w-4 text-muted-foreground" /></div>}<div><p className="font-medium">{item.name}</p><p className="line-clamp-1 text-xs text-muted-foreground">{item.description}</p></div></div></TableCell>
               <TableCell><Badge variant="outline">{item.tracksStock ? `Estoque: ${item.currentQuantity}` : "Sem estoque"}</Badge></TableCell>
               <TableCell className="text-right font-bold text-primary">{formatCurrency(item.salePrice)}</TableCell>
               <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">

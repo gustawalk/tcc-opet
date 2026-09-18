@@ -4,13 +4,14 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearch } from "@/components/shared/GlobalSearch";
 
-const { openChecklistTemplate } = vi.hoisted(() => ({ openChecklistTemplate: vi.fn() }));
+const { openChecklistTemplate, openInventoryItemCreate } = vi.hoisted(() => ({ openChecklistTemplate: vi.fn(), openInventoryItemCreate: vi.fn() }));
 
 vi.mock("@/components/ui/sidebar", () => ({ useSidebar: () => ({ toggleSidebar: vi.fn() }) }));
 vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({ useServiceOrderDrawer: () => ({ openServiceOrder: vi.fn() }) }));
 vi.mock("@/components/shared/CustomerDrawerProvider", () => ({ useCustomerDrawer: () => ({ openCustomerHistory: vi.fn() }) }));
 vi.mock("@/components/shared/InventoryDrawerProvider", () => ({ useInventoryDrawer: () => ({ openInventoryItem: vi.fn() }) }));
 vi.mock("@/components/shared/ChecklistTemplateDrawerProvider", () => ({ useChecklistTemplateDrawer: () => ({ openChecklistTemplate }) }));
+vi.mock("@/components/shared/InventoryItemCreateProvider", () => ({ useInventoryItemCreate: () => ({ openInventoryItemCreate }) }));
 vi.mock("@/lib/data-client", () => ({
   dataCommand: vi.fn((command: string) => {
     if (command === "get_checklist_templates_page") {
@@ -42,7 +43,7 @@ describe("GlobalSearch", () => {
     expect(screen.getByRole("status")).toHaveTextContent("/|");
   });
 
-  it("offers creation actions and routes a new item action to its creation mode", async () => {
+  it("opens a global item creation sheet without changing the current route", async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><GlobalSearch /><LocationState /></MemoryRouter>);
 
@@ -55,6 +56,7 @@ describe("GlobalSearch", () => {
     expect(screen.getByText("Novo checklist")).toBeInTheDocument();
 
     await user.click(screen.getByText("Novo item"));
-    expect(screen.getByRole("status")).toHaveTextContent("/inventory?new=item|");
+    expect(openInventoryItemCreate).toHaveBeenCalledWith("item");
+    expect(screen.getByRole("status")).toHaveTextContent("/|");
   });
 });

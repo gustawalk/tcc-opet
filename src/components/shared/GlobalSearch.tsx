@@ -9,6 +9,7 @@ import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerPro
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useInventoryDrawer } from "@/components/shared/InventoryDrawerProvider";
 import { useChecklistTemplateDrawer } from "@/components/shared/ChecklistTemplateDrawerProvider";
+import { useInventoryItemCreate } from "@/components/shared/InventoryItemCreateProvider";
 import { dataCommand } from "@/lib/data-client";
 import type { ChecklistTemplate, Customer, InventoryItem, Page, ServiceOrder } from "@/lib/types";
 import { getThemePreference, setThemePreference, THEME_OPTIONS, type Theme } from "@/lib/theme";
@@ -44,6 +45,7 @@ export function GlobalSearch() {
   const { openCustomerHistory } = useCustomerDrawer();
   const { openInventoryItem } = useInventoryDrawer();
   const { openChecklistTemplate } = useChecklistTemplateDrawer();
+  const { openInventoryItemCreate } = useInventoryItemCreate();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -141,9 +143,9 @@ export function GlobalSearch() {
   const icons: Record<SearchKind, LucideIcon> = { customer: Users, inventory: Package, order: Wrench, template: ClipboardList };
   const quickActions = [
     { label: "Nova ordem de serviço", run: () => quickAction(() => navigate("/os/new")) },
-    { label: "Novo item", run: () => quickAction(() => navigate("/inventory?new=item")) },
-    { label: "Novo serviço", run: () => quickAction(() => navigate("/inventory?new=service")) },
-    { label: "Nova peça", run: () => quickAction(() => navigate("/inventory?new=part")) },
+    { label: "Novo item", run: () => quickAction(() => openInventoryItemCreate("item")) },
+    { label: "Novo serviço", run: () => quickAction(() => openInventoryItemCreate("service")) },
+    { label: "Nova peça", run: () => quickAction(() => openInventoryItemCreate("part")) },
     { label: "Novo cliente", run: () => quickAction(() => navigate("/customers?new=1")) },
     { label: "Novo checklist", run: () => quickAction(() => navigate("/templates?new=1")) },
     { label: "Alternar menu lateral", run: () => quickAction(toggleSidebar) },

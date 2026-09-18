@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataCommand } from "@/lib/data-client";
 import {
@@ -85,6 +86,7 @@ const initialFormData = {
 };
 
 export function Customers() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { openCustomerHistory } = useCustomerDrawer();
   const listRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -102,6 +104,17 @@ export function Customers() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setIsEditing(false);
+    setSelectedCustomerId(null);
+    setErrors({});
+    setFormData(initialFormData);
+    setIsInternational(false);
+    setIsSheetOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const {
     data,

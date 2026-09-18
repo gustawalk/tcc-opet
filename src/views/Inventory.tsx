@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dataCommand } from "@/lib/data-client";
 import {
@@ -97,6 +98,7 @@ const deleteInventoryItem = async (id: string) => {
 };
 
 export function Inventory() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const partsListRef = useRef<HTMLDivElement>(null);
   const servicesListRef = useRef<HTMLDivElement>(null);
   const itemsListRef = useRef<HTMLDivElement>(null);
@@ -132,6 +134,16 @@ export function Inventory() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const type = searchParams.get("new");
+    if (type !== "part" && type !== "service" && type !== "item") return;
+    setSelectedItem(null);
+    setDuplicateItem(null);
+    setCreateType(type);
+    setIsSheetOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const partsQuery = useQuery({
     queryKey: ["inventoryItemsPage", "part", partsPage, partsPageSize, search],

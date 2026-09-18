@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataCommand } from "@/lib/data-client";
 import { 
@@ -56,6 +57,9 @@ const fetchTemplatesPage = (args: {
 };
 
 export function Templates() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const listRef = useRef<HTMLDivElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const search = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS);
@@ -67,6 +71,20 @@ export function Templates() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setSelectedTemplate(null);
+    setIsSheetOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const template = (location.state as { detailTemplate?: ChecklistTemplate } | null)?.detailTemplate;
+    if (!template) return;
+    setDetailTemplate(template);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location, navigate]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["checklist-templates-page", page, pageSize, search],

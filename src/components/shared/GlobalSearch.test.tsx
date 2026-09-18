@@ -4,10 +4,13 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearch } from "@/components/shared/GlobalSearch";
 
+const { openChecklistTemplate } = vi.hoisted(() => ({ openChecklistTemplate: vi.fn() }));
+
 vi.mock("@/components/ui/sidebar", () => ({ useSidebar: () => ({ toggleSidebar: vi.fn() }) }));
 vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({ useServiceOrderDrawer: () => ({ openServiceOrder: vi.fn() }) }));
 vi.mock("@/components/shared/CustomerDrawerProvider", () => ({ useCustomerDrawer: () => ({ openCustomerHistory: vi.fn() }) }));
 vi.mock("@/components/shared/InventoryDrawerProvider", () => ({ useInventoryDrawer: () => ({ openInventoryItem: vi.fn() }) }));
+vi.mock("@/components/shared/ChecklistTemplateDrawerProvider", () => ({ useChecklistTemplateDrawer: () => ({ openChecklistTemplate }) }));
 vi.mock("@/lib/data-client", () => ({
   dataCommand: vi.fn((command: string) => {
     if (command === "get_checklist_templates_page") {
@@ -35,7 +38,8 @@ describe("GlobalSearch", () => {
     await waitFor(() => expect(screen.getByText("Checklist notebook")).toBeInTheDocument());
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("/templates|Checklist notebook"));
+    expect(openChecklistTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: "template-1", title: "Checklist notebook" }));
+    expect(screen.getByRole("status")).toHaveTextContent("/|");
   });
 
   it("offers creation actions and routes a new item action to its creation mode", async () => {

@@ -8,6 +8,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useServiceOrderDrawer } from "@/components/shared/ServiceOrderDrawerProvider";
 import { useCustomerDrawer } from "@/components/shared/CustomerDrawerProvider";
 import { useInventoryDrawer } from "@/components/shared/InventoryDrawerProvider";
+import { useChecklistTemplateDrawer } from "@/components/shared/ChecklistTemplateDrawerProvider";
 import { dataCommand } from "@/lib/data-client";
 import type { ChecklistTemplate, Customer, InventoryItem, Page, ServiceOrder } from "@/lib/types";
 import { getThemePreference, setThemePreference, THEME_OPTIONS, type Theme } from "@/lib/theme";
@@ -42,6 +43,7 @@ export function GlobalSearch() {
   const { openServiceOrder } = useServiceOrderDrawer();
   const { openCustomerHistory } = useCustomerDrawer();
   const { openInventoryItem } = useInventoryDrawer();
+  const { openChecklistTemplate } = useChecklistTemplateDrawer();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -118,7 +120,7 @@ export function GlobalSearch() {
     if (kind === "order" && item) openServiceOrder(item.id);
     else if (kind === "customer" && item) openCustomerHistory(item.id);
     else if (kind === "inventory" && item) openInventoryItem(item.id);
-    else if (kind === "template" && item?.template) navigate(path, { state: { detailTemplate: item.template } });
+    else if (kind === "template" && item?.template) openChecklistTemplate(item.template);
     else navigate(path);
   };
   const quickAction = (action: () => void) => { handleOpenChange(false); action(); };

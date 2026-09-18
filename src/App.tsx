@@ -12,6 +12,7 @@ import { MainLayout } from "./layouts/MainLayout";
 import { ServiceOrderDrawerProvider } from "./components/shared/ServiceOrderDrawerProvider";
 import { CustomerDrawerProvider } from "./components/shared/CustomerDrawerProvider";
 import { InventoryDrawerProvider } from "./components/shared/InventoryDrawerProvider";
+import { ChecklistTemplateDrawerProvider } from "./components/shared/ChecklistTemplateDrawerProvider";
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
@@ -293,6 +294,7 @@ function App() {
         <ServiceOrderDrawerProvider>
           <CustomerDrawerProvider>
             <InventoryDrawerProvider>
+            <ChecklistTemplateDrawerProvider>
             <MainLayout>
               <Suspense fallback={<RouteLoading />}>
                 <Routes>
@@ -308,6 +310,7 @@ function App() {
                 </Routes>
               </Suspense>
             </MainLayout>
+            </ChecklistTemplateDrawerProvider>
             </InventoryDrawerProvider>
           </CustomerDrawerProvider>
         </ServiceOrderDrawerProvider>

@@ -31,7 +31,7 @@ export const releaseNotes: ReleaseNote[] = [
       {
         title: "Tema escuro",
         items: [
-          "O tema escuro agora diferencia melhor o fundo, os cartões e os painéis, com cores de status mais legíveis e equilibradas.",
+          "O tema escuro diferencia melhor o fundo, os cartões e os painéis; os ícones de status usam fundos neutros e cores mais equilibradas.",
         ],
       },
     ],

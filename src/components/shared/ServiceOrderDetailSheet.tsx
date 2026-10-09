@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -12,6 +12,15 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import {
   ServiceOrder,
+  OSStatus,
   ChecklistItem,
   ServiceOrderAttachment,
   ServiceOrderEvent,
@@ -76,6 +86,14 @@ interface ServiceOrderDetailSheetProps {
   onClose: () => void;
   onEdit?: (order: ServiceOrder) => void;
 }
+
+const allowedStatusTransitions: Record<OSStatus, OSStatus[]> = {
+  "Orçamento": ["Em Manutenção", "Aguardando Peça", "Cancelada"],
+  "Em Manutenção": ["Orçamento", "Aguardando Peça", "Finalizada", "Cancelada"],
+  "Aguardando Peça": ["Orçamento", "Em Manutenção", "Cancelada"],
+  "Finalizada": ["Em Manutenção", "Cancelada"],
+  "Cancelada": ["Orçamento", "Aguardando Peça", "Em Manutenção"],
+};
 
 const fetchOrder = async (id: string): Promise<ServiceOrder | null> => {
   return await dataCommand<ServiceOrder | null>("get_service_order", { id });
@@ -388,8 +406,10 @@ export function ServiceOrderDetailSheet({
   onClose,
   onEdit,
 }: ServiceOrderDetailSheetProps) {
+  const queryClient = useQueryClient();
   const { openCustomerHistory } = useServiceOrderDrawer();
   const [eventsExpanded, setEventsExpanded] = useState(false);
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
   const {
     data: order,
     isLoading: orderLoading,
@@ -441,6 +461,32 @@ export function ServiceOrderDetailSheet({
   });
 
   const [pdfPreview, setPdfPreview] = useState<PdfPreview | null>(null);
+  const statusMutation = useMutation({
+    mutationFn: ({ status, restoreStock }: { status: OSStatus; restoreStock: boolean }) =>
+      dataCommand<ServiceOrder>("transition_service_order_status", {
+        id: orderId,
+        status,
+        restoreStock,
+      }),
+    onSuccess: async (_, { status }) => {
+      setCancelConfirmationOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["service-order", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["service-order-events", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["serviceOrdersPage"] }),
+        queryClient.invalidateQueries({ queryKey: ["service-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }),
+        queryClient.invalidateQueries({ queryKey: ["financial-report"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-lookup"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventoryItemsPage"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventorySummary"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-movements"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-insights"] }),
+      ]);
+      toastSuccess(`Status alterado para "${status}".`);
+    },
+    onError: (error) => toastError(error, "Erro ao alterar status."),
+  });
   const pdfMutation = useMutation({
     mutationFn: () =>
       dataCommand<PdfPreview>("preview_service_order_pdf", {
@@ -476,10 +522,11 @@ export function ServiceOrderDetailSheet({
   });
 
   return (
+    <>
     <Sheet
       open={open}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !cancelConfirmationOpen) onClose();
       }}
     >
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto px-4 sm:px-6">
@@ -547,6 +594,27 @@ export function ServiceOrderDetailSheet({
           </div>
         ) : order ? (
           <div className="mt-8 space-y-6">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Alterar status</p>
+              <div className="flex flex-wrap gap-2">
+                {allowedStatusTransitions[order.status].map((status) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    size="sm"
+                    variant={status === "Cancelada" ? "destructive" : "outline"}
+                    disabled={statusMutation.isPending}
+                    onClick={() => {
+                      if (status === "Cancelada") setCancelConfirmationOpen(true);
+                      else statusMutation.mutate({ status, restoreStock: false });
+                    }}
+                  >
+                    {status}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <Separator />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground font-semibold uppercase">
@@ -853,5 +921,31 @@ export function ServiceOrderDetailSheet({
         </Suspense>
       )}
     </Sheet>
+    <AlertDialog open={cancelConfirmationOpen} onOpenChange={(isOpen) => {
+      if (!isOpen && !statusMutation.isPending) setCancelConfirmationOpen(false);
+    }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancelar ordem de serviço</AlertDialogTitle>
+          <AlertDialogDescription>
+            Ao cancelar esta ordem, o estoque das peças físicas será restaurado.
+            Os itens permanecerão registrados e serão baixados novamente se a
+            ordem for reativada. Deseja continuar?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={statusMutation.isPending}>Voltar</AlertDialogCancel>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={statusMutation.isPending}
+            onClick={() => statusMutation.mutate({ status: "Cancelada", restoreStock: true })}
+          >
+            {statusMutation.isPending ? "Cancelando..." : "Confirmar cancelamento"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

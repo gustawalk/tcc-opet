@@ -1,13 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServiceOrderDetailSheet } from "@/components/shared/ServiceOrderDetailSheet";
 import { configureDataClient } from "@/lib/data-client";
+import { toastError } from "@/lib/errors";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
+vi.mock("@/lib/errors", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/errors")>()),
+  toastError: vi.fn(),
+}));
 vi.mock("@/components/shared/ServiceOrderDrawerProvider", () => ({
   useServiceOrderDrawer: () => ({ openCustomerHistory: vi.fn() }),
 }));
@@ -214,5 +219,91 @@ describe("ServiceOrderDetailSheet attachments", () => {
       "data-url",
       "data:application/pdf;base64,JVBERi0=",
     );
+  });
+});
+
+describe("ServiceOrderDetailSheet status", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    cleanup();
+    configureDataClient("local");
+  });
+
+  it("changes status from the detail view and refreshes the order", async () => {
+    const user = userEvent.setup();
+    let status = "Orçamento";
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_service_order") return Promise.resolve({
+        id: "order-1", customerId: "customer-1", customerName: "Cliente",
+        equipment: "Notebook", description: "Não liga", status,
+        totalPrice: 0, createdAt: "2026-09-14T12:00:00Z",
+        displayId: "OS-000001", discountBasisPoints: 0,
+      });
+      if (command === "transition_service_order_status") {
+        status = (args as { status: string }).status;
+        return Promise.resolve({ status });
+      }
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    const nextStatus = await screen.findByRole("button", { name: "Em Manutenção" });
+    expect(screen.queryByRole("button", { name: "Finalizada" })).not.toBeInTheDocument();
+    await user.click(nextStatus);
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith(
+      "transition_service_order_status",
+      { id: "order-1", status: "Em Manutenção", restoreStock: false },
+    ));
+    await screen.findByRole("button", { name: "Finalizada" });
+    expect(screen.queryByRole("button", { name: "Em Manutenção" })).not.toBeInTheDocument();
+  });
+
+  it("asks before cancellation and restores stock only after confirmation", async () => {
+    let status = "Orçamento";
+    mockedInvoke.mockImplementation((command, args) => {
+      if (command === "get_service_order") return Promise.resolve({
+        id: "order-1", customerId: "customer-1", customerName: "Cliente",
+        equipment: "Notebook", description: "Não liga", status,
+        totalPrice: 0, createdAt: "2026-09-14T12:00:00Z",
+        displayId: "OS-000001", discountBasisPoints: 0,
+      });
+      if (command === "transition_service_order_status") {
+        status = (args as { status: string }).status;
+        return Promise.resolve({ status });
+      }
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancelada" }));
+    expect(screen.getByRole("alertdialog", { name: "Cancelar ordem de serviço" })).toBeInTheDocument();
+    expect(mockedInvoke.mock.calls.filter(([command]) => command === "transition_service_order_status")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cancelamento" }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith(
+      "transition_service_order_status",
+      { id: "order-1", status: "Cancelada", restoreStock: true },
+    ));
+  });
+
+  it("keeps the current status and reports a failed transition", async () => {
+    mockedInvoke.mockImplementation((command) => {
+      if (command === "get_service_order") return Promise.resolve({
+        id: "order-1", customerId: "customer-1", customerName: "Cliente",
+        equipment: "Notebook", description: "Não liga", status: "Orçamento",
+        totalPrice: 0, createdAt: "2026-09-14T12:00:00Z",
+        displayId: "OS-000001", discountBasisPoints: 0,
+      });
+      if (command === "transition_service_order_status") return Promise.reject(new Error("Falha"));
+      return Promise.resolve([]);
+    });
+    renderDetail();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Em Manutenção" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.any(Error), "Erro ao alterar status."));
+    expect(screen.getByRole("button", { name: "Em Manutenção" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Finalizada" })).not.toBeInTheDocument();
   });
 });

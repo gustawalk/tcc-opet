@@ -4,15 +4,6 @@ import { dataCommand, getDataClientMode } from "@/lib/data-client";
 import { invoke } from "@tauri-apps/api/core";
 import { Eye, Paperclip, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -50,7 +41,6 @@ import { toastError, toastSuccess } from "@/lib/errors";
 import {
   ChecklistItem,
   InventoryItem,
-  OSStatus,
   ServiceOrder,
   ServiceOrderAttachment,
   ServiceOrderPart,
@@ -88,7 +78,6 @@ export function ServiceOrderEditorSheet({
   onView,
 }: ServiceOrderEditorSheetProps) {
   const queryClient = useQueryClient();
-  const [editStatus, setEditStatus] = useState<OSStatus>("Orçamento");
   const [editDescription, setEditDescription] = useState("");
   const [discountInput, setDiscountInput] = useState("0");
   const [predictedFinishDate, setPredictedFinishDate] = useState("");
@@ -96,7 +85,6 @@ export function ServiceOrderEditorSheet({
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
-  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
   const [attachmentToDelete, setAttachmentToDelete] =
     useState<ServiceOrderAttachment | null>(null);
   const [createInventoryType, setCreateInventoryType] = useState<
@@ -156,7 +144,6 @@ export function ServiceOrderEditorSheet({
 
   useEffect(() => {
     if (!order) return;
-    setEditStatus(order.status);
     setEditDescription(order.description);
     setDiscountInput(
       String(order.discountBasisPoints / 100).replace(".", ","),
@@ -303,26 +290,7 @@ export function ServiceOrderEditorSheet({
     },
     onError: (error) => toastError(error, "Erro ao excluir anexo."),
   });
-  const handleStatusClick = async (status: OSStatus) => {
-    if (!orderId || !order || status === editStatus || isSaving) return;
-    if (status === "Cancelada" && order.status !== "Cancelada") {
-      setCancelConfirmationOpen(true);
-      return;
-    }
-    try {
-      await dataCommand("transition_service_order_status", {
-        id: orderId,
-        status,
-        restoreStock: false,
-      });
-      setEditStatus(status);
-      await invalidateOrder();
-      toastSuccess(`Status alterado para "${status}".`);
-    } catch (error) {
-      toastError(error, "Erro ao alterar status.");
-    }
-  };
-  const saveEdit = async (confirmedCancellation = false) => {
+  const saveEdit = async () => {
     if (!order || isSaving) return;
     const result = editServiceOrderSchema.safeParse({
       description: editDescription,
@@ -332,14 +300,6 @@ export function ServiceOrderEditorSheet({
       setEditErrors(parseErrors(result) ?? {});
       return;
     }
-    if (
-      editStatus === "Cancelada" &&
-      order.status !== "Cancelada" &&
-      !confirmedCancellation
-    ) {
-      setCancelConfirmationOpen(true);
-      return;
-    }
     setIsSaving(true);
     try {
       await dataCommand("save_service_order_edit", {
@@ -347,52 +307,30 @@ export function ServiceOrderEditorSheet({
           id: order.id,
           description: editDescription,
           discountBasisPoints: result.data.discountBasisPoints ?? 0,
-          status: editStatus,
-          restoreStock: editStatus === "Cancelada",
+          status: order.status,
+          restoreStock: false,
           checklist,
           predictedFinishDate: predictedFinishDate || null,
         },
       });
       await invalidateOrder();
       toastSuccess("Alterações salvas com sucesso.");
-      setCancelConfirmationOpen(false);
       onClose();
     } catch (error) {
       toastError(
         error,
-        "Não foi possível salvar as alterações. Verifique a transição de status e o checklist.",
+        "Não foi possível salvar as alterações. Verifique os dados e o checklist.",
       );
     } finally {
       setIsSaving(false);
     }
   };
-  const handleCancelConfirm = async () => {
-    if (!orderId || isSaving) return;
-    setIsSaving(true);
-    try {
-      await dataCommand("transition_service_order_status", {
-        id: orderId,
-        status: "Cancelada",
-        restoreStock: true,
-      });
-      setEditStatus("Cancelada");
-      await invalidateOrder();
-      toastSuccess("Ordem de serviço cancelada.");
-      setCancelConfirmationOpen(false);
-    } catch (error) {
-      toastError(error, "Erro ao cancelar ordem de serviço.");
-      setCancelConfirmationOpen(false);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   return (
     <>
       <Sheet
         open={open}
         onOpenChange={(isOpen) => {
-          if (!isOpen && !cancelConfirmationOpen) onClose();
+          if (!isOpen) onClose();
         }}
       >
         <SheetContent className="w-full sm:max-w-xl overflow-y-auto px-4 sm:px-6">
@@ -403,7 +341,7 @@ export function ServiceOrderEditorSheet({
                   Editar - {order?.displayId ?? "Carregando..."}
                 </SheetTitle>
                 <SheetDescription>
-                  Atualize os dados, checklist, status e itens desta ordem.
+                  Atualize os dados, checklist e itens desta ordem.
                 </SheetDescription>
               </div>
               <Button
@@ -424,15 +362,6 @@ export function ServiceOrderEditorSheet({
               className="mt-8 space-y-6"
               aria-label="Carregando edição da ordem de serviço"
             >
-              <div className="space-y-3">
-                <Skeleton className="h-3 w-28" />
-                <div className="grid grid-cols-2 gap-2">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <Skeleton className="h-9 w-full" key={index} />
-                  ))}
-                </div>
-              </div>
-              <Separator />
               <div className="space-y-2">
                 <Skeleton className="h-3 w-32" />
                 <Skeleton className="h-24 w-full" />
@@ -449,36 +378,6 @@ export function ServiceOrderEditorSheet({
           ) : (
             <>
               <div className="mt-8 space-y-6">
-                <div className="space-y-3">
-                  <Label className="text-xs font-semibold uppercase">
-                    Status da Ordem
-                  </Label>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {(
-                      [
-                        "Orçamento",
-                        "Em Manutenção",
-                        "Aguardando Peça",
-                        "Finalizada",
-                        "Cancelada",
-                      ] as OSStatus[]
-                    ).map((status) => (
-                      <Button
-                        key={status}
-                        variant={editStatus === status ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleStatusClick(status)}
-                        disabled={isSaving}
-                      >
-                        {status}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Transições inválidas serão recusadas.
-                  </p>
-                </div>
-                <Separator />
                 <div className="space-y-2">
                   <Label htmlFor="edit-predicted-finish-date">
                     Previsão de conclusão
@@ -699,34 +598,6 @@ export function ServiceOrderEditorSheet({
         initialPartQuantity={1}
         onCreated={addCreatedItem}
       />
-      <AlertDialog
-        open={cancelConfirmationOpen}
-        onOpenChange={(isOpen) => {
-          if (!isOpen && !isSaving) setCancelConfirmationOpen(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar ordem de serviço</AlertDialogTitle>
-            <AlertDialogDescription>
-              Ao cancelar esta ordem, o estoque das peças físicas será restaurado.
-              Os itens permanecerão registrados e serão baixados novamente se a
-              ordem for reativada. Deseja continuar?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSaving}>Voltar</AlertDialogCancel>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => void handleCancelConfirm()}
-              disabled={isSaving}
-            >
-              {isSaving ? "Cancelando..." : "Confirmar cancelamento"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       {attachmentToDelete && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"

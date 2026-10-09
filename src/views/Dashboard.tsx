@@ -346,14 +346,14 @@ export function Dashboard() {
                     <div className="flex items-center gap-2">
                       <div
                         className={`p-1.5 rounded-md ${s.status === "Orçamento"
-                          ? "bg-blue-100 text-blue-600 dark:bg-slate-800/80 dark:text-blue-300"
+                          ? "bg-blue-100 text-blue-600 dark:bg-slate-800/80 dark:text-blue-200"
                           : s.status === "Cancelada"
-                            ? "bg-red-100 text-red-600 dark:bg-slate-800/80 dark:text-red-300"
+                            ? "bg-red-100 text-red-600 dark:bg-slate-800/80 dark:text-red-200"
                             : s.status === "Em Manutenção"
-                              ? "bg-amber-100 text-amber-600 dark:bg-slate-800/80 dark:text-amber-300"
+                              ? "bg-amber-100 text-amber-600 dark:bg-slate-800/80 dark:text-amber-200"
                               : s.status === "Aguardando Peça"
-                                ? "bg-purple-100 text-purple-600 dark:bg-slate-800/80 dark:text-purple-300"
-                                : "bg-green-100 text-green-600 dark:bg-slate-800/80 dark:text-green-300"
+                                ? "bg-purple-100 text-purple-600 dark:bg-slate-800/80 dark:text-purple-200"
+                                : "bg-green-100 text-green-600 dark:bg-slate-800/80 dark:text-green-200"
                           }`}
                       >
                         {s.status === "Orçamento" && (

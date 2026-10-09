@@ -28,6 +28,12 @@ export const releaseNotes: ReleaseNote[] = [
           "As notas da versão no diálogo de atualização agora exibem títulos, listas e formatação Markdown.",
         ],
       },
+      {
+        title: "Tema escuro",
+        items: [
+          "O tema escuro agora diferencia melhor o fundo, os cartões e os painéis, com cores de status mais legíveis.",
+        ],
+      },
     ],
   },
   {

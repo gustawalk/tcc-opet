@@ -25,7 +25,7 @@ export function FinancialCard({ title, value, icon: Icon, description, trend }: 
           <p className="text-xs text-muted-foreground mt-1">{description}</p>
         )}
         {trend && (
-          <p className={`text-xs mt-1 ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+          <p className={`text-xs mt-1 ${trend.isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
             {trend.isPositive ? '+' : '-'}{trend.value} em relação ao mês anterior
           </p>
         )}

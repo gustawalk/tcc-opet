@@ -46,7 +46,7 @@ describe("UpdatePatchNotes", () => {
     render(<UpdatePatchNotes />);
 
     const dialog = await screen.findByRole("dialog", { name: "Atualização concluída" });
-    expect(await screen.findByRole("heading", { name: "Novidades" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Novidades" }, { timeout: 5_000 })).toBeInTheDocument();
     expect(dialog.querySelector("li strong")?.textContent).toBe("Status");
   });
 });

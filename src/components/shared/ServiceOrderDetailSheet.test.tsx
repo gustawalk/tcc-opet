@@ -248,15 +248,23 @@ describe("ServiceOrderDetailSheet status", () => {
     renderDetail();
 
     const nextStatus = await screen.findByRole("button", { name: "Em Manutenção" });
-    expect(screen.queryByRole("button", { name: "Finalizada" })).not.toBeInTheDocument();
+    for (const name of ["Orçamento", "Em Manutenção", "Aguardando Peça", "Finalizada", "Cancelada"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Orçamento" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Orçamento" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Finalizada" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Orçamento" }));
+    expect(mockedInvoke.mock.calls.filter(([command]) => command === "transition_service_order_status")).toHaveLength(0);
     await user.click(nextStatus);
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith(
       "transition_service_order_status",
       { id: "order-1", status: "Em Manutenção", restoreStock: false },
     ));
-    await screen.findByRole("button", { name: "Finalizada" });
-    expect(screen.queryByRole("button", { name: "Em Manutenção" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Em Manutenção" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "Em Manutenção" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Finalizada" })).toBeEnabled();
   });
 
   it("asks before cancellation and restores stock only after confirmation", async () => {
@@ -304,6 +312,7 @@ describe("ServiceOrderDetailSheet status", () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.any(Error), "Erro ao alterar status."));
     expect(screen.getByRole("button", { name: "Em Manutenção" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Finalizada" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Orçamento" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Finalizada" })).toBeDisabled();
   });
 });

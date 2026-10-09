@@ -95,6 +95,14 @@ const allowedStatusTransitions: Record<OSStatus, OSStatus[]> = {
   "Cancelada": ["Orçamento", "Aguardando Peça", "Em Manutenção"],
 };
 
+const orderStatuses: OSStatus[] = [
+  "Orçamento",
+  "Em Manutenção",
+  "Aguardando Peça",
+  "Finalizada",
+  "Cancelada",
+];
+
 const fetchOrder = async (id: string): Promise<ServiceOrder | null> => {
   return await dataCommand<ServiceOrder | null>("get_service_order", { id });
 };
@@ -596,22 +604,29 @@ export function ServiceOrderDetailSheet({
           <div className="mt-8 space-y-6">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase text-muted-foreground">Alterar status</p>
-              <div className="flex flex-wrap gap-2">
-                {allowedStatusTransitions[order.status].map((status) => (
-                  <Button
-                    key={status}
-                    type="button"
-                    size="sm"
-                    variant={status === "Cancelada" ? "destructive" : "outline"}
-                    disabled={statusMutation.isPending}
-                    onClick={() => {
-                      if (status === "Cancelada") setCancelConfirmationOpen(true);
-                      else statusMutation.mutate({ status, restoreStock: false });
-                    }}
-                  >
-                    {status}
-                  </Button>
-                ))}
+              <div role="group" aria-label="Status da ordem" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {orderStatuses.map((status) => {
+                  const isCurrent = status === order.status;
+                  const isAllowed = allowedStatusTransitions[order.status].includes(status);
+                  return (
+                    <Button
+                      key={status}
+                      type="button"
+                      size="sm"
+                      aria-pressed={isCurrent}
+                      aria-disabled={isCurrent || !isAllowed}
+                      variant={isCurrent ? "default" : status === "Cancelada" && isAllowed ? "destructive" : "outline"}
+                      disabled={(!isCurrent && !isAllowed) || statusMutation.isPending}
+                      onClick={() => {
+                        if (isCurrent) return;
+                        if (status === "Cancelada") setCancelConfirmationOpen(true);
+                        else statusMutation.mutate({ status, restoreStock: false });
+                      }}
+                    >
+                      {status}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
             <Separator />

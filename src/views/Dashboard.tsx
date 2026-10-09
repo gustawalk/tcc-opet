@@ -248,6 +248,9 @@ export function Dashboard() {
                     </TableCell>
                     <TableCell>
                       <Badge
+                        className={os.status === "Em Manutenção"
+                          ? "dark:border-blue-800/80 dark:bg-blue-950/60 dark:text-blue-200"
+                          : undefined}
                         variant={
                           os.status === "Finalizada"
                             ? "secondary"
@@ -343,14 +346,14 @@ export function Dashboard() {
                     <div className="flex items-center gap-2">
                       <div
                         className={`p-1.5 rounded-md ${s.status === "Orçamento"
-                          ? "bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-300"
+                          ? "bg-blue-100 text-blue-600 dark:bg-slate-800/80 dark:text-blue-300"
                           : s.status === "Cancelada"
-                            ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-300"
+                            ? "bg-red-100 text-red-600 dark:bg-slate-800/80 dark:text-red-300"
                             : s.status === "Em Manutenção"
-                              ? "bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-300"
+                              ? "bg-amber-100 text-amber-600 dark:bg-slate-800/80 dark:text-amber-300"
                               : s.status === "Aguardando Peça"
-                                ? "bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-300"
-                                : "bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-300"
+                                ? "bg-purple-100 text-purple-600 dark:bg-slate-800/80 dark:text-purple-300"
+                                : "bg-green-100 text-green-600 dark:bg-slate-800/80 dark:text-green-300"
                           }`}
                       >
                         {s.status === "Orçamento" && (

@@ -1,9 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
-import { toast } from "sonner";
 import { check } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -15,6 +14,7 @@ import { InventoryDrawerProvider } from "./components/shared/InventoryDrawerProv
 import { ChecklistTemplateDrawerProvider } from "./components/shared/ChecklistTemplateDrawerProvider";
 import { InventoryItemCreateProvider } from "./components/shared/InventoryItemCreateProvider";
 import { AutomaticBackupProgress } from "./components/shared/AutomaticBackupProgress";
+import { showUpdateAvailableToast } from "./components/shared/update-available-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Button } from "./components/ui/button";
 import { LoaderCircle } from "lucide-react";
@@ -141,6 +141,7 @@ const queryClient = new QueryClient({
 
 function UpdateAvailabilityNotice() {
   const hasChecked = useRef(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (import.meta.env.DEV || hasChecked.current) return;
@@ -149,10 +150,10 @@ function UpdateAvailabilityNotice() {
     void check()
       .then((update) => {
         if (!update) return;
-        toast.info(`Atualização ${update.version} disponível. Verifique em Configurações > Atualizações.`);
+        showUpdateAvailableToast(update.version, "Abrir configurações", () => navigate("/settings"));
       })
       .catch(() => undefined);
-  }, []);
+  }, [navigate]);
 
   return null;
 }

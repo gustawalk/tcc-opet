@@ -136,10 +136,6 @@ type UpdateProgress = {
   phase: "downloading" | "installing";
 };
 
-type UpdatePreviewStep = "available" | "downloading" | "installing" | "complete" | null;
-
-const PREVIEW_UPDATE_BODY = "## Novidades da versão\n\n- **Status da OS** direto na visualização.\n- Notas de atualização com títulos e listas.\n\n[Histórico de versões](https://github.com/gustawalk/tcc-opet/releases)\n\nEsta é uma prévia visual; nenhuma atualização será instalada.";
-
 type BackupPassphraseDialogMode = "export" | "restore";
 
 const UPDATE_PATCH_NOTES_STORAGE_KEY = "opets.pending-update-patch-notes";
@@ -169,7 +165,6 @@ export function Settings() {
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
-  const [updatePreviewStep, setUpdatePreviewStep] = useState<UpdatePreviewStep>(null);
   const [isReleaseHistoryOpen, setIsReleaseHistoryOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getThemePreference);
   const [fontScale, setFontScale] = useState<FontScale>(getFontScalePreference);
@@ -659,23 +654,9 @@ export function Settings() {
   const updateProgressPercentage = updateProgress?.totalBytes
     ? Math.min(100, Math.round((updateProgress.downloadedBytes / updateProgress.totalBytes) * 100))
     : null;
-  const previewUpdate = {
-    currentVersion: systemInfo?.appVersion ?? "0.5.2",
-    version: "0.6.0",
-    body: PREVIEW_UPDATE_BODY,
-  };
-  const shownUpdate = updatePreviewStep === null
-    ? pendingUpdate
-    : updatePreviewStep === "available"
-      ? previewUpdate
-      : null;
-  const shownProgress = updatePreviewStep === "downloading"
-    ? { phase: "downloading" as const, percentage: 42 }
-    : updatePreviewStep === "installing"
-      ? { phase: "installing" as const, percentage: null }
-      : isUpdating && updateProgress
-        ? { phase: updateProgress.phase, percentage: updateProgressPercentage }
-        : null;
+  const shownProgress = isUpdating && updateProgress
+    ? { phase: updateProgress.phase, percentage: updateProgressPercentage }
+    : null;
   const automaticBackupControlsDisabled =
     isAutomaticBackupLoading ||
     isAutomaticBackupError ||
@@ -883,17 +864,6 @@ export function Settings() {
                       ? `Versão ${updateInfo.version} disponível.`
                       : "Seu aplicativo está atualizado."}
                 </p>
-                {import.meta.env.DEV && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 w-full"
-                    onClick={() => setUpdatePreviewStep("available")}
-                  >
-                    Pré-visualizar atualização
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -1653,32 +1623,27 @@ export function Settings() {
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog
-        open={shownUpdate !== null}
+        open={pendingUpdate !== null}
         onOpenChange={(open) => {
-          if (!open && !isUpdating) {
-            if (updatePreviewStep === "available") setUpdatePreviewStep(null);
-            else setPendingUpdate(null);
-          }
+          if (!open && !isUpdating) setPendingUpdate(null);
         }}
       >
         <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Atualização disponível</AlertDialogTitle>
             <AlertDialogDescription>
-              {updatePreviewStep === "available"
-                ? "Prévia visual. Nenhuma atualização será instalada."
-                : "Uma nova versão do OpetS está pronta para instalar."}
+              Uma nova versão do OpetS está pronta para instalar.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {shownUpdate && (
+          {pendingUpdate && (
             <div className="space-y-4 text-sm">
               <div className="rounded-md border bg-muted/50 px-3 py-2 font-mono">
-                {formatVersion(shownUpdate.currentVersion)} → {formatVersion(shownUpdate.version)}
+                {formatVersion(pendingUpdate.currentVersion)} → {formatVersion(pendingUpdate.version)}
               </div>
-              {shownUpdate.body?.trim() && (
+              {pendingUpdate.body?.trim() && (
                 <div className="space-y-1">
                   <p className="font-medium">Notas da versão</p>
-                  <Suspense fallback={<p>Carregando notas da versão...</p>}><ReleaseNotesMarkdown body={shownUpdate.body} /></Suspense>
+                  <Suspense fallback={<p>Carregando notas da versão...</p>}><ReleaseNotesMarkdown body={pendingUpdate.body} /></Suspense>
                 </div>
               )}
             </div>
@@ -1687,13 +1652,10 @@ export function Settings() {
             <AlertDialogCancel disabled={isUpdating}>Cancelar</AlertDialogCancel>
             <Button
               type="button"
-              onClick={() => {
-                if (updatePreviewStep === "available") setUpdatePreviewStep("downloading");
-                else void installUpdate();
-              }}
+              onClick={() => void installUpdate()}
               disabled={isUpdating}
             >
-              {updatePreviewStep === "available" ? "Ver prévia da instalação" : isUpdating ? "Atualizando..." : "Atualizar agora"}
+              {isUpdating ? "Atualizando..." : "Atualizar agora"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1743,33 +1705,9 @@ export function Settings() {
                 <div className="h-full bg-primary transition-all" style={{ width: `${shownProgress.percentage}%` }} />
               </div>
             )}
-            {updatePreviewStep !== null && (
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setUpdatePreviewStep(null)}>Fechar prévia</Button>
-                <Button
-                  type="button"
-                  autoFocus
-                  onClick={() => setUpdatePreviewStep(updatePreviewStep === "downloading" ? "installing" : "complete")}
-                >
-                  Próxima etapa
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       )}
-      <Dialog open={updatePreviewStep === "complete"} onOpenChange={(open) => !open && setUpdatePreviewStep(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Atualização concluída</DialogTitle>
-            <DialogDescription>Prévia visual da versão {previewUpdate.version}. Nenhuma atualização foi instalada.</DialogDescription>
-          </DialogHeader>
-          <Suspense fallback={<p>Carregando notas da versão...</p>}><ReleaseNotesMarkdown body={previewUpdate.body} /></Suspense>
-          <div className="flex justify-end">
-            <Button type="button" onClick={() => setUpdatePreviewStep(null)}>Fechar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </form>
   );
 }

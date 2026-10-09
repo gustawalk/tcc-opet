@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
@@ -430,33 +430,6 @@ describe("Settings LAN host and client", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "Atualização disponível" });
     expect(await screen.findByRole("heading", { name: "Novidades" })).toBeInTheDocument();
     expect(dialog.querySelector("li strong")?.textContent).toBe("Status");
-  });
-
-  it("previews every update screen without invoking the updater", async () => {
-    const user = userEvent.setup();
-    installModeMock("local");
-    renderSettings();
-
-    await user.click(await screen.findByRole("button", { name: "Pré-visualizar atualização" }));
-    expect(screen.getByRole("alertdialog", { name: "Atualização disponível" })).toBeInTheDocument();
-    expect(screen.getByText("Prévia visual. Nenhuma atualização será instalada.")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Ver prévia da instalação" }));
-    expect(screen.getByText("Baixando atualização")).toBeInTheDocument();
-    expect(screen.getByLabelText("Download da atualização: 42%")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Próxima etapa" }));
-    expect(screen.getByText("Instalando atualização")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Próxima etapa" }));
-    expect(await screen.findByRole("dialog", { name: "Atualização concluída" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Novidades da versão" })).toBeInTheDocument();
-    expect(check).not.toHaveBeenCalled();
-    expect(relaunch).not.toHaveBeenCalled();
-    expect(localStorage.getItem("opets.pending-update-patch-notes")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
-    expect(screen.queryByRole("dialog", { name: "Atualização concluída" })).not.toBeInTheDocument();
   });
 
   it("pairs a client and restarts after persisting the pinned credentials", async () => {

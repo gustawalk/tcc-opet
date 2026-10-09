@@ -615,7 +615,10 @@ export function ServiceOrderDetailSheet({
                       size="sm"
                       aria-pressed={isCurrent}
                       aria-disabled={isCurrent || !isAllowed}
-                      variant={isCurrent ? "default" : status === "Cancelada" && isAllowed ? "destructive" : "outline"}
+                      variant={isCurrent ? "default" : "outline"}
+                      className={status === "Cancelada" && isAllowed
+                        ? "border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        : undefined}
                       disabled={(!isCurrent && !isAllowed) || statusMutation.isPending}
                       onClick={() => {
                         if (isCurrent) return;

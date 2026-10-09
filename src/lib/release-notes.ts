@@ -11,6 +11,26 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.6.0",
+    date: "09/10/2026",
+    title: "Status de OS e atualizações mais claras",
+    sections: [
+      {
+        title: "Ordens de serviço",
+        items: [
+          "Altere o status da ordem diretamente na visualização, com todas as opções disponíveis e o status atual destacado.",
+        ],
+      },
+      {
+        title: "Atualizações",
+        items: [
+          "O aviso de nova versão ganhou uma apresentação mais clara e um atalho para abrir as configurações.",
+          "As notas da versão no diálogo de atualização agora exibem títulos, listas e formatação Markdown.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.5.2",
     date: "18/09/2026",
     title: "Itens de estoque, fotos e ações rápidas globais",

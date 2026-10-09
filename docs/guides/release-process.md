@@ -111,6 +111,12 @@ Todas devem imprimir a mesma versão.
   `dd/mm/aaaa`. É o que a tela de Configurações mostra desconectado.
 - **Não apague** os arquivos/entradas das versões anteriores.
 
+Para conferir as telas de atualização sem instalar uma versão, abra
+**Configurações > Atualizações > Pré-visualizar atualização** em uma execução de
+desenvolvimento. Avance pela oferta, download, instalação e conclusão com
+**Próxima etapa**. Essa prévia não consulta, baixa ou instala atualizações e
+não reinicia o aplicativo. O controle não aparece na versão de produção.
+
 ---
 
 ## 5. Commit e integração na `main`

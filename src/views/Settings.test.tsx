@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -412,6 +413,23 @@ describe("Settings LAN host and client", () => {
         passphrase: "",
       });
     });
+  });
+
+  it("renders Markdown release notes in the available-update dialog", async () => {
+    const user = userEvent.setup();
+    installModeMock("local");
+    vi.mocked(check).mockResolvedValue({
+      version: "0.6.0",
+      currentVersion: "0.5.2",
+      body: "## Novidades\n\n- **Status** mais rápido",
+    } as Awaited<ReturnType<typeof check>>);
+    renderSettings();
+
+    await user.click(await screen.findByRole("button", { name: "Verificar Atualizações" }));
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Atualização disponível" });
+    expect(await screen.findByRole("heading", { name: "Novidades" })).toBeInTheDocument();
+    expect(dialog.querySelector("li strong")?.textContent).toBe("Status");
   });
 
   it("pairs a client and restarts after persisting the pinned credentials", async () => {

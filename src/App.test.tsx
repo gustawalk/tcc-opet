@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App, { LanStartupError } from "./App";
+import App, { LanStartupError, UpdatePatchNotes } from "./App";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn() }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("@tanstack/react-query-devtools", () => ({
@@ -27,6 +29,27 @@ vi.mock("./components/shared/AutomaticBackupProgress", () => ({
 }));
 
 const mockedInvoke = vi.mocked(invoke);
+
+describe("UpdatePatchNotes", () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem("opets.pending-update-patch-notes");
+  });
+
+  it("renders formatted notes after a matching update", async () => {
+    localStorage.setItem("opets.pending-update-patch-notes", JSON.stringify({
+      version: "0.6.0",
+      body: "## Novidades\n\n- **Status** mais rápido",
+    }));
+    vi.mocked(getVersion).mockResolvedValue("0.6.0");
+
+    render(<UpdatePatchNotes />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Atualização concluída" });
+    expect(await screen.findByRole("heading", { name: "Novidades" })).toBeInTheDocument();
+    expect(dialog.querySelector("li strong")?.textContent).toBe("Status");
+  });
+});
 
 describe("LanStartupError", () => {
   beforeEach(() => vi.clearAllMocks());

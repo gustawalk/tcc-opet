@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
@@ -77,6 +77,10 @@ import {
 const ERROR_MESSAGES: Record<string, string> = {
   "error sending request for url (https://github.com/gustawalk/tcc-opet/releases/latest/download/updater.json)": "Não foi possível verificar as atualizações."
 }
+
+const ReleaseNotesMarkdown = lazy(() =>
+  import("@/components/shared/ReleaseNotesMarkdown").then(({ ReleaseNotesMarkdown }) => ({ default: ReleaseNotesMarkdown })),
+);
 
 const splitVerificationCode = (value: string) => {
   const [pairingCode, fingerprint] = value.split("|", 2);
@@ -1623,7 +1627,7 @@ export function Settings() {
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Atualização disponível</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1638,9 +1642,7 @@ export function Settings() {
               {pendingUpdate.body?.trim() && (
                 <div className="space-y-1">
                   <p className="font-medium">Notas da versão</p>
-                  <p className="max-h-48 overflow-y-auto whitespace-pre-line rounded-md border bg-muted/50 p-3 text-muted-foreground">
-                    {pendingUpdate.body}
-                  </p>
+                  <Suspense fallback={<p>Carregando notas da versão...</p>}><ReleaseNotesMarkdown body={pendingUpdate.body} /></Suspense>
                 </div>
               )}
             </div>

@@ -28,6 +28,10 @@ const LAN_CONNECTION_CHECK_INTERVAL_MS = 5_000;
 const LAN_CONNECTION_RETRY_COUNT = 3;
 const LAN_CONNECTION_RETRY_DELAY_MS = 1_000;
 
+const ReleaseNotesMarkdown = lazy(() =>
+  import("./components/shared/ReleaseNotesMarkdown").then(({ ReleaseNotesMarkdown }) => ({ default: ReleaseNotesMarkdown })),
+);
+
 const Dashboard = lazy(() =>
   import("./views/Dashboard").then(({ Dashboard }) => ({ default: Dashboard })),
 );
@@ -153,7 +157,7 @@ function UpdateAvailabilityNotice() {
   return null;
 }
 
-function UpdatePatchNotes() {
+export function UpdatePatchNotes() {
   const [patchNotes, setPatchNotes] = useState<PendingPatchNotes | null>(null);
 
   useEffect(() => {
@@ -194,16 +198,14 @@ function UpdatePatchNotes() {
 
   return (
     <Dialog open={patchNotes !== null} onOpenChange={(open) => !open && close()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Atualização concluída</DialogTitle>
           <DialogDescription>
             Você está usando a versão {patchNotes?.version}.
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
-          {patchNotes?.body}
-        </div>
+        {patchNotes && <Suspense fallback={<p>Carregando notas da versão...</p>}><ReleaseNotesMarkdown body={patchNotes.body} /></Suspense>}
         <DialogFooter>
           <Button type="button" onClick={close}>Fechar</Button>
         </DialogFooter>

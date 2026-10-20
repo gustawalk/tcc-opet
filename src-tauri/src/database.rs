@@ -648,12 +648,17 @@ fn apply_bulk_import_migration(conn: &Connection) -> Result<()> {
     conn.execute_batch("BEGIN IMMEDIATE")?;
     let result = (|| {
         conn.execute_batch(
-            "CREATE TABLE import_batches (
+            "CREATE TABLE IF NOT EXISTS import_batches (
                 batch_id TEXT PRIMARY KEY,
                 payload_hash TEXT NOT NULL,
                 result_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
+        )?;
+        // sqlcipher_export preserves tables but loses user_version; accepted
+        // plaintext restores can legitimately replay this migration.
+        conn.prepare(
+            "SELECT batch_id, payload_hash, result_json, created_at FROM import_batches LIMIT 0",
         )?;
         conn.pragma_update(None, "user_version", BULK_IMPORT_SCHEMA_VERSION)?;
         conn.execute_batch("COMMIT")
@@ -2304,6 +2309,10 @@ mod tests {
     #[test]
     fn bulk_import_migration_failure_keeps_previous_version() {
         let conn = crate::test_helpers::setup_db();
+        conn.execute_batch(
+            "DROP TABLE import_batches; CREATE INDEX import_batches ON customers(name);",
+        )
+        .unwrap();
         conn.pragma_update(None, "user_version", 5).unwrap();
         assert!(apply_bulk_import_migration(&conn).is_err());
         assert_eq!(
@@ -2312,5 +2321,26 @@ mod tests {
             5
         );
         assert!(conn.is_autocommit());
+    }
+    #[test]
+    fn bulk_import_receipts_survive_schema_version_loss_during_encryption() {
+        let conn = crate::test_helpers::setup_db();
+        conn.execute("INSERT INTO import_batches(batch_id,payload_hash,result_json) VALUES ('batch','hash','{}')", []).unwrap();
+        conn.pragma_update(None, "user_version", 0).unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT payload_hash FROM import_batches WHERE batch_id='batch'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "hash"
+        );
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            6
+        );
     }
 }

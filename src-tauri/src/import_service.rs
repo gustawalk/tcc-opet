@@ -404,6 +404,140 @@ pub(crate) fn validate_with_conn(
     })
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImportResult {
+    pub created_count: usize,
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CommitOutcome {
+    pub result: Option<ImportResult>,
+    pub validation: Option<ImportValidation>,
+}
+
+pub(crate) fn commit_with_conn(
+    conn: &mut Connection,
+    batch_id: &str,
+    request: &ImportRequest,
+) -> Result<CommitOutcome, AppError> {
+    use crate::models::{customer::Customer, inventory_item::InventoryItem, user::User};
+    use crate::repositories::{
+        customer_repo::CustomerRepository, inventory_repo::InventoryRepository,
+        user_repo::UserRepository,
+    };
+    use rusqlite::{params, OptionalExtension, TransactionBehavior};
+    if uuid::Uuid::parse_str(batch_id).is_err() {
+        return Err(file_error("O identificador da importação é inválido."));
+    }
+    check_request(request)?;
+    let bytes = serde_json::to_vec(request)
+        .map_err(|_| file_error("Não foi possível preparar a importação."))?;
+    let hash = blake3::hash(&bytes).to_hex().to_string();
+    let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let receipt: Option<(String, String)> = transaction
+        .query_row(
+            "SELECT payload_hash, result_json FROM import_batches WHERE batch_id = ?1",
+            [batch_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    if let Some((old_hash, result)) = receipt {
+        if old_hash != hash {
+            return Err(file_error(
+                "Este identificador já foi usado para outros dados. Inicie outra importação.",
+            ));
+        }
+        let result = serde_json::from_str(&result)
+            .map_err(|_| file_error("Não foi possível recuperar o resultado da importação."))?;
+        return Ok(CommitOutcome {
+            result: Some(result),
+            validation: None,
+        });
+    }
+    let validation = validate_with_conn(&transaction, request)?;
+    if validation.invalid_count > 0 {
+        return Ok(CommitOutcome {
+            result: None,
+            validation: Some(validation),
+        });
+    }
+    let mut ids = Vec::with_capacity(validation.rows.len());
+    for row in validation.rows {
+        let values = row.values;
+        let id = match request.entity {
+            ImportEntity::Customers => {
+                let customer = Customer::new(
+                    values["name"].clone(),
+                    values["phone"].clone(),
+                    values["email"].clone(),
+                    values["address"].clone(),
+                );
+                CustomerRepository::create_with_conn(&transaction, &customer)?;
+                customer.id
+            }
+            ImportEntity::Employees => {
+                let mut user = User::new(values["name"].clone(), values["email"].clone());
+                user.phone = (!values["phone"].is_empty()).then(|| values["phone"].clone());
+                user.cpf = (!values["cpf"].is_empty()).then(|| values["cpf"].clone());
+                user.join_date =
+                    (!values["joinDate"].is_empty()).then(|| values["joinDate"].clone());
+                UserRepository::create_with_conn(&transaction, &user)?;
+                user.id
+            }
+            ImportEntity::Inventory => {
+                // Values are normalized and bounded by validate_with_conn above.
+                let mut item = InventoryItem::new(
+                    values["name"].clone(),
+                    values["description"].clone(),
+                    values["type"].clone(),
+                    values["minQuantity"]
+                        .parse()
+                        .map_err(|_| file_error("Quantidade inválida."))?,
+                    values["initialQuantity"]
+                        .parse()
+                        .map_err(|_| file_error("Quantidade inválida."))?,
+                    values["costPrice"]
+                        .parse()
+                        .map_err(|_| file_error("Preço inválido."))?,
+                    values["salePrice"]
+                        .parse()
+                        .map_err(|_| file_error("Preço inválido."))?,
+                );
+                item.tracks_stock = values["tracksStock"] == "true";
+                item.supplier_name =
+                    (!values["supplierName"].is_empty()).then(|| values["supplierName"].clone());
+                InventoryRepository::create_with_conn(&transaction, &item)?;
+                if item.tracks_stock && item.current_quantity > 0 {
+                    transaction.execute(
+                        "INSERT INTO inventory_movements (id, inventory_item_id, type, quantity, reference_os_id, reason, unit_cost_cents, created_at) VALUES (?1, ?2, 'entrada', ?3, NULL, 'bulk_import', ?4, ?5)",
+                        params![uuid::Uuid::new_v4().to_string(), item.id, item.current_quantity, item.cost_price, item.created_at]
+                    )?;
+                }
+                item.id
+            }
+        };
+        ids.push(id);
+    }
+    let result = ImportResult {
+        created_count: ids.len(),
+        ids,
+    };
+    let result_json = serde_json::to_string(&result)
+        .map_err(|_| file_error("Não foi possível registrar o resultado da importação."))?;
+    transaction.execute(
+        "INSERT INTO import_batches(batch_id, payload_hash, result_json) VALUES (?1, ?2, ?3)",
+        params![batch_id, hash, result_json],
+    )?;
+    transaction.commit()?;
+    Ok(CommitOutcome {
+        result: Some(result),
+        validation: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -566,5 +700,245 @@ mod tests {
         assert!(validate_with_conn(&conn, &req).is_err());
         req.rows.clear();
         assert!(validate_with_conn(&conn, &req).is_err());
+    }
+    #[test]
+    fn import_service_commit_creates_duplicates_replays_and_rejects_changed_payload() {
+        let mut conn = crate::test_helpers::setup_db();
+        let mut req = request(
+            ImportEntity::Customers,
+            vec![
+                &[("name", "Maria"), ("phone", "41999999999")],
+                &[("name", "Maria"), ("phone", "41999999999")],
+            ],
+        );
+        let batch = uuid::Uuid::new_v4().to_string();
+        let result = commit_with_conn(&mut conn, &batch, &req)
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(result.created_count, 2);
+        assert_ne!(result.ids[0], result.ids[1]);
+        let replay = commit_with_conn(&mut conn, &batch, &req)
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(replay, result);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM customers", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        req.rows[0].values.insert("name".into(), "Ana".into());
+        assert!(commit_with_conn(&mut conn, &batch, &req)
+            .unwrap_err()
+            .pt
+            .contains("outros dados"));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM import_batches", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+    #[test]
+    fn import_service_commit_rolls_back_insert_failure_and_revalidates_conflicts() {
+        let mut conn = crate::test_helpers::setup_db();
+        conn.execute_batch("CREATE TRIGGER import_fault BEFORE INSERT ON customers WHEN NEW.name = 'Falha' BEGIN SELECT RAISE(ABORT, 'injected import fault'); END;").unwrap();
+        let req = request(
+            ImportEntity::Customers,
+            vec![
+                &[("name", "Maria"), ("phone", "41999999999")],
+                &[("name", "Falha"), ("phone", "41999999999")],
+            ],
+        );
+        assert!(commit_with_conn(&mut conn, &uuid::Uuid::new_v4().to_string(), &req).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM customers", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM import_batches", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        let req = request(
+            ImportEntity::Employees,
+            vec![&[("name", "Maria"), ("email", "maria@example.com")]],
+        );
+        assert_eq!(validate_with_conn(&conn, &req).unwrap().valid_count, 1);
+        conn.execute(
+            "INSERT INTO users(id,name,email) VALUES ('other','Other','maria@example.com')",
+            [],
+        )
+        .unwrap();
+        let result = commit_with_conn(&mut conn, &uuid::Uuid::new_v4().to_string(), &req).unwrap();
+        assert_eq!(result.validation.unwrap().invalid_count, 1);
+        assert!(result.result.is_none());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM import_batches", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+    #[test]
+    fn import_service_commit_stock_has_exact_costs_and_audit_movement() {
+        let mut conn = crate::test_helpers::setup_db();
+        let req = request(
+            ImportEntity::Inventory,
+            vec![
+                &[
+                    ("name", "Tela"),
+                    ("description", "Tela OLED"),
+                    ("type", "part"),
+                    ("initialQuantity", "3"),
+                    ("costPrice", "12,34"),
+                    ("salePrice", "20,50"),
+                    ("supplierName", "Fornecedor"),
+                ],
+                &[
+                    ("name", "Limpeza"),
+                    ("description", "Limpeza"),
+                    ("type", "service"),
+                ],
+            ],
+        );
+        let batch = uuid::Uuid::new_v4().to_string();
+        let result = commit_with_conn(&mut conn, &batch, &req)
+            .unwrap()
+            .result
+            .unwrap();
+        let item = crate::repositories::inventory_repo::InventoryRepository::get_by_id_with_conn(
+            &conn,
+            &result.ids[0],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (
+                item.current_quantity,
+                item.cost_price,
+                item.average_cost,
+                item.sale_price
+            ),
+            (3, 1234, 1234, 2050)
+        );
+        assert_eq!(item.supplier_name.as_deref(), Some("Fornecedor"));
+        let movements =
+            crate::repositories::inventory_repo::InventoryRepository::get_movements_with_conn(
+                &conn, &item.id,
+            )
+            .unwrap();
+        assert_eq!(movements.len(), 1);
+        assert_eq!(movements[0].r#type, "entrada");
+        assert_eq!(movements[0].quantity, 3);
+        assert_eq!(movements[0].reason, "bulk_import");
+        assert_eq!(movements[0].unit_cost, Some(1234));
+        assert!(movements[0].reference_os_id.is_none());
+        commit_with_conn(&mut conn, &batch, &req).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM inventory_movements", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+    #[test]
+    fn import_service_commit_employee_replay_precedes_own_uniqueness_conflict() {
+        let mut conn = crate::test_helpers::setup_db();
+        let req = request(
+            ImportEntity::Employees,
+            vec![&[
+                ("name", "Maria"),
+                ("email", "maria@example.com"),
+                ("joinDate", "20/10/2026"),
+                ("cpf", "00123456789"),
+            ]],
+        );
+        let batch = uuid::Uuid::new_v4().to_string();
+        let result = commit_with_conn(&mut conn, &batch, &req)
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(
+            commit_with_conn(&mut conn, &batch, &req)
+                .unwrap()
+                .result
+                .unwrap(),
+            result
+        );
+        let user = crate::repositories::user_repo::UserRepository::get_by_id_with_conn(
+            &conn,
+            &result.ids[0],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(user.join_date.as_deref(), Some("2026-10-20"));
+        assert_eq!(user.cpf.as_deref(), Some("00123456789"));
+        assert!(user.phone.is_none());
+    }
+    #[test]
+    fn import_service_commit_5000_rows_and_receipt_are_complete() {
+        let mut conn = crate::test_helpers::setup_db();
+        let mut req = request(
+            ImportEntity::Customers,
+            vec![&[("name", "Cliente"), ("phone", "41999999999")]],
+        );
+        req.rows = (0..5000)
+            .map(|index| {
+                let mut row = req.rows[0].clone();
+                row.source_row = index + 2;
+                row
+            })
+            .collect();
+        let started = std::time::Instant::now();
+        let result = commit_with_conn(&mut conn, &uuid::Uuid::new_v4().to_string(), &req)
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(result.created_count, 5000);
+        assert_eq!(result.ids.iter().collect::<HashSet<_>>().len(), 5000);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM customers", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            5000
+        );
+        eprintln!("5000-row import completed in {:?}", started.elapsed());
+    }
+    #[test]
+    fn import_service_concurrent_identical_batch_creates_once() {
+        let storage = crate::test_helpers::TestStorage::new(false);
+        let batch = uuid::Uuid::new_v4().to_string();
+        let req = request(
+            ImportEntity::Customers,
+            vec![&[("name", "Maria"), ("phone", "41999999999")]],
+        );
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let mut conn = storage.open();
+                let batch = batch.clone();
+                let req = req.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    commit_with_conn(&mut conn, &batch, &req)
+                        .unwrap()
+                        .result
+                        .unwrap()
+                })
+            })
+            .collect();
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(results[0], results[1]);
+        assert_eq!(
+            storage
+                .open()
+                .query_row("SELECT COUNT(*) FROM customers", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 }

@@ -10,6 +10,7 @@ macro_rules! register_commands {
             facade::inspect_import_file,
             facade::parse_import_file,
             facade::validate_import_rows,
+            facade::commit_import,
             facade::create_customer,
             facade::get_customer,
             facade::get_customers,

@@ -29,3 +29,12 @@ pub(crate) fn validate_import_rows(
     let conn = crate::database::get_db()?;
     crate::import_service::validate_with_conn(&conn, &request)
 }
+
+#[tauri::command]
+pub(crate) fn commit_import(
+    batch_id: String,
+    request: crate::import_service::ImportRequest,
+) -> Result<crate::import_service::CommitOutcome, AppError> {
+    let mut conn = crate::database::get_db()?;
+    crate::import_service::commit_with_conn(&mut conn, &batch_id, &request)
+}

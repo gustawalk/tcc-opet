@@ -24,7 +24,7 @@ Sequential tasks T1 through T6, one local commit per verified deliverable.
 
 ### T3: Add receipt migration and transactional persistence
 
-- **Status**: pending
+- **Status**: complete
 **Depends on**: T2
 **Tests**: rollback, stock movement, replay and 5,000 rows
 **Gate**: cargo test --lib import -- --test-threads=1
@@ -73,3 +73,6 @@ Parser gate: 5 passed. Evidence: import_file.rs tests assert exact cell contents
 
 ## T2 evidence
 Validation gate: 4 passed. Exact cents, normalized dates, required fields and all email conflict rows asserted in import_service.rs. No tests weakened or skipped.
+
+## T3 evidence
+Import gate: 17 passed. Exact record/movement/cost assertions, injected insertion rollback, employee replay, concurrent identical requests and 5,000-row persistence pass. Fresh/version-5 migration and failed upgrade version preservation pass.

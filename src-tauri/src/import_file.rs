@@ -91,6 +91,42 @@ fn csv_reader(text: &str, delimiter: u8) -> csv::Reader<&[u8]> {
         .from_reader(text.as_bytes())
 }
 
+fn validate_csv_quotes(text: &str, delimiter: u8) -> Result<(), AppError> {
+    #[derive(Clone, Copy)]
+    enum State {
+        Start,
+        Text,
+        Quoted,
+        Closed,
+    }
+    let mut state = State::Start;
+    for byte in text.bytes() {
+        let separator = byte == delimiter || byte == b'\r' || byte == b'\n';
+        state = match (state, byte, separator) {
+            (State::Start, b'"', _) => State::Quoted,
+            (State::Start | State::Text | State::Closed, _, true) => State::Start,
+            (State::Text, b'"', false) => {
+                return Err(file_error(
+                    "O CSV contém aspas fora de um campo delimitado.",
+                ))
+            }
+            (State::Start | State::Text, _, false) => State::Text,
+            (State::Quoted, b'"', _) => State::Closed,
+            (State::Quoted, _, _) => State::Quoted,
+            (State::Closed, b'"', _) => State::Quoted,
+            (State::Closed, _, false) => {
+                return Err(file_error(
+                    "O CSV contém caracteres após o fechamento de aspas.",
+                ))
+            }
+        };
+    }
+    if matches!(state, State::Quoted) {
+        return Err(file_error("O CSV contém um campo com aspas não fechadas."));
+    }
+    Ok(())
+}
+
 fn suggested_delimiter(text: &str) -> u8 {
     [b';', b',', b'\t']
         .into_iter()
@@ -210,6 +246,7 @@ pub(crate) fn parse(
                 ))
             }
         };
+        validate_csv_quotes(text, delimiter)?;
         for record in csv_reader(text, delimiter).records() {
             let record = record
                 .map_err(|_| file_error("O CSV está malformado. Verifique separadores e aspas."))?;
@@ -236,7 +273,7 @@ pub(crate) fn parse(
         let mut numeric = false;
         let mut numeric_columns: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         while let Some(cell) = reader
-            .next_cell_with_formula()
+            .next_cell_with_formula_metadata()
             .map_err(|_| file_error("O conteúdo da planilha está corrompido."))?
         {
             let (row, column) = cell.pos;
@@ -465,5 +502,25 @@ mod tests {
         }
         zip.finish().unwrap();
         assert!(inspect(file.path()).unwrap_err().pt.contains("64 MiB"));
+    }
+    #[test]
+    fn import_file_rejects_unclosed_quotes_and_characters_after_quote() {
+        for content in [
+            "name,phone\n\"Maria,41999999999",
+            "name,phone\n\"Maria\"wrong,41999999999",
+            "name,phone\nMa\"ria,41999999999",
+        ] {
+            assert!(
+                parse(csv_fixture(content.as_bytes()).path(), None, Some(","))
+                    .unwrap_err()
+                    .pt
+                    .contains("aspas")
+            );
+        }
+        let file = csv_fixture(b"name,phone\n\"Maria \"\"Silva\"\"\",41999999999");
+        assert_eq!(
+            parse(file.path(), None, Some(",")).unwrap().rows[0].cells[0],
+            "Maria \"Silva\""
+        );
     }
 }

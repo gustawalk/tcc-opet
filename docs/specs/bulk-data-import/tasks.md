@@ -40,7 +40,7 @@ Sequential tasks T1 through T6, one local commit per verified deliverable.
 
 ### T5: Add shared editable wizard and page entry points
 
-- **Status**: pending
+- **Status**: complete
 **Depends on**: T4
 **Tests**: mapping, edit/exclude, confirmation, frozen retries, cache invalidation
 **Gate**: yarn typecheck; yarn lint; yarn test; yarn build
@@ -79,3 +79,6 @@ Import gate: 17 passed. Exact record/movement/cost assertions, injected insertio
 
 ## T4 evidence
 LAN gate: 7 passed with loopback access; data-client gate: 11 passed. Authenticated import, receipt replay, local-file rejection and route-specific payload limits asserted. Sandbox socket restrictions required running LAN tests with approved escalation.
+
+## T5 evidence
+Frontend gates: 143 tests passed, typecheck/lint/build passed. Wizard tests cover all three entities, 5,000-row pagination, edits, filter, exclude/restore, discard confirmation, conflicts, pending/double submission, Client routing and frozen retry. Mapping tests assert actual mapped values and numeric provenance.

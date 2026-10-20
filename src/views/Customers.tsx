@@ -1,3 +1,4 @@
+import { ImportDataButton } from "@/components/shared/import/ImportDataButton";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -297,9 +298,12 @@ export function Customers() {
             Gerencie o cadastro de clientes da sua assistência.
           </p>
         </div>
+        <div className="flex flex-wrap justify-end gap-2">
+        <ImportDataButton entity="customers" />
         <Button onClick={handleAddCustomer} className="gap-2">
           <UserPlus className="h-4 w-4" /> Novo Cliente
         </Button>
+        </div>
       </div>
 
       <Card ref={listRef} className="scroll-mt-20">

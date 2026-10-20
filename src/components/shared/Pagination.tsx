@@ -6,6 +6,13 @@ import {
 } from "lucide-react";
 import type { RefObject } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 interface PaginationProps {
@@ -73,23 +80,34 @@ export function Pagination({
   };
 
   return (
-    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+        className,
+      )}
+    >
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="whitespace-nowrap">
           Mostrando {firstItem}–{lastItem} de {totalItems}
         </span>
-        <select
-          aria-label="Itens por página"
-          value={pageSize}
-          onChange={(event) => changePageSize(Number(event.target.value))}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        <Select
+          value={String(pageSize)}
+          onValueChange={(value) => changePageSize(Number(value))}
         >
-          {pageSizeOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            aria-label="Itens por página"
+            className="h-8 w-20 bg-background"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {pageSizeOptions.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center gap-1">

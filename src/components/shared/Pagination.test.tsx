@@ -29,9 +29,15 @@ describe("Pagination", () => {
         onPageSizeChange={() => undefined}
       />,
     );
-    expect(screen.getByRole("button", { name: "Primeira página" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Página anterior" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Próxima página" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Primeira página" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Página anterior" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Próxima página" }),
+    ).toBeEnabled();
     expect(screen.getByRole("button", { name: "Última página" })).toBeEnabled();
   });
 
@@ -78,7 +84,10 @@ describe("Pagination", () => {
         onPageSizeChange={onPageSizeChange}
       />,
     );
-    await user.selectOptions(screen.getByLabelText("Itens por página"), "50");
+    await user.click(
+      screen.getByRole("combobox", { name: "Itens por página" }),
+    );
+    await user.click(screen.getByRole("option", { name: "50" }));
     expect(onPageSizeChange).toHaveBeenCalledWith(50);
   });
 
@@ -101,7 +110,10 @@ describe("Pagination", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "2" }));
-    await user.selectOptions(screen.getByLabelText("Itens por página"), "50");
+    await user.click(
+      screen.getByRole("combobox", { name: "Itens por página" }),
+    );
+    await user.click(screen.getByRole("option", { name: "50" }));
 
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
     expect(scrollIntoView).toHaveBeenLastCalledWith({

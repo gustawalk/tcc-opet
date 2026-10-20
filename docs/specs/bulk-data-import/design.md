@@ -17,3 +17,11 @@ XLSX cells are streamed using calamine formula metadata, so sparse declared dime
 Inventory currently displays separate lists rather than tabs, so its global import button defaults to part. Users can map or assign another type. Discard confirmation reuses the wizard dialog instead of stacking modal focus traps; cancel restores the triggering control's focus. Preview pages paginate a bounded transient source file, not database entity lists.
 
 The receipt migration accepts an existing valid table because SQLCipher export can erase user_version while preserving the table during legacy restore. It validates the expected columns before advancing the version. Reset drops import receipts along with business data.
+
+## File-step visual refinement
+
+The empty state has a centered upload card and a single primary action. A compact four-step progress indicator replaces the repeated breadcrumb/limits sentence. File limits appear only during file selection; preparation details are collapsed. Parsed files show a summary card, app Select for parsing settings, and a bordered horizontally scrollable sample table with fixed minimum column widths. Mapping stays in labeled field cards and uses the same shared app Select. The shared pagination size control also uses Select, keeping all importer dropdowns consistent.
+
+The installed Dialog 1.1.15 and Select 2.3.7 resolve different focus-scope and dismissable-layer packages. Dialog is pinned to 1.1.23, which uses the same internal versions as the existing Select. Yarn resolutions unify focus-scope 1.1.16 and dismissable-layer 1.1.19 across the UI primitives so portal focus and Escape share one layer stack. Keep these internals aligned when upgrading Radix. No custom focus-trap workaround is added. UI verification is standard; backend import contracts and persistence are unchanged.
+
+The upstream module-stack problem is described in [Radix issue 2815](https://github.com/radix-ui/primitives/issues/2815) and [layer version compatibility](https://github.com/radix-ui/primitives/issues/1088). Local regression tests and browser checks verify the selected versions in this application.

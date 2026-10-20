@@ -2,7 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ImportFileStep } from "./ImportFileStep";
+import { ImportProgress } from "./ImportProgress";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -47,8 +59,6 @@ import type {
   ParsedImport,
 } from "@/lib/data-import";
 
-const selectClass =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const titles: Record<ImportEntity, string> = {
   customers: "clientes",
   employees: "funcionários",
@@ -292,6 +302,13 @@ export function ImportWizard({
     }
   }
 
+  const descriptions: Record<Step, string> = {
+    file: "Traga os cadastros do outro sistema em poucos passos.",
+    mapping: "Conecte as colunas do arquivo aos campos do OpetS.",
+    review: "Confira os dados e corrija o que precisar antes de importar.",
+    confirm: "Tudo pronto? Confira o resumo e confirme a importação.",
+    done: "Seus novos registros já estão disponíveis no aplicativo.",
+  };
   const canConfirm =
     request.rows.length > 0 && validation?.invalidCount === 0 && !validating;
   return (
@@ -306,7 +323,14 @@ export function ImportWizard({
         }}
       >
         <DialogContent
-          className="max-w-[min(96vw,1200px)] max-h-[92vh] flex flex-col overflow-hidden"
+          className={cn(
+            "w-[calc(100vw-2rem)] max-h-[92vh] flex flex-col overflow-hidden gap-0 p-0",
+            step === "review" || (step === "file" && path)
+              ? "max-w-[1200px]"
+              : step === "mapping"
+                ? "max-w-4xl"
+                : "max-w-3xl",
+          )}
           role={pendingAction ? "alertdialog" : "dialog"}
           showClose={!busy && !frozen && !pendingAction}
           onInteractOutside={(event) => event.preventDefault()}
@@ -314,7 +338,7 @@ export function ImportWizard({
             if (busy || frozen) event.preventDefault();
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="px-6 pb-4 pt-6 text-left">
             <DialogTitle>
               {pendingAction
                 ? "Descartar a revisão atual?"
@@ -323,12 +347,13 @@ export function ImportWizard({
             <DialogDescription>
               {pendingAction
                 ? "As alterações e exclusões desta revisão serão perdidas. Nenhum registro será salvo."
-                : "Arquivo → Mapeamento → Revisão → Confirmação. Até 5.000 linhas; CSV UTF-8 ou XLSX de até 10 MiB."}
+                : descriptions[step]}
             </DialogDescription>
           </DialogHeader>
+          {!pendingAction && step !== "done" && <ImportProgress step={step} />}
           {pendingAction && (
             <>
-              <DialogFooter>
+              <DialogFooter className="border-t bg-muted/20 px-6 py-4">
                 <Button
                   ref={discardCancel}
                   variant="outline"
@@ -350,7 +375,7 @@ export function ImportWizard({
           )}
           <div className={pendingAction ? "hidden" : "contents"}>
             <div
-              className="min-h-0 overflow-auto space-y-4 p-1"
+              className="min-h-0 flex-1 overflow-auto border-t px-6 py-5 space-y-5"
               aria-busy={busy || validating}
             >
               {message && (
@@ -384,109 +409,31 @@ export function ImportWizard({
                 </p>
               )}
               {step === "file" && (
-                <>
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      discardThen(() => {
-                        void selectFile();
-                      })
-                    }
-                  >
-                    Selecionar arquivo
-                  </Button>
-                  {path && (
-                    <p className="text-sm break-all">
-                      Arquivo: {path.split(/[\\/]/).pop()}
-                    </p>
-                  )}
-                  {inspection && (
-                    <div className="flex flex-wrap gap-4">
-                      {inspection.worksheets.length > 0 ? (
-                        <div className="grid gap-1">
-                          <Label htmlFor="import-sheet">Planilha</Label>
-                          <select
-                            id="import-sheet"
-                            className={selectClass}
-                            value={worksheet}
-                            disabled={busy}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              discardThen(() => {
-                                setWorksheet(value);
-                                void parseFile(path, value, delimiter);
-                              });
-                            }}
-                          >
-                            {inspection.worksheets.map((sheet) => (
-                              <option key={sheet}>{sheet}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="grid gap-1">
-                          <Label htmlFor="import-delimiter">
-                            Separador CSV
-                          </Label>
-                          <select
-                            id="import-delimiter"
-                            className={selectClass}
-                            value={delimiter}
-                            disabled={busy}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              discardThen(() => {
-                                setDelimiter(value);
-                                void parseFile(path, worksheet, value);
-                              });
-                            }}
-                          >
-                            <option value=";">Ponto e vírgula (;)</option>
-                            <option value=",">Vírgula (,)</option>
-                            <option value={"\t"}>Tabulação</option>
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {source && (
-                    <>
-                      <p className="text-sm">
-                        {source.rows.length} linhas de dados,{" "}
-                        {source.headers.length} colunas. Primeiras linhas:
-                      </p>
-                      <div className="overflow-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Linha</TableHead>
-                              {source.headers.map((header, index) => (
-                                <TableHead key={index}>
-                                  {index + 1}. {header || "Sem título"}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {source.rows.slice(0, 3).map((row) => (
-                              <TableRow key={row.sourceRow}>
-                                <TableCell>{row.sourceRow}</TableCell>
-                                {row.cells.map((value, index) => (
-                                  <TableCell
-                                    className="max-w-64 truncate"
-                                    key={index}
-                                  >
-                                    {value.replace(/\0/g, "")}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </>
-                  )}
-                </>
+                <ImportFileStep
+                  path={path}
+                  source={source}
+                  inspection={inspection}
+                  worksheet={worksheet}
+                  delimiter={delimiter}
+                  busy={busy}
+                  onSelect={() =>
+                    discardThen(() => {
+                      void selectFile();
+                    })
+                  }
+                  onWorksheetChange={(value) =>
+                    discardThen(() => {
+                      setWorksheet(value);
+                      void parseFile(path, value, delimiter);
+                    })
+                  }
+                  onDelimiterChange={(value) =>
+                    discardThen(() => {
+                      setDelimiter(value);
+                      void parseFile(path, worksheet, value);
+                    })
+                  }
+                />
               )}
               {source &&
                 step !== "done" &&
@@ -502,8 +449,7 @@ export function ImportWizard({
               {step === "mapping" && source && (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Associe cada campo a uma coluna ou use um valor fixo para
-                    todas as linhas. Colunas não associadas serão ignoradas. *
+                    Escolha uma coluna ou um valor fixo para cada campo. *
                     Obrigatório.
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -522,12 +468,9 @@ export function ImportWizard({
                             {field.label}
                             {field.required ? " *" : ""}
                           </Label>
-                          <select
-                            id={`map-${field.key}`}
-                            className={`${selectClass} w-full`}
+                          <Select
                             value={selected}
-                            onChange={(event) => {
-                              const value = event.target.value;
+                            onValueChange={(value) => {
                               const next: FieldMapping = value.startsWith(
                                 "column:",
                               )
@@ -547,16 +490,30 @@ export function ImportWizard({
                               }));
                             }}
                           >
-                            <option value="ignore">
-                              Não associar (em branco)
-                            </option>
-                            <option value="fixed">Valor fixo</option>
-                            {source.headers.map((header, index) => (
-                              <option key={index} value={`column:${index}`}>
-                                {index + 1}. {header || "Sem título"}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger
+                              id={`map-${field.key}`}
+                              className="bg-background"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ignore">
+                                Não associar (em branco)
+                              </SelectItem>
+                              <SelectItem value="fixed">Valor fixo</SelectItem>
+                              <SelectGroup>
+                                <SelectLabel>Colunas do arquivo</SelectLabel>
+                                {source.headers.map((header, index) => (
+                                  <SelectItem
+                                    key={index}
+                                    value={`column:${index}`}
+                                  >
+                                    {index + 1}. {header || "Sem título"}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
                           {choice.kind === "fixed" && (
                             <Input
                               aria-label={`Valor fixo: ${field.label}`}
@@ -600,19 +557,27 @@ export function ImportWizard({
                       <Label htmlFor="import-number-format">
                         Formato dos números do arquivo
                       </Label>
-                      <select
-                        id="import-number-format"
-                        className={selectClass}
+                      <Select
                         value={numberFormat}
-                        onChange={(event) =>
-                          setNumberFormat(event.target.value as NumberFormat)
+                        onValueChange={(value) =>
+                          setNumberFormat(value as NumberFormat)
                         }
                       >
-                        <option value="brazilian">Brasileiro: 1.234,56</option>
-                        <option value="international">
-                          Internacional: 1,234.56
-                        </option>
-                      </select>
+                        <SelectTrigger
+                          id="import-number-format"
+                          className="max-w-sm bg-background"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="brazilian">
+                            Brasileiro: 1.234,56
+                          </SelectItem>
+                          <SelectItem value="international">
+                            Internacional: 1,234.56
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <p className="text-xs text-muted-foreground">
                         Células numéricas do Excel são interpretadas pelo valor
                         numérico. Valores digitados na revisão usam o formato
@@ -790,7 +755,7 @@ export function ImportWizard({
                 </div>
               )}
             </div>
-            <DialogFooter className="gap-2">
+            <DialogFooter className="shrink-0 gap-2 border-t bg-muted/20 px-6 py-4">
               {step === "done" ? (
                 <Button onClick={onClose}>Concluir</Button>
               ) : (
@@ -802,7 +767,7 @@ export function ImportWizard({
                   >
                     Cancelar
                   </Button>
-                  {step === "file" && (
+                  {step === "file" && source && (
                     <Button
                       disabled={busy || !source}
                       onClick={() => {
@@ -810,7 +775,8 @@ export function ImportWizard({
                         setStep("mapping");
                       }}
                     >
-                      Mapear campos
+                      Mapear campos{" "}
+                      <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
                   {step === "mapping" && (

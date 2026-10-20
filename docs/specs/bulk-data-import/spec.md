@@ -47,6 +47,13 @@ Updates/merges, custom fields, saved mappings, persisted drafts, images, source 
 6. WHEN an import succeeds THEN the system SHALL show created/excluded counts and invalidate affected paginated lists and inventory summary queries. (IMP-14)
 7. WHILE a save response is uncertain the system SHALL retain a frozen payload and batch ID for safe retry without permitting a second submission with changed data. (IMP-15)
 
+### UI refinement: Guided file selection and app controls
+**Acceptance Criteria**:
+1. WHEN the file step has no selected file THEN the system SHALL show one file-selection action, file limits and a compact indicator of the four stages, without a disabled mapping action. (IMP-16)
+2. WHEN a file is parsed THEN the system SHALL show its filename, read status, row/column counts and a horizontally scrollable preview of at most three rows with readable column widths. (IMP-17)
+3. WHEN selecting a source column, worksheet, CSV separator, number format or review page size THEN the system SHALL use the shared app Select with accessible labels. (IMP-18)
+4. WHEN Escape is pressed while an import dropdown is open THEN the system SHALL close that dropdown, restore its trigger focus and keep the wizard open. (IMP-19)
+
 ## Edge Cases
 Blank rows are ignored; duplicate headers use indexed identities. Numeric Excel identifiers receive a leading-zero warning. Optional values remain empty/absent. Non-tracked inventory cannot have positive quantities. Employee uniqueness includes deleted records. Included row set must not be empty. Source formulas are never evaluated; formula cells require correction or exclusion.
 
@@ -68,6 +75,10 @@ Blank rows are ignored; duplicate headers use indexed identities. Numeric Excel 
 | IMP-13 | P1 | Execute | Verified |
 | IMP-14 | P1 | Execute | Verified |
 | IMP-15 | P1 | Execute | Verified |
+| IMP-16 | UI refinement | Execute | Verified |
+| IMP-17 | UI refinement | Execute | Verified |
+| IMP-18 | UI refinement | Execute | Verified |
+| IMP-19 | UI refinement | Execute | Verified |
 
 ## Success Criteria
 A 5,000-row batch can be reviewed in bounded pages and saved atomically; duplicate requests do not duplicate writes; required frontend and backend gates pass.

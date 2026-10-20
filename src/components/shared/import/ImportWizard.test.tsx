@@ -124,11 +124,74 @@ afterEach(() => {
 });
 
 describe("ImportWizard", () => {
+  it("introduces file selection with one action and shows file limits only on the file step", async () => {
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Importar dados" }));
+    expect(
+      screen.getByRole("heading", { name: "Comece pelo seu arquivo" }),
+    ).toBeVisible();
+    expect(
+      screen
+        .getByRole("navigation", { name: "Etapas da importação" })
+        .querySelector('[aria-current="step"]'),
+    ).toHaveTextContent("Arquivo");
+    expect(screen.getByText("Até 5.000 linhas")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Mapear campos" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Selecionar arquivo" }),
+    );
+    expect(
+      await screen.findByRole("region", { name: "Arquivo selecionado" }),
+    ).toHaveTextContent("clients.csv");
+    expect(screen.getByText("Arquivo lido com sucesso")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Prévia do arquivo" }),
+    ).toBeVisible();
+    expect(screen.getByText("1 linha")).toBeVisible();
+    expect(screen.getByText("3 colunas")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Mapear campos" }));
+    expect(screen.queryByText("Até 5.000 linhas")).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("navigation", { name: "Etapas da importação" })
+        .querySelector('[aria-current="step"]'),
+    ).toHaveTextContent("Mapeamento");
+    expect(
+      screen
+        .getByRole("dialog")
+        .querySelectorAll('select:not([aria-hidden="true"])'),
+    ).toHaveLength(0);
+  });
+
+  it("uses the app dropdown for column mapping and keeps the wizard open when Escape closes it", async () => {
+    mount();
+    const user = await openAndMap();
+    const trigger = screen.getByRole("combobox", { name: "Nome completo *" });
+    expect(trigger.tagName).toBe("BUTTON");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(await screen.findByRole("listbox")).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: "2. Phone number" }));
+    expect(trigger).toHaveTextContent("2. Phone number");
+  });
+
   it("maps existing fields, allows fixed values, confirms before writing and refreshes clients", async () => {
     const { invalidate } = mount();
     const user = await openAndMap();
-    expect(screen.getByLabelText("Nome completo *")).toHaveValue("column:0");
-    await user.selectOptions(screen.getByLabelText("Endereço"), "fixed");
+    expect(
+      screen.getByRole("combobox", { name: "Nome completo *" }),
+    ).toHaveTextContent("1. Full name");
+    await user.click(screen.getByRole("combobox", { name: "Endereço" }));
+    await user.click(screen.getByRole("option", { name: "Valor fixo" }));
     await user.type(
       screen.getByRole("textbox", { name: "Valor fixo: Endereço" }),
       "Rua A, 10",
@@ -357,10 +420,8 @@ describe("ImportWizard", () => {
     await user.click(
       screen.getByRole("button", { name: "Selecionar arquivo" }),
     );
-    await user.selectOptions(
-      await screen.findByRole("combobox", { name: "Planilha" }),
-      "Funcionários",
-    );
+    await user.click(await screen.findByRole("combobox", { name: "Planilha" }));
+    await user.click(screen.getByRole("option", { name: "Funcionários" }));
     await user.click(
       within(screen.getByRole("alertdialog")).getByRole("button", {
         name: "Descartar e continuar",
@@ -376,9 +437,7 @@ describe("ImportWizard", () => {
       pt: "Arquivo inválido",
       en: "Invalid file",
     });
-    await user.click(
-      screen.getByRole("button", { name: "Selecionar arquivo" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Trocar arquivo" }));
     await user.click(
       screen.getByRole("button", { name: "Descartar e continuar" }),
     );
@@ -386,8 +445,8 @@ describe("ImportWizard", () => {
       "Arquivo inválido",
     );
     expect(
-      screen.getByRole("button", { name: "Mapear campos" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Mapear campos" }),
+    ).not.toBeInTheDocument();
     expect(commitCalls).toHaveLength(0);
   });
   it.each(["employees", "inventory"] as const)(

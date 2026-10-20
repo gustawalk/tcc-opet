@@ -75,3 +75,30 @@ Visible Chromium checked all three entity wizards at 1440×1000 and 900×700 in 
 ## Completion
 
 All 15 requirements are verified. Documentation: `docs/guides/data-import.md`; roadmap removes the delivered CSV-import capability from optional backlog text. Two grounded lessons record date representation and SQLCipher schema-version loss using the skill's bookkeeping tool. Scope remains create-only, existing fields, transient mappings/drafts, one worksheet, and bounded atomic imports.
+
+
+## UI refinement validation: PASS
+
+Verification: standard (UI behavior, shared controls and compatible dialog dependencies; no Rust/data-path changes). This section supersedes the original report's frontend test count and covers the screenshot-driven refinement after `ab8cb7c`.
+
+| Requirement | Evidence | Result |
+| --- | --- | --- |
+| IMP-16 | `src/components/shared/import/ImportWizard.test.tsx:127` asserts one initial selection action, absence of premature mapping action, contextual limits, and active file/mapping stages. `src/components/shared/import/ImportProgress.tsx:11` provides semantic navigation/current-step state. | PASS |
+| IMP-17 | `src/components/shared/import/ImportWizard.test.tsx:127` asserts filename, read status, counts and preview. `src/components/shared/import/ImportFileStep.tsx:52` renders the summary and a maximum three-row table with minimum column widths. Visible Chromium with eight columns measured table width 1532 px in a 1148 px viewport; horizontal scrolling preserves column readability. | PASS |
+| IMP-18 | `src/components/shared/import/ImportWizard.test.tsx:169` asserts a button-based app Select trigger and selected source-column text; `src/components/shared/import/ImportWizard.test.tsx:410` selects an XLSX sheet through app options; `src/components/shared/Pagination.test.tsx:75` asserts the same numeric page-size callback. Worksheet, separator, mapping, number-format and pagination controls use the shared Select. | PASS |
+| IMP-19 | `src/components/shared/import/ImportWizard.test.tsx:169` opens with the keyboard, presses Escape, asserts the menu closes, the wizard remains open and trigger focus returns. Visible Chromium repeats pointer opening and Escape dismissal for each entity. | PASS |
+
+Gates: `yarn typecheck`, `yarn lint`, `yarn test` (145 passed, 31 files), and `yarn build` all pass. Existing bundle-size/Browserslist notices remain. Backend commands were not rerun for this frontend-only revision; the original backend validation remains above. The two existing pagination tests changed interaction from native selectOptions to app dropdown clicks; callback, value, scroll and call-count assertions remain intact. The file-error test now asserts no mapping action rather than a disabled action, matching the redesigned single-action empty state.
+
+The installed Dialog and Select originally resolved different focus-scope/dismissable-layer modules, producing competing focus traps. Dialog 1.1.23 and explicit Yarn resolutions unify those internals. Identical stale generated nested copies from the old install were removed after checking version and code equality. An offline frozen-lockfile installation then retained one resolved instance for both primitives. No manual focus workaround or custom dropdown was introduced. A full frontend run covers the shared pagination/dialog surface. Future Radix upgrades must keep the layer versions aligned.
+
+The visible browser harness checked all three entities at 1440×1000 and 900×700, including file summary, stage changes, app menu, editing, pagination, discard focus and commit. Dark screenshots wait for the app's color transitions; open-menu screenshots retain the menu's normal animation. Inspected screenshots confirm the upload card, framed preview, readable columns and app dropdown. Native IPC/dialogs are mocked in this browser harness, as in the original check.
+
+Standard sensor ran in isolated source copies with a symlinked dependency directory and scratch Vite config. Two mutations of the highest-risk changed file, ImportWizard.tsx, compiled and failed exact UI assertions:
+
+| Mutation | Test filter | Expected failure | Result |
+| --- | --- | --- | --- |
+| Always pass file as the progress stage | introduces file selection | Active stage remained Arquivo instead of Mapeamento | Killed |
+| Always map selected columns to index zero | uses the app dropdown | Trigger showed Full name instead of selected Phone number | Killed |
+
+Command for each: `node <repository>/node_modules/vitest/vitest.mjs run --config <scratch>/vite.config.ts --root <scratch> src/components/shared/import/ImportWizard.test.tsx -t '<filter>'`. Budget: 2 of at most 3. Real working-tree porcelain matched before/after; scratch originals were restored. All nineteen requirements are now verified; no outstanding UI refinement gaps remain.

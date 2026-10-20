@@ -2,6 +2,8 @@
 
 Nas páginas **Clientes**, **Funcionários** e **Estoque**, clique em **Importar dados**. A importação cria novos cadastros. Ela não atualiza ou substitui registros existentes.
 
+As etapas aparecem no indicador de progresso. Os limites ficam na seleção do arquivo; **Como preparar o arquivo** expande as orientações. Os menus de associação e configuração usam os mesmos controles do aplicativo, com navegação por teclado.
+
 ## Preparar o arquivo
 
 Use CSV em UTF-8 (com ou sem BOM), separado por vírgula, ponto e vírgula ou tabulação, ou uma planilha XLSX sem senha. A primeira linha não vazia deve conter os títulos das colunas. Cada importação lê uma única planilha do XLSX. Linhas completamente vazias são ignoradas.
@@ -12,7 +14,7 @@ Fórmulas e células com erros precisam ser substituídas por valores na revisã
 
 ## Associar as colunas
 
-1. Selecione o arquivo. Confira a planilha do XLSX ou o separador do CSV e as primeiras linhas exibidas.
+1. Clique em **Selecionar arquivo**. Após a leitura, confira o nome, os totais e a prévia das primeiras linhas. Escolha a planilha do XLSX ou ajuste o separador do CSV se necessário. Use a rolagem horizontal para conferir todas as colunas; **Trocar arquivo** permite escolher outro arquivo.
 2. Clique em **Mapear campos**. Para cada campo do aplicativo, escolha uma coluna, um valor fixo para todas as linhas ou deixe em branco.
 3. Confira as sugestões automáticas. Se existirem duas colunas com títulos semelhantes, a associação fica para sua escolha. Os números das colunas distinguem títulos repetidos.
 4. No estoque, escolha o formato dos números: brasileiro (`1.234,56`) ou internacional (`1,234.56`). Células numéricas do Excel usam seu valor numérico. Valores digitados na revisão seguem o formato escolhido.

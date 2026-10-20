@@ -15,6 +15,12 @@ Corroborated across multiple features. Safe to apply as guidance.
 - evidence: src-tauri/src/database.rs:647; legacy backup encryption regression (sqlcipher,migrations,backup)
 - last seen: 2026-10-20T13:06:54Z
 
+### L-003 - Keep Radix focus-scope and dismissable-layer on a single resolved module instance across dialogs and portaled controls, and verify both pointer opening and Escape focus restoration in integration and browser tests.
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `radix,dialogs,focus` · harmful: 0
+- features: bulk-data-import-ui
+- evidence: package.json; ImportWizard dropdown keyboard regression (radix,dialogs,focus)
+- last seen: 2026-10-20T22:22:24Z
+
 ## Candidates (under observation - do NOT load as guidance yet)
 
 Seen once or not yet corroborated. Tracked, not trusted.

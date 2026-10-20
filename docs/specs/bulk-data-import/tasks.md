@@ -96,3 +96,16 @@ Coverage verifier identified IMP-07: typed ISO date-only XLSX cells were rejecte
 
 ## T6 evidence
 Full gates after the independent correction: 143 frontend tests; 241 Rust tests passed, 4 pre-existing ignored; typecheck, lint, build, fmt and clippy pass. All 15 requirements accepted by independent coverage re-review; 8/8 valid isolated mutations killed. Browser checks pass for three entities, both themes, compact/desktop layouts and keyboard discard focus. Validation report contains evidence and limitations; manual native desktop UAT was not performed.
+
+### T7: Refine file selection, sample preview and shared dropdowns
+
+- **Status**: complete
+**Depends on**: T6
+**Tests**: initial single action, limits only on file step, file summary, active stage, app dropdown selection/Escape/focus, worksheet replacement, existing mapping/review/retry regressions, pagination callbacks.
+**Gate**: yarn typecheck; yarn lint; yarn test; yarn build; visible Chromium light/dark/compact checks.
+- **Done when**: IMP-16 through IMP-19 pass, existing frontend regressions pass, and the reviewed screens match the requested app styling.
+
+Verification: standard (UI behavior and controls; no backend/data path changes). Scope includes the shared pagination selector because it is rendered by the importer. Assertions for pagination values and callbacks remain intact; test interactions now use the app dropdown rather than native selectOptions.
+
+## T7 evidence
+Frontend gates pass: typecheck, lint, 145 tests and production build. The new initial-state test asserts a single action, active stage and contextual limits; the dropdown test asserts custom trigger, selected column, Escape dismissal and focus restoration. Existing worksheet and page-size callback tests retain their value assertions using app Select interactions. Visible Chromium passes all three entity flows in light/dark/compact layouts; a separate eight-column check measures horizontal overflow rather than compressed cells. Two isolated UI mutations (wrong active stage and wrong mapped column index) fail exact assertions; real-tree porcelain is unchanged by the sensor. Validation details are appended to validation.md.

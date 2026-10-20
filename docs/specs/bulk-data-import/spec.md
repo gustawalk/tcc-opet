@@ -53,21 +53,21 @@ Blank rows are ignored; duplicate headers use indexed identities. Numeric Excel 
 ## Requirement Traceability
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| IMP-01 | P1 | Execute | Implementing |
-| IMP-02 | P1 | Execute | Implementing |
-| IMP-03 | P1 | Execute | Implementing |
-| IMP-04 | P1 | Execute | Implementing |
-| IMP-05 | P1 | Execute | Implementing |
-| IMP-06 | P1 | Execute | Implementing |
-| IMP-07 | P1 | Execute | Implementing |
-| IMP-08 | P1 | Execute | Implementing |
-| IMP-09 | P1 | Execute | Implementing |
-| IMP-10 | P1 | Execute | Implementing |
-| IMP-11 | P1 | Execute | Implementing |
-| IMP-12 | P1 | Execute | Implementing |
-| IMP-13 | P1 | Execute | Implementing |
-| IMP-14 | P1 | Execute | Implementing |
-| IMP-15 | P1 | Execute | Implementing |
+| IMP-01 | P1 | Execute | Verified |
+| IMP-02 | P1 | Execute | Verified |
+| IMP-03 | P1 | Execute | Verified |
+| IMP-04 | P1 | Execute | Verified |
+| IMP-05 | P1 | Execute | Verified |
+| IMP-06 | P1 | Execute | Verified |
+| IMP-07 | P1 | Execute | Verified |
+| IMP-08 | P1 | Execute | Verified |
+| IMP-09 | P1 | Execute | Verified |
+| IMP-10 | P1 | Execute | Verified |
+| IMP-11 | P1 | Execute | Verified |
+| IMP-12 | P1 | Execute | Verified |
+| IMP-13 | P1 | Execute | Verified |
+| IMP-14 | P1 | Execute | Verified |
+| IMP-15 | P1 | Execute | Verified |
 
 ## Success Criteria
 A 5,000-row batch can be reviewed in bounded pages and saved atomically; duplicate requests do not duplicate writes; required frontend and backend gates pass.

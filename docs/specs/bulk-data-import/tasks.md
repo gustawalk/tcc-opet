@@ -48,7 +48,7 @@ Sequential tasks T1 through T6, one local commit per verified deliverable.
 
 ### T6: Complete user guide and independent verification
 
-- **Status**: pending
+- **Status**: complete
 **Depends on**: T5
 **Tests**: spec coverage and isolated mutations
 **Gate**: full
@@ -93,3 +93,6 @@ Frontend gates: 143 tests passed, typecheck/lint/build passed. Wizard tests cove
 
 ## Independent verification correction
 Coverage verifier identified IMP-07: typed ISO date-only XLSX cells were rejected by datetime conversion. A new fixture failed against the old conversion, then passed after switching to as_date(). It also asserts real XLSX numeric provenance and leading-zero warnings. Independent coverage re-review accepts all 15 requirements. Eight isolated data-integrity mutations were killed; no sensor survivors.
+
+## T6 evidence
+Full gates after the independent correction: 143 frontend tests; 241 Rust tests passed, 4 pre-existing ignored; typecheck, lint, build, fmt and clippy pass. All 15 requirements accepted by independent coverage re-review; 8/8 valid isolated mutations killed. Browser checks pass for three entities, both themes, compact/desktop layouts and keyboard discard focus. Validation report contains evidence and limitations; manual native desktop UAT was not performed.

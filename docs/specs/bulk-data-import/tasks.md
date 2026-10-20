@@ -32,7 +32,7 @@ Sequential tasks T1 through T6, one local commit per verified deliverable.
 
 ### T4: Expose validation/commit through LAN
 
-- **Status**: pending
+- **Status**: complete
 **Depends on**: T3
 **Tests**: authenticated Host, replay, unavailable Host and file-command rejection
 **Gate**: cargo test --lib lan_api -- --test-threads=1
@@ -76,3 +76,6 @@ Validation gate: 4 passed. Exact cents, normalized dates, required fields and al
 
 ## T3 evidence
 Import gate: 17 passed. Exact record/movement/cost assertions, injected insertion rollback, employee replay, concurrent identical requests and 5,000-row persistence pass. Fresh/version-5 migration and failed upgrade version preservation pass.
+
+## T4 evidence
+LAN gate: 7 passed with loopback access; data-client gate: 11 passed. Authenticated import, receipt replay, local-file rejection and route-specific payload limits asserted. Sandbox socket restrictions required running LAN tests with approved escalation.

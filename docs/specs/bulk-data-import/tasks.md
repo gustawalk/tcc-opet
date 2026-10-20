@@ -16,7 +16,7 @@ Sequential tasks T1 through T6, one local commit per verified deliverable.
 
 ### T2: Add authoritative normalization and row validation
 
-- **Status**: pending
+- **Status**: complete
 **Depends on**: T1
 **Tests**: required fields, locale money, dates, uniqueness and limits
 **Gate**: cargo test --lib import_service -- --test-threads=1
@@ -70,3 +70,6 @@ Verification: full (data integrity and migrations). Native interactive UAT requi
 
 ## T1 evidence
 Parser gate: 5 passed. Evidence: import_file.rs tests assert exact cell contents, row numbers, dates and bounds. No assertions weakened or skipped.
+
+## T2 evidence
+Validation gate: 4 passed. Exact cents, normalized dates, required fields and all email conflict rows asserted in import_service.rs. No tests weakened or skipped.

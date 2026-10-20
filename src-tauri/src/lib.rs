@@ -9,6 +9,7 @@ macro_rules! register_commands {
         $builder.invoke_handler(tauri::generate_handler![
             facade::inspect_import_file,
             facade::parse_import_file,
+            facade::validate_import_rows,
             facade::create_customer,
             facade::get_customer,
             facade::get_customers,
@@ -108,6 +109,7 @@ mod database;
 mod encryption;
 mod error;
 mod import_file;
+mod import_service;
 mod lan_api;
 mod lan_auth;
 mod lan_client;

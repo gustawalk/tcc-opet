@@ -21,3 +21,11 @@ pub(crate) async fn parse_import_file(
     .await
     .map_err(|_| crate::import_file::file_error("Não foi possível ler o arquivo."))?
 }
+
+#[tauri::command]
+pub(crate) fn validate_import_rows(
+    request: crate::import_service::ImportRequest,
+) -> Result<crate::import_service::ImportValidation, AppError> {
+    let conn = crate::database::get_db()?;
+    crate::import_service::validate_with_conn(&conn, &request)
+}

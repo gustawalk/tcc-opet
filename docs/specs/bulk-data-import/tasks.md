@@ -82,3 +82,11 @@ LAN gate: 7 passed with loopback access; data-client gate: 11 passed. Authentica
 
 ## T5 evidence
 Frontend gates: 143 tests passed, typecheck/lint/build passed. Wizard tests cover all three entities, 5,000-row pagination, edits, filter, exclude/restore, discard confirmation, conflicts, pending/double submission, Client routing and frozen retry. Mapping tests assert actual mapped values and numeric provenance.
+
+## Verification findings resolved before independent review
+- Legacy SQLCipher export loses user_version: receipt migration now tolerates the preserved valid table; version-loss and failure rollback fixtures pass. The legacy backup contract now expects version 6.
+- CSV now rejects misplaced/unclosed quotes and XLSX checks formula metadata including derived shared formulas.
+- Native IPC test proves indexed rows, numeric provenance, camelCase validation/commit and replay against the registered command surface.
+- Discard confirmation reuses the same dialog to avoid competing focus traps. Host preview validation has an explicit retry action. Parts/services show enforced stock control read-only.
+- Required gates passed: 143 frontend tests; 240 Rust tests with 4 existing opt-in benchmarks/stress tests ignored; typecheck, lint, build, fmt and clippy.
+- Visible Chromium harness passed all three entities for mapping, paginated edits, keyboard confirmation/cancel focus, commit, light/dark themes and 900x700/1440x1000 layouts. Native dialogs/IPC were mocked for browser checks; Rust IPC/HTTPS tests exercised actual handlers.

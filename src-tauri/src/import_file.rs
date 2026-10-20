@@ -284,8 +284,8 @@ pub(crate) fn parse(
                 INVALID_CELL.into()
             } else if matches!(cell.value, DataRef::DateTime(_) | DataRef::DateTimeIso(_)) {
                 cell.value
-                    .as_datetime()
-                    .map(|date| date.date().to_string())
+                    .as_date()
+                    .map(|date| date.to_string())
                     .unwrap_or_else(|| INVALID_CELL.into())
             } else {
                 if matches!(cell.value, DataRef::Int(_) | DataRef::Float(_)) {
@@ -522,5 +522,19 @@ mod tests {
             parse(file.path(), None, Some(",")).unwrap().rows[0].cells[0],
             "Maria \"Silva\""
         );
+    }
+    #[test]
+    fn import_file_xlsx_date_only_and_numeric_provenance() {
+        let file = xlsx_fixture(
+            r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Nome</t></is></c><c r="B1" t="inlineStr"><is><t>Data</t></is></c><c r="C1" t="inlineStr"><is><t>CPF</t></is></c><c r="D1" t="inlineStr"><is><t>Custo</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>João</t></is></c><c r="B2" t="d"><v>2026-10-20</v></c><c r="C2"><v>1234567890</v></c><c r="D2"><v>12.34</v></c></row></sheetData></worksheet>"#,
+        );
+        let parsed = parse(file.path(), Some("Clientes"), None).unwrap();
+        assert_eq!(
+            parsed.rows[0].cells,
+            ["João", "2026-10-20", "1234567890", "12.34"]
+        );
+        assert_eq!(parsed.rows[0].numeric_columns, [2, 3]);
+        assert_eq!(parsed.warnings.len(), 1);
+        assert!(parsed.warnings[0].contains("zeros iniciais"));
     }
 }

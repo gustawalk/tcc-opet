@@ -88,5 +88,8 @@ Frontend gates: 143 tests passed, typecheck/lint/build passed. Wizard tests cove
 - CSV now rejects misplaced/unclosed quotes and XLSX checks formula metadata including derived shared formulas.
 - Native IPC test proves indexed rows, numeric provenance, camelCase validation/commit and replay against the registered command surface.
 - Discard confirmation reuses the same dialog to avoid competing focus traps. Host preview validation has an explicit retry action. Parts/services show enforced stock control read-only.
-- Required gates passed: 143 frontend tests; 240 Rust tests with 4 existing opt-in benchmarks/stress tests ignored; typecheck, lint, build, fmt and clippy.
+- Required gates passed: 143 frontend tests; 240 Rust tests with 3 existing performance benchmarks and 1 existing real-PDF test ignored; typecheck, lint, build, fmt and clippy.
 - Visible Chromium harness passed all three entities for mapping, paginated edits, keyboard confirmation/cancel focus, commit, light/dark themes and 900x700/1440x1000 layouts. Native dialogs/IPC were mocked for browser checks; Rust IPC/HTTPS tests exercised actual handlers.
+
+## Independent verification correction
+Coverage verifier identified IMP-07: typed ISO date-only XLSX cells were rejected by datetime conversion. A new fixture failed against the old conversion, then passed after switching to as_date(). It also asserts real XLSX numeric provenance and leading-zero warnings. Independent coverage re-review accepts all 15 requirements. Eight isolated data-integrity mutations were killed; no sensor survivors.

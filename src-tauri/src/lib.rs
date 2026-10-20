@@ -7,6 +7,8 @@ macro_rules! register_commands {
     ($builder:expr $(, $extra:path)* $(,)?) => {{
         use $crate::commands::facade;
         $builder.invoke_handler(tauri::generate_handler![
+            facade::inspect_import_file,
+            facade::parse_import_file,
             facade::create_customer,
             facade::get_customer,
             facade::get_customers,
@@ -105,6 +107,7 @@ mod commands;
 mod database;
 mod encryption;
 mod error;
+mod import_file;
 mod lan_api;
 mod lan_auth;
 mod lan_client;

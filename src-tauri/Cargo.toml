@@ -52,5 +52,8 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync",
 if-addrs = "0.14"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 
+csv = "1.4"
+calamine = { version = "0.36", features = ["chrono"] }
+
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

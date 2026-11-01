@@ -76,7 +76,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-4">
               <SidebarTrigger />
             </div>
-            <div className="absolute left-1/2 -translate-x-1/2">
+            <div className="absolute left-1/2 w-[calc(100%-8rem)] max-w-96 -translate-x-1/2 sm:w-[calc(100%-22rem)]">
               <GlobalSearch />
             </div>
             <div className="flex items-center gap-2">

@@ -7,6 +7,7 @@ export interface DataClientOptions {
 }
 
 const MUTATIONS = new Set([
+  "commit_import",
   "update_settings",
   "create_customer",
   "update_customer",

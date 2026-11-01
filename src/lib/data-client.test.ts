@@ -92,4 +92,17 @@ describe("dataClient", () => {
       idempotencyKey: null,
     });
   });
+  it("routes import commits to the Host with the same explicit batch key on retry", async () => {
+    configureDataClient("client");
+    const payload = { batchId: "batch-123", request: { entity: "customers", rows: [] } };
+    mockedInvoke.mockRejectedValueOnce({ pt: "Host indisponível", en: "Host unavailable" });
+    await expect(dataClient.mutate("commit_import", payload, "batch-123")).rejects.toMatchObject({ pt: "Host indisponível" });
+    mockedInvoke.mockResolvedValueOnce({ result: { createdCount: 1, ids: ["id-1"] } });
+    await expect(dataClient.mutate("commit_import", payload, "batch-123")).resolves.toMatchObject({ result: { createdCount: 1 } });
+    expect(mockedInvoke.mock.calls).toEqual([
+      ["lan_remote_command", { operation: "commit_import", payload, idempotencyKey: "batch-123" }],
+      ["lan_remote_command", { operation: "commit_import", payload, idempotencyKey: "batch-123" }],
+    ]);
+  });
+
 });

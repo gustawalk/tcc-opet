@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::lan_auth::{LanAuthService, PairingCode};
 use axum::body::Bytes;
-use axum::extract::{Path as AxumPath, State};
+use axum::extract::{DefaultBodyLimit, Path as AxumPath, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -222,6 +222,18 @@ fn start_host_server(
         .route("/pair", post(pair))
         .route("/auth-check", get(auth_check))
         .route("/api/v1/commands/{operation}", post(product_command))
+        .route(
+            "/api/v1/commands/validate_import_rows",
+            post(product_import_validation).layer(DefaultBodyLimit::max(
+                crate::import_service::MAX_REQUEST_BYTES + 1024,
+            )),
+        )
+        .route(
+            "/api/v1/commands/commit_import",
+            post(product_import_commit).layer(DefaultBodyLimit::max(
+                crate::import_service::MAX_REQUEST_BYTES + 1024,
+            )),
+        )
         .with_state(ApiState {
             auth: auth.clone(),
             idempotency,
@@ -317,6 +329,28 @@ async fn auth_check(
     ))
 }
 
+async fn product_import_validation(
+    state: State<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    product_command(
+        state,
+        AxumPath("validate_import_rows".into()),
+        headers,
+        body,
+    )
+    .await
+}
+
+async fn product_import_commit(
+    state: State<ApiState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    product_command(state, AxumPath("commit_import".into()), headers, body).await
+}
+
 async fn product_command(
     State(state): State<ApiState>,
     AxumPath(operation): AxumPath<String>,
@@ -325,13 +359,14 @@ async fn product_command(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_matching_version(&headers)?;
     let token = bearer_token(&headers)?;
-    let conn = crate::database::get_db()
-        .map_err(|error| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, error.into()))?;
-    let device = state
-        .auth
-        .authenticate(&conn, token, Utc::now())
-        .map_err(|error| ApiError::new(StatusCode::UNAUTHORIZED, error))?;
-    drop(conn);
+    let device = {
+        let conn = crate::database::get_db()
+            .map_err(|error| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, error.into()))?;
+        state
+            .auth
+            .authenticate(&conn, token, Utc::now())
+            .map_err(|error| ApiError::new(StatusCode::UNAUTHORIZED, error))?
+    };
 
     let payload: serde_json::Value = serde_json::from_slice(&body).map_err(|error| {
         ApiError::new(
@@ -342,6 +377,39 @@ async fn product_command(
             ),
         )
     })?;
+    if matches!(operation.as_str(), "commit_import" | "validate_import_rows") {
+        // Imports own an atomic receipt in the product transaction, including
+        // native commits. Do not reserve a second, non-atomic LAN receipt.
+        if operation == "commit_import"
+            && headers
+                .get("x-idempotency-key")
+                .and_then(|v| v.to_str().ok())
+                .is_none_or(|key| key.trim().is_empty())
+        {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                lan_error(
+                    "Idempotency key is required.",
+                    "A chave de idempotência é obrigatória para importações.",
+                ),
+            ));
+        }
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            dispatch_catalog_command(&operation, payload)
+        })
+        .await
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                lan_error(
+                    "Import worker failed.",
+                    "Não foi possível concluir a importação. Tente novamente com os mesmos dados.",
+                ),
+            )
+        })?
+        .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?;
+        return Ok(Json(result));
+    }
     let execute = || dispatch_catalog_command(&operation, payload);
     let result = if is_catalog_mutation(&operation) {
         let idempotency_key = headers
@@ -414,6 +482,13 @@ fn dispatch_catalog_command(
     use crate::commands::facade;
 
     match operation {
+        "validate_import_rows" => encode(facade::validate_import_rows(
+            decode::<ImportValidationInput>(payload)?.request,
+        )?),
+        "commit_import" => {
+            let input: ImportCommitInput = decode(payload)?;
+            encode(facade::commit_import(input.batch_id, input.request)?)
+        }
         "get_settings" => encode(facade::get_settings()?),
         "update_settings" => encode(facade::update_settings(
             decode::<SettingsInput>(payload)?.settings,
@@ -929,6 +1004,19 @@ fn required_inventory_id(id: Option<String>) -> Result<String, AppError> {
             "A operação exige um identificador de item de inventário.",
         )
     })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ImportValidationInput {
+    request: crate::import_service::ImportRequest,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ImportCommitInput {
+    batch_id: String,
+    request: crate::import_service::ImportRequest,
 }
 
 fn decode<T: for<'de> Deserialize<'de>>(payload: serde_json::Value) -> Result<T, AppError> {
@@ -1644,5 +1732,119 @@ pub(crate) mod tests {
     #[test]
     fn lan_api_https_health_pairing_and_authentication_contract() {
         run_https_host_api_contract_workflow();
+    }
+    #[test]
+    fn lan_api_bulk_import_authenticated_receipt_replay_and_limits() {
+        let _backend = crate::test_helpers::setup_global_backend();
+        let directory = tempfile::tempdir().unwrap();
+        let server =
+            start_host_server(directory.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+                .unwrap();
+        let agent = pinned_agent(&fs::read(directory.path().join(CERTIFICATE_FILE)).unwrap());
+        let url = format!("https://localhost:{}", server.status.address.port());
+        let verification_code = format!(
+            "{}|{}",
+            server.status.pairing_code.code, server.status.certificate_fingerprint
+        );
+        let paired =
+            crate::lan_client::pair_client(&url, "Import client", &verification_code).unwrap();
+        let token = paired.config.client_token.as_deref().unwrap();
+        let request = json!({"entity":"customers","numberFormat":"brazilian","rows":[{"sourceRow":2,"values":{"name":"Import LAN","phone":"41999999999"}}]});
+        let batch = uuid::Uuid::new_v4().to_string();
+        let payload = serde_json::to_vec(&json!({"batchId":batch,"request":request})).unwrap();
+        let post = |operation: &str, body: &[u8], authenticated: bool| {
+            let mut req = agent
+                .post(format!("{url}/api/v1/commands/{operation}"))
+                .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                .header("content-type", "application/json")
+                .header("x-idempotency-key", &batch);
+            if authenticated {
+                req = req.header("authorization", format!("Bearer {token}"));
+            }
+            req.send(body).unwrap()
+        };
+        assert_eq!(
+            post("commit_import", &payload, false).status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let mut validation = post(
+            "validate_import_rows",
+            &serde_json::to_vec(&json!({"request":request})).unwrap(),
+            true,
+        );
+        assert_eq!(validation.status(), StatusCode::OK);
+        let validation: serde_json::Value =
+            serde_json::from_str(&validation.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(validation["validCount"], 1);
+        let mut first = post("commit_import", &payload, true);
+        assert_eq!(first.status(), StatusCode::OK);
+        let first: serde_json::Value =
+            serde_json::from_str(&first.body_mut().read_to_string().unwrap()).unwrap();
+        let mut replay = post("commit_import", &payload, true);
+        assert_eq!(replay.status(), StatusCode::OK);
+        let replay: serde_json::Value =
+            serde_json::from_str(&replay.body_mut().read_to_string().unwrap()).unwrap();
+        assert_eq!(first, replay);
+        assert_eq!(first["result"]["createdCount"], 1);
+        assert_eq!(
+            post("inspect_import_file", br#"{"path":"/etc/passwd"}"#, true).status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            post("parse_import_file", br#"{"path":"/etc/passwd"}"#, true).status(),
+            StatusCode::BAD_REQUEST
+        );
+        let too_large = vec![b' '; crate::import_service::MAX_REQUEST_BYTES + 1025];
+        assert_eq!(
+            post("commit_import", &too_large, true).status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        // The generic catalog route retains its smaller default body limit.
+        let medium = vec![b' '; 2 * 1024 * 1024 + 1];
+        assert_eq!(
+            post("create_customer", &medium, true).status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        let mut large_request = request.clone();
+        large_request["rows"] = serde_json::Value::Array((0..3000).map(|i| json!({"sourceRow":i+2,"values":{"name":"a".repeat(800),"phone":"41999999999"}})).collect());
+        let large = serde_json::to_vec(&json!({"request":large_request})).unwrap();
+        assert!(large.len() > 2 * 1024 * 1024);
+        assert_eq!(
+            post("validate_import_rows", &large, true).status(),
+            StatusCode::OK
+        );
+        let conn = crate::database::get_db().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM customers WHERE name='Import LAN'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM lan_idempotency_records WHERE route='commit_import'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        drop(conn);
+        server.handle.shutdown();
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(agent
+            .post(format!("{url}/api/v1/commands/commit_import"))
+            .send(&payload)
+            .is_err());
+        let conn = crate::database::get_db().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM import_batches", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 }

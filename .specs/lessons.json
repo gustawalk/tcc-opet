@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 4,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "ac_gap::when importing calendar dates from xlsx use a date conversion that accepts both numeric excel dates and typed iso date only cells and exercise both representations in fixtures",
+      "text": "When importing calendar dates from XLSX, use a date conversion that accepts both numeric Excel dates and typed ISO date-only cells, and exercise both representations in fixtures.",
+      "signal": "ac_gap",
+      "scope": "xlsx,dates,imports",
+      "status": "candidate",
+      "features": [
+        "bulk-data-import"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "src-tauri/src/import_file.rs:285; IMP-07 (xlsx,dates,imports)"
+      ],
+      "created": "2026-10-20T13:06:54Z",
+      "last_seen": "2026-10-20T13:06:54Z"
+    },
+    {
+      "id": "L-002",
+      "key": "gate_fail::make additive schema migrations replay safe for accepted sqlcipher export paths that preserve tables but lose user version and test preservation of both data and receipt metadata",
+      "text": "Make additive schema migrations replay-safe for accepted SQLCipher export paths that preserve tables but lose user_version, and test preservation of both data and receipt metadata.",
+      "signal": "gate_fail",
+      "scope": "sqlcipher,migrations,backup",
+      "status": "confirmed",
+      "features": [
+        "bulk-data-import"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "src-tauri/src/database.rs:647; legacy backup encryption regression (sqlcipher,migrations,backup)"
+      ],
+      "created": "2026-10-20T13:06:54Z",
+      "last_seen": "2026-10-20T13:06:54Z"
+    },
+    {
+      "id": "L-003",
+      "key": "gate_fail::keep radix focus scope and dismissable layer on a single resolved module instance across dialogs and portaled controls and verify both pointer opening and escape focus restoration in integration and browser tests",
+      "text": "Keep Radix focus-scope and dismissable-layer on a single resolved module instance across dialogs and portaled controls, and verify both pointer opening and Escape focus restoration in integration and browser tests.",
+      "signal": "gate_fail",
+      "scope": "radix,dialogs,focus",
+      "status": "confirmed",
+      "features": [
+        "bulk-data-import-ui"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "package.json; ImportWizard dropdown keyboard regression (radix,dialogs,focus)"
+      ],
+      "created": "2026-10-20T22:22:24Z",
+      "last_seen": "2026-10-20T22:22:24Z"
+    }
+  ]
+}

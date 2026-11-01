@@ -120,7 +120,7 @@ criteria before implementation:
 
 - customer digital signatures stored with finalized service orders;
 - global search across entities;
-- inventory reorder recommendations and CSV import/export;
+- inventory reorder recommendations and CSV export;
 - service-order cloning/repetition and payment status tracking;
 - customer contact shortcuts and notes.
 

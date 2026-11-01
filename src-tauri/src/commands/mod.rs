@@ -2,6 +2,7 @@ pub mod attachment_commands;
 pub mod checklist_commands;
 pub mod customer_commands;
 pub mod dashboard_commands;
+pub mod import_commands;
 pub mod inventory_commands;
 pub mod lan_commands;
 pub mod pdf_commands;
@@ -18,6 +19,7 @@ pub(crate) mod facade {
     pub use super::checklist_commands::*;
     pub use super::customer_commands::*;
     pub use super::dashboard_commands::*;
+    pub(crate) use super::import_commands::*;
     pub use super::inventory_commands::*;
     pub use super::lan_commands::*;
     pub use super::pdf_commands::*;

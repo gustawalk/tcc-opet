@@ -1,3 +1,4 @@
+import { ImportDataButton } from "@/components/shared/import/ImportDataButton";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -302,6 +303,7 @@ export function Inventory() {
   const getMovementReasonLabel = (reason: string) => {
     const labels: Record<string, string> = {
       manual_restock: "Reposição manual",
+      bulk_import: "Importação de dados",
       manual_removal: "Retirada manual",
       service_order_add: "Peça adicionada à OS",
       service_order_remove: "Peça removida da OS",
@@ -341,6 +343,7 @@ export function Inventory() {
           </p>
         </div>
         <div className="flex gap-2">
+          <ImportDataButton entity="inventory" />
           <Button onClick={() => handleAddItem("part")} className="gap-2">
             <Plus className="h-4 w-4" /> Nova Peça
           </Button>

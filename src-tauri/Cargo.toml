@@ -1,6 +1,6 @@
 [package]
 name = "tcc-opet"
-version = "0.6.0"
+version = "0.7.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -51,6 +51,9 @@ rcgen = "0.14"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 if-addrs = "0.14"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+
+csv = "1.4"
+calamine = { version = "0.36", features = ["chrono"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

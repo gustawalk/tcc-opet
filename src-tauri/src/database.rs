@@ -39,7 +39,8 @@ const PERFORMANCE_INDEX_SCHEMA_VERSION: i64 = 2;
 const PREDICTED_FINISH_SCHEMA_VERSION: i64 = 3;
 const INVENTORY_ITEM_SCHEMA_VERSION: i64 = 4;
 const SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION: i64 = 5;
-const CURRENT_SCHEMA_VERSION: i64 = SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION;
+const BULK_IMPORT_SCHEMA_VERSION: i64 = 6;
+const CURRENT_SCHEMA_VERSION: i64 = BULK_IMPORT_SCHEMA_VERSION;
 
 #[cfg(test)]
 static FAIL_PERFORMANCE_INDEX_MIGRATION: AtomicBool = AtomicBool::new(false);
@@ -633,10 +634,39 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if version == INVENTORY_ITEM_SCHEMA_VERSION {
         apply_service_order_item_stock_migration(conn)?;
+        version = SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION;
+    }
+    if version == SERVICE_ORDER_ITEM_STOCK_SCHEMA_VERSION {
+        apply_bulk_import_migration(conn)?;
     }
     ensure_core_defaults(conn)?;
     validate_migrated_database(conn)?;
     Ok(())
+}
+
+fn apply_bulk_import_migration(conn: &Connection) -> Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS import_batches (
+                batch_id TEXT PRIMARY KEY,
+                payload_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );",
+        )?;
+        // sqlcipher_export preserves tables but loses user_version; accepted
+        // plaintext restores can legitimately replay this migration.
+        conn.prepare(
+            "SELECT batch_id, payload_hash, result_json, created_at FROM import_batches LIMIT 0",
+        )?;
+        conn.pragma_update(None, "user_version", BULK_IMPORT_SCHEMA_VERSION)?;
+        conn.execute_batch("COMMIT")
+    })();
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 fn apply_service_order_item_stock_migration(conn: &Connection) -> Result<()> {
@@ -2242,5 +2272,75 @@ mod tests {
         .unwrap();
 
         assert!(migrate_integer_money(&conn).is_err());
+    }
+    #[test]
+    fn bulk_import_migration_upgrades_v5_preserves_records_and_is_repeatable() {
+        let conn = crate::test_helpers::setup_db();
+        conn.execute(
+            "INSERT INTO customers(id,name,phone) VALUES ('kept','Maria','41999999999')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch("DROP TABLE import_batches; PRAGMA user_version = 5;")
+            .unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            6
+        );
+        assert_eq!(
+            conn.query_row("SELECT name FROM customers WHERE id='kept'", [], |r| r
+                .get::<_, String>(
+                0
+            ))
+            .unwrap(),
+            "Maria"
+        );
+        conn.execute("INSERT INTO import_batches(batch_id,payload_hash,result_json) VALUES ('batch','hash','{}')", []).unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM import_batches", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+    #[test]
+    fn bulk_import_migration_failure_keeps_previous_version() {
+        let conn = crate::test_helpers::setup_db();
+        conn.execute_batch(
+            "DROP TABLE import_batches; CREATE INDEX import_batches ON customers(name);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        assert!(apply_bulk_import_migration(&conn).is_err());
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            5
+        );
+        assert!(conn.is_autocommit());
+    }
+    #[test]
+    fn bulk_import_receipts_survive_schema_version_loss_during_encryption() {
+        let conn = crate::test_helpers::setup_db();
+        conn.execute("INSERT INTO import_batches(batch_id,payload_hash,result_json) VALUES ('batch','hash','{}')", []).unwrap();
+        conn.pragma_update(None, "user_version", 0).unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT payload_hash FROM import_batches WHERE batch_id='batch'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "hash"
+        );
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            6
+        );
     }
 }

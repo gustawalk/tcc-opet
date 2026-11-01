@@ -599,3 +599,64 @@ fn paginated_list_commands_return_items_and_total() {
     assert!(summary["outOfStock"].is_i64());
     assert!(summary["totalStockValue"].is_i64());
 }
+
+#[test]
+fn bulk_import_commands_preserve_camel_case_and_replay_results() {
+    let backend = setup_global_backend();
+    let app = register_commands!(mock_builder())
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    let source = backend.temp_file("import", "csv", b"Name;Phone\nMaria;41999999999");
+    let inspect = get_ipc_response(
+        &webview,
+        request("inspect_import_file", json!({"path":source})),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(inspect["delimiter"], ";");
+    let parsed = get_ipc_response(
+        &webview,
+        request(
+            "parse_import_file",
+            json!({"path":source,"worksheet":null,"delimiter":";"}),
+        ),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(parsed["rows"][0]["sourceRow"], 2);
+    assert_eq!(parsed["rows"][0]["cells"], json!(["Maria", "41999999999"]));
+    assert_eq!(parsed["rows"][0]["numericColumns"], json!([]));
+    let input = json!({"entity":"customers","numberFormat":"brazilian","rows":[{"sourceRow":2,"values":{"name":"Maria","phone":"41999999999"},"numericFields":[]}]});
+    let validated = get_ipc_response(
+        &webview,
+        request("validate_import_rows", json!({"request":input})),
+    )
+    .unwrap()
+    .deserialize::<Value>()
+    .unwrap();
+    assert_eq!(validated["validCount"], 1);
+    assert_eq!(validated["invalidCount"], 0);
+    let batch = uuid::Uuid::new_v4().to_string();
+    let payload = json!({"batchId":batch,"request":input});
+    let saved = get_ipc_response(&webview, request("commit_import", payload.clone()))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert_eq!(saved["result"]["createdCount"], 1);
+    let replay = get_ipc_response(&webview, request("commit_import", payload))
+        .unwrap()
+        .deserialize::<Value>()
+        .unwrap();
+    assert_eq!(replay, saved);
+    let conn = crate::database::get_db().unwrap();
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM customers", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}

@@ -178,6 +178,7 @@ pub(crate) fn reset_database_with_conn(conn: &rusqlite::Connection) -> Result<()
     conn.execute_batch(
         "
         PRAGMA foreign_keys = OFF;
+        DROP TABLE IF EXISTS import_batches;
         DROP TABLE IF EXISTS lan_idempotency_records;
         DROP TABLE IF EXISTS lan_devices;
         DROP TABLE IF EXISTS service_order_attachments;

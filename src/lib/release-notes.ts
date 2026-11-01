@@ -11,6 +11,41 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.7.0",
+    date: "01/11/2026",
+    title: "Importação de dados e busca global aprimorada",
+    sections: [
+      {
+        title: "Importação de dados",
+        items: [
+          "Importe clientes, funcionários e estoque de arquivos CSV ou Excel (.xlsx), com prévia, seleção de planilha e associação de colunas.",
+          "Revise e corrija os dados, filtre erros e exclua ou restaure linhas antes de confirmar, mantendo as edições entre páginas.",
+          "Importe peças, serviços e itens genéricos com formatos numéricos brasileiro ou internacional e entradas de estoque inicial identificadas.",
+          "Os lotes são gravados em transações; tentativas com o mesmo lote após uma resposta incerta não duplicam os registros.",
+          "No modo Cliente LAN, o arquivo é lido no próprio computador e os dados são validados e gravados no Host, sem banco local alternativo.",
+          "Clicar fora da janela solicita o fechamento, preservando a confirmação de descarte e a proteção durante gravações ou resultados incertos.",
+        ],
+      },
+      {
+        title: "Busca global",
+        items: [
+          "O cabeçalho ganhou um campo de busca centralizado com resultados abaixo; Ctrl+K mantém uma janela de busca separada.",
+          "Filtre clientes, ordens de serviço, estoque e modelos em abas com totais por categoria e indicação do tamanho da prévia.",
+          "Abas com espaço estável, itens recentes, ações rápidas e etiquetas de status melhoram a apresentação dos resultados.",
+          "A busca mantém navegação por teclado e informa carregamento, erros e ausência de resultados, sem substituir pesquisas novas por respostas antigas.",
+        ],
+      },
+      {
+        title: "Cuidados com os dados",
+        items: [
+          "A importação cria novos registros e não atualiza os existentes; importar novamente pode duplicar clientes ou estoque, e e-mails de funcionários devem ser únicos.",
+          "Os limites são 5.000 registros e 10 MiB por arquivo; fórmulas do Excel precisam ser corrigidas ou excluídas na revisão.",
+          "Faça um backup antes de atualizar: o banco passa ao esquema 6 e não pode ser aberto por versões anteriores limitadas ao esquema 5.",
+        ],
+      },
+    ],
+  },
+  {
     version: "v0.6.0",
     date: "09/10/2026",
     title: "Status de OS e atualizações mais claras",

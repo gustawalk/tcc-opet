@@ -128,7 +128,7 @@ fn validate_csv_quotes(text: &str, delimiter: u8) -> Result<(), AppError> {
 }
 
 fn suggested_delimiter(text: &str) -> u8 {
-    [b';', b',', b'\t']
+    (*b";,\t")
         .into_iter()
         .max_by_key(|delimiter| {
             let widths: Vec<_> = csv_reader(text, *delimiter)

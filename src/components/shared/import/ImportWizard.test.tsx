@@ -124,6 +124,14 @@ afterEach(() => {
 });
 
 describe("ImportWizard", () => {
+  it("closes on an outside click before a file is selected", async () => {
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Importar dados" }));
+    await user.click(document.querySelector(".bg-black\\/80")!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("introduces file selection with one action and shows file limits only on the file step", async () => {
     mount();
     const user = userEvent.setup();
@@ -326,6 +334,16 @@ describe("ImportWizard", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("asks before discarding an imported draft on an outside click", async () => {
+    mount();
+    const user = await startReview();
+    await user.click(document.querySelector(".bg-black\\/80")!);
+    expect(screen.getByRole("alertdialog")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Manter revisão" }));
+    expect(screen.getByRole("textbox", { name: "Nome completo, linha 2" })).toHaveValue("Maria");
+    expect(commitCalls).toHaveLength(0);
+  });
+
   it("freezes payload and batch ID on an uncertain save and retries without duplicate submission", async () => {
     let attempts = 0;
     commitHandler = () => {
@@ -349,6 +367,9 @@ describe("ImportWizard", () => {
       screen.getByRole("button", { name: "Voltar à revisão" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    await user.click(document.querySelector(".bg-black\\/80")!);
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
     expect(await screen.findByText("Importação concluída.")).toBeVisible();
     expect(commitCalls).toHaveLength(2);

@@ -333,7 +333,9 @@ export function ImportWizard({
           )}
           role={pendingAction ? "alertdialog" : "dialog"}
           showClose={!busy && !frozen && !pendingAction}
-          onInteractOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => {
+            if (busy || frozen) event.preventDefault();
+          }}
           onEscapeKeyDown={(event) => {
             if (busy || frozen) event.preventDefault();
           }}

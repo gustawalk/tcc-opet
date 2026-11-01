@@ -46,3 +46,5 @@ Se a resposta da gravação não chegar, use **Tentar novamente**. O aplicativo 
 No modo Cliente LAN, selecione um arquivo do próprio computador. A validação e a gravação acontecem no Host autenticado. A indisponibilidade do Host não faz o aplicativo gravar no banco local.
 
 Trocar arquivo, planilha ou mapeamento e cancelar uma revisão exige confirmação de descarte. Após concluir, o aplicativo apresenta quantos registros foram criados e quantas linhas foram excluídas, e atualiza as listas e os resumos relacionados.
+
+Clicar fora da janela também solicita o fechamento: antes de selecionar um arquivo, ela fecha imediatamente; com um arquivo carregado, pede confirmação de descarte. Durante a gravação ou enquanto o resultado não estiver confirmado, o fechamento continua bloqueado para permitir uma tentativa segura com os mesmos dados.

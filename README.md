@@ -132,6 +132,20 @@ yarn build:appimage
 
 Para compatibilidade com distribuições Linux mais antigas, gere o AppImage em Debian 12 ou Ubuntu 22.04.
 
+#### Geração de PDF no AppImage 0.7.0
+
+Se o botão de PDF ficar parado no Linux, feche o OpetS e abra o AppImage
+com o Chromium do sistema. Execute a partir da raiz deste projeto, com o
+Chromium instalado em `/usr/bin/chromium`.
+
+```bash
+APPIMAGE_EXTRACT_AND_RUN=1 CHROME_BIN="$PWD/scripts/chromium-system.sh" \
+  "$HOME/Downloads/OpetS_0.7.0_amd64.AppImage"
+```
+
+O atalho mantém as bibliotecas do AppImage fora do processo do Chromium.
+O OpetS continua usando a instalação e o banco de dados habituais.
+
 ### Releases no GitHub
 
 - Pull requests e pushes para `main` executam lint, TypeScript, build, testes frontend e testes Rust com mínimo de 75% de cobertura de linhas.

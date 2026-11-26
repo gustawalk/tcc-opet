@@ -7,8 +7,21 @@ use tauri::{command, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 
 #[command]
-pub fn preview_service_order_pdf(service_order_id: String) -> Result<PdfPreview, AppError> {
-    pdf_service::preview_service_order_pdf(&service_order_id)
+pub async fn preview_service_order_pdf(service_order_id: String) -> Result<PdfPreview, AppError> {
+    run_pdf_preview(move || pdf_service::preview_service_order_pdf(&service_order_id)).await
+}
+
+pub(super) async fn run_pdf_preview(
+    preview: impl FnOnce() -> Result<PdfPreview, AppError> + Send + 'static,
+) -> Result<PdfPreview, AppError> {
+    tauri::async_runtime::spawn_blocking(preview)
+        .await
+        .map_err(|error| {
+            AppError::new(
+                format!("PDF preview worker failed: {error}"),
+                format!("Não foi possível concluir a pré-visualização do PDF: {error}"),
+            )
+        })?
 }
 
 #[command]

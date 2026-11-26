@@ -74,6 +74,11 @@ Tudo precisa terminar sem erros. Isto inclui o clippy com `--all-targets
 --all-features`, que cobre testes e é o modo usado no CI (um clippy só
 com `-- -D warnings` pode passar local e **falhar no GitHub**).
 
+Em Linux com Chrome ou Chromium no `PATH`, execute
+`bash scripts/test-appimage-pdf.sh`. O workflow exige esse teste antes
+do empacotamento. Ele gera um PDF real e verifica que o navegador recebe
+os caminhos do sistema sem os diretórios do AppImage.
+
 ---
 
 ## 3. Alterar as versões (onde é necessário)
@@ -132,6 +137,12 @@ A tag deve apontar para o commit final em `main` que contém o bump.
 
 ## 6. Publicar a tag (gera os artefatos)
 
+Para validar o AppImage antes da distribuição, rode `release.yml` por
+`workflow_dispatch` no commit da versão e baixe o artefato `linux-appimage`.
+Abra o pacote pelo gerenciador de arquivos e gere o PDF de uma ordem e do
+relatório financeiro em uma base de teste. Esse disparo gera os artefatos
+e permite testar o pacote assinado antes da publicação da tag.
+
 ```bash
 git tag -a vX.Y.Z -m "OpetS vX.Y.Z"
 git push origin vX.Y.Z
@@ -140,7 +151,7 @@ git push origin vX.Y.Z
 O `release.yml` dispara e executa em sequência:
 
 1. `verify` — confere as três versões iguais e que a tag é `v${version}`,
-   roda lint/typecheck/build/testes Rust.
+   roda lint, typecheck, build, testes Rust e a verificação de PDF no ambiente simulado do AppImage.
 2. `build-windows`, `build-linux-deb`, `build-linux-appimage` — geram os
    instaladores.
 3. `publish` — baixa os artefatos, gera o `updater.json`, cria/atualiza a

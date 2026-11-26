@@ -275,18 +275,21 @@ mod tests {
 }
 
 #[command]
-pub fn preview_financial_report_pdf(
+pub async fn preview_financial_report_pdf(
     start_date: Option<String>,
     end_date: Option<String>,
     technician_id: Option<String>,
     ranking_metric: Option<String>,
     ranking_limit: Option<i32>,
 ) -> Result<PdfPreview, AppError> {
-    preview_report_pdf(
-        start_date.as_deref(),
-        end_date.as_deref(),
-        technician_id.as_deref(),
-        ranking_metric.as_deref(),
-        ranking_limit,
-    )
+    super::pdf_commands::run_pdf_preview(move || {
+        preview_report_pdf(
+            start_date.as_deref(),
+            end_date.as_deref(),
+            technician_id.as_deref(),
+            ranking_metric.as_deref(),
+            ranking_limit,
+        )
+    })
+    .await
 }

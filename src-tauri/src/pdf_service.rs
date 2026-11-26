@@ -254,16 +254,45 @@ fn browser_candidates() -> Vec<PathBuf> {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn appimage_free_paths(app_dir: &Path, value: &str) -> Option<String> {
+    let paths: Vec<_> = std::env::split_paths(value)
+        .filter(|path| !path.starts_with(app_dir))
+        .collect();
+    std::env::join_paths(paths).ok()?.into_string().ok()
+}
+
+fn browser_launch_options() -> Result<headless_chrome::LaunchOptions<'static>, AppError> {
+    let mut options = LaunchOptionsBuilder::default();
+    options.path(Some(chrome_path()?)).sandbox(false);
+
+    #[cfg(target_os = "linux")]
+    if let Some(app_dir) = std::env::var_os("APPDIR").filter(|path| !path.is_empty()) {
+        let app_dir = Path::new(&app_dir);
+        // The system Chromium must use its own libraries and GTK resources.
+        let environment = ["LD_LIBRARY_PATH", "GTK_PATH", "XDG_DATA_DIRS"]
+            .into_iter()
+            .filter_map(|name| {
+                let original = std::env::var(name).ok()?;
+                let filtered = appimage_free_paths(app_dir, &original)?;
+                (original != filtered).then(|| (name.to_owned(), filtered))
+            })
+            .collect();
+        options.process_envs(Some(environment));
+    }
+
+    options.build().map_err(pdf_error)
+}
+
 pub fn preview_service_order_pdf(service_order_id: &str) -> Result<PdfPreview, AppError> {
-    let conn = crate::database::get_db()?;
-    let html = build_html_with_conn(&conn, service_order_id)?;
-    let order = ServiceOrderRepository::get_by_id_with_conn(&conn, service_order_id)?
-        .ok_or_else(|| not_found("Service order", "Ordem de serviço"))?;
-    create_pdf_preview(
-        format!("{}.pdf", order.display_id),
-        render_html_to_pdf_bytes(&html)?,
-        html,
-    )
+    let (file_name, html) = {
+        let conn = crate::database::get_db()?;
+        let html = build_html_with_conn(&conn, service_order_id)?;
+        let order = ServiceOrderRepository::get_by_id_with_conn(&conn, service_order_id)?
+            .ok_or_else(|| not_found("Service order", "Ordem de serviço"))?;
+        (format!("{}.pdf", order.display_id), html)
+    };
+    create_pdf_preview(file_name, render_html_to_pdf_bytes(&html)?, html)
 }
 
 pub fn preview_financial_report_pdf(
@@ -412,17 +441,13 @@ fn render_html_to_pdf_bytes(html: &str) -> Result<Vec<u8>, AppError> {
 }
 
 fn render_html_to_pdf_bytes_in_dir(html: &str, working_dir: &Path) -> Result<Vec<u8>, AppError> {
+    let options = browser_launch_options()?;
     fs::create_dir_all(working_dir).map_err(pdf_error)?;
     let html_path = working_dir.join(format!("{}.html", Uuid::new_v4()));
-    fs::write(&html_path, html).map_err(pdf_error)?;
-    crate::database::secure_private_file(&html_path).map_err(pdf_error)?;
 
     let result = (|| -> Result<Vec<u8>, AppError> {
-        let options = LaunchOptionsBuilder::default()
-            .path(Some(chrome_path()?))
-            .sandbox(false)
-            .build()
-            .map_err(pdf_error)?;
+        fs::write(&html_path, html).map_err(pdf_error)?;
+        crate::database::secure_private_file(&html_path).map_err(pdf_error)?;
         let browser = Browser::new(options).map_err(pdf_error)?;
         let tab = browser.new_tab().map_err(pdf_error)?;
         let html_url = format!("file://{}", html_path.to_string_lossy());
@@ -560,6 +585,24 @@ mod tests {
         assert!(
             html.contains("Previsão de conclusão: 15&#x2F;10&#x2F;2026"),
             "generated HTML: {html}"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn chromium_paths_keep_system_directories_and_exclude_appimage_directories() {
+        let app_dir = Path::new("/tmp/.mount_OpetS");
+        assert_eq!(
+            appimage_free_paths(
+                app_dir,
+                "/tmp/.mount_OpetS/usr/lib:/usr/lib:/tmp/.mount_OpetS-host/lib:/tmp/.mount_OpetS/lib",
+            )
+            .as_deref(),
+            Some("/usr/lib:/tmp/.mount_OpetS-host/lib")
+        );
+        assert_eq!(
+            appimage_free_paths(app_dir, "/tmp/.mount_OpetS//usr/lib/gtk-3.0").as_deref(),
+            Some("")
         );
     }
 

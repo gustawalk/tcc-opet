@@ -22,6 +22,28 @@ fn request(command: &str, body: Value) -> InvokeRequest {
 }
 
 #[test]
+fn order_pdf_preview_returns_the_bilingual_error_for_a_missing_order() {
+    let _backend = setup_global_backend();
+    let app = register_commands!(mock_builder())
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    let error = get_ipc_response(
+        &webview,
+        request(
+            "preview_service_order_pdf",
+            json!({ "serviceOrderId": "missing-order" }),
+        ),
+    )
+    .unwrap_err();
+
+    assert_eq!(error["en"], "Service order not found.");
+    assert_eq!(error["pt"], "Ordem de serviço não encontrado(a).");
+}
+
+#[test]
 fn lan_mode_settings_preserve_camel_case_ipc_contract() {
     let _backend = setup_global_backend();
     let app = register_commands!(mock_builder())

@@ -64,11 +64,12 @@ benchmark is updated.
 
 ### 4. PDF generation resilience
 
+The PDF worker now releases the database connection before opening Chromium.
+Linux AppImage launches filter bundled paths from the browser environment.
+
 **Deliver:**
 
-- Build document data before rendering and release the database connection
-  before a browser process starts.
-- Run rendering in an isolated blocking worker with a single-job queue.
+- Limit the blocking PDF workers to one active rendering job.
 - Enforce timeouts and clean up failed browser processes and abandoned preview
   data.
 - Test browser absence, crash, timeout, and concurrent requests.

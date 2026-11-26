@@ -377,6 +377,26 @@ async fn product_command(
             ),
         )
     })?;
+    if matches!(
+        operation.as_str(),
+        "preview_service_order_pdf" | "preview_financial_report_pdf"
+    ) {
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            dispatch_catalog_command(&operation, payload)
+        })
+        .await
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                lan_error(
+                    "PDF preview worker failed.",
+                    "Não foi possível concluir a pré-visualização do PDF.",
+                ),
+            )
+        })?
+        .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?;
+        return Ok(Json(result));
+    }
     if matches!(operation.as_str(), "commit_import" | "validate_import_rows") {
         // Imports own an atomic receipt in the product transaction, including
         // native commits. Do not reserve a second, non-atomic LAN receipt.
@@ -743,8 +763,8 @@ fn dispatch_catalog_command(
         "delete_service_order_attachment" => encode(facade::delete_service_order_attachment(
             decode::<IdInput>(payload)?.id,
         )?),
-        "preview_service_order_pdf" => encode(facade::preview_service_order_pdf(
-            decode::<ServiceOrderIdInput>(payload)?.service_order_id,
+        "preview_service_order_pdf" => encode(crate::pdf_service::preview_service_order_pdf(
+            &decode::<ServiceOrderIdInput>(payload)?.service_order_id,
         )?),
         "download_pdf_preview" => encode(facade::download_pdf_preview(
             decode::<TokenInput>(payload)?.token,
@@ -772,11 +792,11 @@ fn dispatch_catalog_command(
         }
         "preview_financial_report_pdf" => {
             let input: FinancialReportInput = decode(payload)?;
-            encode(facade::preview_financial_report_pdf(
-                input.start_date,
-                input.end_date,
-                input.technician_id,
-                input.ranking_metric,
+            encode(crate::pdf_service::preview_financial_report_pdf(
+                input.start_date.as_deref(),
+                input.end_date.as_deref(),
+                input.technician_id.as_deref(),
+                input.ranking_metric.as_deref(),
                 input.ranking_limit,
             )?)
         }

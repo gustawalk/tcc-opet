@@ -11,6 +11,24 @@ export type ReleaseNote = {
 // Bundled with the app so the version history remains available offline.
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "v0.7.1",
+    date: "26/11/2026",
+    title: "Correção na geração de PDF",
+    sections: [
+      {
+        title: "PDF",
+        items: [
+          "O AppImage usa o navegador compatível do sistema com as bibliotecas corretas ao gerar PDFs de ordens e relatórios.",
+          "A geração é feita em segundo plano para manter a interface responsiva.",
+        ],
+      },
+      {
+        title: "Rede local",
+        items: ["Atualize o Host e os Clientes para a mesma versão."],
+      },
+    ],
+  },
+  {
     version: "v0.7.0",
     date: "01/11/2026",
     title: "Importação de dados e busca global aprimorada",

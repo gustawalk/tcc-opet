@@ -81,6 +81,10 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
+      - name: Verify PDF rendering with AppImage environment
+        timeout-minutes: 8
+        run: bash scripts/test-appimage-pdf.sh
+
   build-windows:
     name: Build Windows installers
     needs: verify
